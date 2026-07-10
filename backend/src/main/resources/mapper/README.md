@@ -1,0 +1,2 @@
+-- mapper XML 存放目录（对应 application.yml 中 mybatis-plus.mapper-locations）
+-- 复杂统计 SQL 建议写在此处的 XML 文件中，简单 CRUD 优先使用 MyBatis-Plus 内置方法。

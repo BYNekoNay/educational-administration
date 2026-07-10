@@ -1,0 +1,43 @@
+# IDE / Editor
+.idea/
+*.iml
+.vscode/
+
+# CodeBuddy project data
+.codebuddy/
+
+# Logs
+*.log
+
+# Build output
+admin-web/dist/
+backend/target/
+mobile-uniapp/dist/
+
+# Node
+node_modules/
+admin-web/node_modules/
+mobile-uniapp/node_modules/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PowerShell artifacts
+$null
+
+# SQL output
+sql_out.txt
+
+# Test output
+backend/test-output.txt
+backend/test_final.txt
+backend/test_final2.txt
+backend/test_out.txt
+backend/test_out2.txt
+backend/test_out3.txt
+backend/test_out4.txt
+
+# Environment
+.env
+.env.local

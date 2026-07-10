@@ -1,0 +1,136 @@
+<template>
+  <div>
+    <div style="display: flex; justify-content: space-between; margin-bottom: 16px">
+      <h3>退费管理</h3>
+      <el-button type="primary" @click="showRefundDialog">新增退费申请</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe>
+      <el-table-column prop="id" label="ID" width="60" />
+      <el-table-column prop="studentName" label="学员" min-width="80" />
+      <el-table-column prop="amount" label="退费金额" width="110">
+        <template #default="{ row }">¥{{ row.amount ? Number(row.amount).toFixed(2) : '0.00' }}</template>
+      </el-table-column>
+      <el-table-column prop="lessonCount" label="课时数" width="80" />
+      <el-table-column prop="status" label="状态" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.status === 1 ? 'warning' : row.status === 2 ? 'success' : 'danger'" size="small">
+            {{ row.status === 1 ? '待审核' : row.status === 2 ? '已通过' : '已拒绝' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="applicantName" label="申请人" min-width="80" />
+      <el-table-column prop="createTime" label="申请时间" width="170" />
+      <el-table-column label="操作" width="180" fixed="right">
+        <template #default="{ row }">
+          <template v-if="row.status === 1">
+            <el-button size="small" type="success" @click="handleAudit(row, 2)">通过</el-button>
+            <el-button size="small" type="danger" @click="handleAudit(row, 3)">拒绝</el-button>
+          </template>
+          <span v-else style="color: #909399">—</span>
+        </template>
+      </el-table-column>
+    </el-table>
+    <el-pagination style="margin-top: 16px; justify-content: flex-end"
+      v-model:current-page="pageNum" v-model:page-size="pageSize"
+      :total="total" layout="total, prev, pager, next" @change="loadData" />
+
+    <el-dialog title="新增退费申请" v-model="dialogVisible" width="450px">
+      <el-form :model="form" label-width="100px">
+        <el-form-item label="学员">
+          <el-select v-model="form.studentId" placeholder="请选择学员" filterable style="width:100%">
+            <el-option v-for="s in studentList" :key="s.id" :label="s.name" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="报名ID"><el-input-number v-model="form.enrollmentId" :min="1" /></el-form-item>
+        <el-form-item label="缴费记录ID"><el-input-number v-model="form.paymentRecordId" :min="1" /></el-form-item>
+        <el-form-item label="退费课时数"><el-input-number v-model="form.lessonCount" :min="0" :precision="2" /></el-form-item>
+        <el-form-item label="退费金额"><el-input-number v-model="form.amount" :min="0" :precision="2" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleCreateRefund" :loading="saving">提交申请</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog title="审核通过" v-model="auditVisible" width="420px">
+      <el-form label-width="100px">
+        <el-form-item label="退费记录"><span>{{ auditRow?.id }}</span></el-form-item>
+        <el-form-item label="学员ID"><span>{{ auditRow?.studentId }}</span></el-form-item>
+        <el-form-item label="退费金额">
+          <el-input-number v-model="auditAmount" :min="0" :precision="2" style="width: 100%" />
+        </el-form-item>
+        <p style="color:#909399;font-size:13px;margin-top:8px">通过后将自动回退课时、写入流水并联动退班</p>
+      </el-form>
+      <template #footer>
+        <el-button @click="auditVisible = false">取消</el-button>
+        <el-button type="success" @click="confirmAudit" :loading="auditing">确认通过</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { refundApi } from '@/api/finance'
+import { studentApi } from '@/api/edu'
+
+const loading = ref(false), saving = ref(false), auditing = ref(false)
+const tableData = ref<any[]>([])
+const pageNum = ref(1), pageSize = ref(10), total = ref(0)
+const dialogVisible = ref(false)
+const studentList = ref<any[]>([])
+const form = reactive<any>({ studentId: null, enrollmentId: 1, paymentRecordId: 1, lessonCount: 0, amount: 0 })
+
+async function loadOptions() {
+  try {
+    const res = await studentApi.list({ pageNum: 1, pageSize: 100 })
+    studentList.value = res.data?.records || []
+  } catch { /* ignore */ }
+}
+
+const auditVisible = ref(false), auditRow = ref<any>(null), auditAmount = ref(0)
+
+async function loadData() {
+  loading.value = true
+  const res = await refundApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+}
+
+function showRefundDialog() {
+  if (studentList.value.length === 0) loadOptions()
+  dialogVisible.value = true
+}
+
+async function handleCreateRefund() {
+  saving.value = true
+  try {
+    await refundApi.create({ ...form })
+    ElMessage.success('退费申请已提交')
+    dialogVisible.value = false
+    loadData()
+  } catch (_) { } finally { saving.value = false }
+}
+
+function handleAudit(row: any, status: number) {
+  if (status === 3) {
+    ElMessageBox.confirm('确认拒绝该申请？', '拒绝确认', { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' })
+      .then(() => doAudit(row.id, 3, 0)).catch(() => {})
+  } else {
+    auditRow.value = row; auditAmount.value = row.amount || 0; auditVisible.value = true
+  }
+}
+
+async function confirmAudit() {
+  auditing.value = true
+  try { await doAudit(auditRow.value.id, 2, auditAmount.value); auditVisible.value = false } finally { auditing.value = false }
+}
+
+async function doAudit(id: number, status: number, refundAmount: number) {
+  await refundApi.audit(id, { status, refundAmount })
+  ElMessage.success(status === 2 ? '审核通过：已回退课时、写入流水并退班' : '已拒绝')
+  loadData()
+}
+
+onMounted(() => { loadOptions(); loadData() })
+</script>
