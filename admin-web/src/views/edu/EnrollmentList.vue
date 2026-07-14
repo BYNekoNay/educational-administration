@@ -3,13 +3,18 @@
     <div style="display: flex; justify-content: space-between; margin-bottom: 16px">
       <h3>报名审核</h3>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="studentName" label="学员" min-width="80" />
-      <el-table-column prop="parentName" label="家长" min-width="80" />
-      <el-table-column prop="courseName" label="课程" min-width="100" />
-      <el-table-column prop="className" label="意向班级" min-width="120" />
-      <el-table-column prop="status" label="状态" width="100">
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索学员/课程" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="studentName" label="学员" min-width="80" sortable />
+      <el-table-column prop="parentName" label="家长" min-width="80" sortable />
+      <el-table-column prop="courseName" label="课程" min-width="100" sortable />
+      <el-table-column prop="className" label="意向班级" min-width="120" sortable />
+      <el-table-column prop="status" label="状态" width="100" sortable="custom">
         <template #default="{ row }">
           <el-tag v-if="row.status === 1" type="warning">待审核</el-tag>
           <el-tag v-else-if="row.status === 2" type="primary">待缴费</el-tag>
@@ -18,9 +23,9 @@
           <el-tag v-else-if="row.status === 5" type="info">已失效</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="auditorName" label="审核人" min-width="80" />
-      <el-table-column prop="auditRemark" label="审核备注" min-width="120" />
-      <el-table-column prop="createTime" label="申请时间" width="170" />
+      <el-table-column prop="auditorName" label="审核人" min-width="80" sortable />
+      <el-table-column prop="auditRemark" label="审核备注" min-width="120" sortable />
+      <el-table-column prop="createTime" label="申请时间" width="170" sortable="custom" />
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <template v-if="row.status === 1">
@@ -54,14 +59,23 @@ import { ElMessage } from 'element-plus'
 import { enrollmentApi } from '@/api/edu'
 
 const loading = ref(false), auditing = ref(false)
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const tableData = ref<any[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const rejectVisible = ref(false), rejectRow = ref<any>(null), rejectRemark = ref('')
 
 async function loadData() {
   loading.value = true
-  const res = await enrollmentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  const res = await enrollmentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+}
+
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pageNum.value = 1; loadData()
 }
 
 function showReject(row: any) { rejectRow.value = row; rejectRemark.value = ''; rejectVisible.value = true }

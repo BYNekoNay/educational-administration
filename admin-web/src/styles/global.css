@@ -1,0 +1,284 @@
+/* ============================================================
+   Admin Web — Global Styles
+   ============================================================ */
+
+@import './tokens.css';
+
+/* ─── Reset & Base ─── */
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--neutral-600);               /* 4D4139 — 在白底上 ≈9.5:1 ✅ */
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--neutral-300);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--neutral-400); }
+
+/* ─── Sidebar Override ─── */
+.el-menu-vertical {
+  background: var(--sidebar-bg) !important;
+  border-right: none !important;
+}
+.el-menu-vertical .el-menu-item,
+.el-menu-vertical .el-sub-menu__title {
+  color: var(--sidebar-text) !important;
+  margin: 2px 8px;
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast) var(--ease-out-quart);
+}
+.el-menu-vertical .el-menu-item:hover,
+.el-menu-vertical .el-sub-menu__title:hover {
+  background: var(--sidebar-hover-bg) !important;
+  color: var(--sidebar-active-text) !important;
+}
+.el-menu-vertical .el-menu-item.is-active {
+  background: var(--sidebar-active-bg) !important;
+  color: var(--sidebar-active-text) !important;
+  font-weight: var(--font-semibold);
+}
+
+/* ─── Header ─── */
+.el-header {
+  background: var(--surface-card) !important;
+  border-bottom: 1px solid var(--neutral-200);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ─── Cards ─── */
+.el-card {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--neutral-200) !important;
+  box-shadow: var(--shadow-xs) !important;
+  transition: box-shadow var(--duration-normal) var(--ease-out-quart);
+}
+.el-card:hover {
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* ─── Buttons ─── */
+.el-button {
+  border-radius: var(--radius-md) !important;
+  font-weight: var(--font-medium) !important;
+  transition: all var(--duration-fast) var(--ease-out-quart) !important;
+  letter-spacing: 0.01em;
+  color: var(--neutral-700);
+  background-color: #ffffff;
+  border: 1px solid var(--neutral-200);
+}
+.el-button:hover {
+  color: var(--brand-primary);
+  border-color: var(--brand-bright);
+  background-color: #f0fafb;
+}
+.el-button--primary {
+  background: var(--brand-gradient) !important;
+  border: none !important;
+  color: #ffffff !important;
+}
+.el-button--primary:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  color: #ffffff !important;
+  background: var(--brand-gradient) !important;
+}
+.el-button--danger,
+.el-button--danger.is-link,
+.el-button--danger.is-text,
+.el-button--danger.is-plain {
+  color: #ffffff !important;
+  background: var(--accent-rose) !important;
+  border-color: var(--accent-rose) !important;
+}
+.el-button--success,
+.el-button--success.is-link,
+.el-button--success.is-text,
+.el-button--success.is-plain {
+  color: #ffffff !important;
+  background: var(--color-success) !important;
+  border-color: var(--color-success) !important;
+}
+.el-button--warning {
+  color: #ffffff !important;
+  background: var(--color-warning) !important;
+  border-color: var(--color-warning) !important;
+}
+/* size=small 文字按钮 */
+.el-button--small {
+  color: var(--neutral-700);
+  background: #ffffff;
+  border: 1px solid var(--neutral-200);
+}
+.el-button--small.is-link,
+.el-button--small.is-text,
+.el-button--small.is-plain {
+  color: var(--brand-primary);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+/* ─── Tables ─── */
+.el-table {
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden;
+  font-size: var(--text-sm) !important;
+  --el-table-bg-color: #ffffff;
+  --el-table-tr-bg-color: #ffffff;
+  --el-table-row-hover-bg-color: rgba(14, 116, 144, 0.04);
+  --el-table-border-color: var(--neutral-200);
+  color: var(--neutral-600);
+}
+.el-table th.el-table__cell {
+  background: var(--neutral-100) !important;
+  color: var(--neutral-700) !important;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--neutral-200) !important;
+}
+.el-table td.el-table__cell {
+  background: #ffffff !important;
+  color: var(--neutral-600) !important;
+  border-bottom: 1px solid var(--neutral-100) !important;
+}
+.el-table tr {
+  transition: background var(--duration-fast) var(--ease-out-quart);
+}
+.el-table tr:hover > td {
+  background: rgba(14, 116, 144, 0.04) !important;
+}
+.el-table .el-button {
+  /* 表格内按钮尺寸略小，更紧凑 */
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  margin-right: 4px;
+}
+
+/* ─── Inputs ─── */
+.el-input__wrapper {
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 0 0 1px var(--neutral-200) inset !important;
+  transition: all var(--duration-fast) var(--ease-out-quart);
+}
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--neutral-300) inset !important;
+}
+.el-input.is-focus .el-input__wrapper,
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 2px var(--brand-bright) inset !important;
+}
+
+/* ─── Tags / Badges ─── */
+.el-tag {
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-medium);
+  color: var(--neutral-700);
+  background: var(--neutral-100);
+  border: 1px solid var(--neutral-200);
+}
+.el-tag.el-tag--success,
+.el-tag.el-tag--success.is-light {
+  color: #047857;
+  background: #d1fae5;
+  border-color: #a7f3d0;
+}
+.el-tag.el-tag--warning,
+.el-tag.el-tag--warning.is-light {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+.el-tag.el-tag--danger,
+.el-tag.el-tag--danger.is-light {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+.el-tag.el-tag--info,
+.el-tag.el-tag--info.is-light {
+  color: #1e40af;
+  background: #dbeafe;
+  border-color: #bfdbfe;
+}
+.el-tag.el-tag--primary,
+.el-tag.el-tag--primary.is-light {
+  color: var(--brand-primary);
+  background: #e0f5f9;
+  border-color: #90d5e2;
+}
+
+/* ─── Dialog ─── */
+.el-dialog {
+  border-radius: var(--radius-xl) !important;
+}
+.el-dialog__header {
+  padding: var(--space-6) var(--space-6) 0 !important;
+}
+
+/* ─── Pagination ─── */
+.el-pagination .el-pager li.is-active {
+  background: var(--brand-gradient) !important;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Dashboard Stats Cards ─── */
+.stat-card {
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  border: 1px solid var(--neutral-200);
+  transition: all var(--duration-normal) var(--ease-out-quart);
+  position: relative;
+  overflow: hidden;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--brand-gradient);
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease-out-quart);
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+.stat-card:hover::before {
+  opacity: 1;
+}
+.stat-card .stat-value {
+  font-family: var(--font-number);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--neutral-800);
+  line-height: 1.2;
+}
+.stat-card .stat-label {
+  font-size: var(--text-sm);
+  color: var(--neutral-500);
+  margin-top: var(--space-2);
+  font-weight: var(--font-medium);
+}
+
+/* ─── Animations ─── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up {
+  animation: fadeInUp var(--duration-slow) var(--ease-out-expo);
+}

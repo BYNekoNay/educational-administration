@@ -47,7 +47,8 @@ public class ScheduleController {
 
     @GetMapping("/schedules")
     public Result<PageResult<ScheduleLesson>> listLessons(PageQuery query) {
-        return Result.success(PageResult.of(scheduleService.pageScheduleLessons((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(scheduleService.pageScheduleLessons((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/schedules/{id}")
@@ -98,7 +99,8 @@ public class ScheduleController {
     @GetMapping("/classrooms")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<PageResult<Classroom>> listClassrooms(PageQuery query) {
-        return Result.success(PageResult.of(scheduleService.pageClassrooms((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(scheduleService.pageClassrooms((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/classrooms/{id}")

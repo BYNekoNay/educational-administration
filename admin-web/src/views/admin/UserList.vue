@@ -20,10 +20,10 @@
     </div>
 
     <!-- 用户表格 -->
-    <el-table :data="tableData" border stripe v-loading="loading">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="username" label="用户名" min-width="120" />
-      <el-table-column prop="realName" label="姓名" min-width="100" />
+    <el-table :data="tableData" border stripe v-loading="loading" @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="70" sortable="custom" />
+      <el-table-column prop="username" label="用户名" min-width="120" sortable="custom" />
+      <el-table-column prop="realName" label="姓名" min-width="100" sortable="custom" />
       <el-table-column prop="phone" label="手机号" min-width="120">
         <template #default="{ row }">{{ row.phone || '-' }}</template>
       </el-table-column>
@@ -46,15 +46,18 @@
           {{ row.lastLoginTime ? formatTime(row.lastLoginTime) : '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="createTime" label="创建时间" min-width="160">
+      <el-table-column prop="createTime" label="创建时间" min-width="160" sortable="custom">
         <template #default="{ row }">
           {{ row.createTime ? formatTime(row.createTime) : '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button size="small" type="primary" @click="openEditDialog(row)">
             编辑
+          </el-button>
+          <el-button size="small" type="warning" @click="openPasswordDialog(row)">
+            改密
           </el-button>
           <el-popconfirm
             :title="row.status === 1 ? '确认禁用该用户？' : '确认启用该用户？'"
@@ -85,6 +88,20 @@
         @current-change="fetchData"
       />
     </div>
+
+    <!-- 修改密码对话框 -->
+    <el-dialog v-model="passwordVisible" title="修改密码" width="400px" :close-on-click-modal="false">
+      <el-form :model="passwordForm" label-width="100px">
+        <el-form-item label="用户">{{ passwordTarget?.username }}（{{ passwordTarget?.realName }}）</el-form-item>
+        <el-form-item label="新密码" required>
+          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="请输入新密码" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="passwordVisible = false">取消</el-button>
+        <el-button type="primary" :loading="passwordSaving" @click="handleResetPassword">确定</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 新增/编辑对话框 -->
     <el-dialog
@@ -150,6 +167,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { userApi } from '@/api/auth'
+import { showError } from '@/utils/error'
 
 // ====== 角色映射 ======
 const roleMap: Record<string, string> = {
@@ -181,6 +199,7 @@ function roleTagType(code: string): string {
 const loading = ref(false)
 const tableData = ref<any[]>([])
 const searchKeyword = ref('')
+const sortField = ref(''), sortOrder = ref('')
 const pagination = reactive({ pageNum: 1, pageSize: 10, total: 0 })
 
 async function fetchData() {
@@ -190,14 +209,16 @@ async function fetchData() {
       pageNum: pagination.pageNum,
       pageSize: pagination.pageSize,
       keyword: searchKeyword.value || undefined,
+      sortField: sortField.value || undefined,
+      sortOrder: sortOrder.value || undefined,
     })
     const data = res.data
     tableData.value = data.records || []
     pagination.total = data.total || 0
     pagination.pageNum = data.pageNum
     pagination.pageSize = data.pageSize
-  } catch {
-    // 错误已在拦截器中提示
+  } catch (e) {
+    showError(e, '加载用户列表失败')
   } finally {
     loading.value = false
   }
@@ -210,8 +231,15 @@ function handleSearch() {
 
 function resetSearch() {
   searchKeyword.value = ''
+  sortField.value = ''; sortOrder.value = ''
   pagination.pageNum = 1
   fetchData()
+}
+
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pagination.pageNum = 1; fetchData()
 }
 
 // ====== 启用/禁用 ======
@@ -221,8 +249,8 @@ async function toggleStatus(row: any) {
     await userApi.updateStatus(row.id, newStatus)
     row.status = newStatus
     ElMessage.success(newStatus === 1 ? '已启用' : '已禁用')
-  } catch {
-    // 已在拦截器提示
+  } catch (e) {
+    showError(e, '状态更新失败')
   }
 }
 
@@ -301,10 +329,39 @@ async function handleSubmit() {
     }
     dialogVisible.value = false
     fetchData()
-  } catch {
-    // 已在拦截器提示
+  } catch (e) {
+    showError(e, '保存失败')
   } finally {
     submitting.value = false
+  }
+}
+
+// ====== 修改密码 ======
+const passwordVisible = ref(false)
+const passwordSaving = ref(false)
+const passwordTarget = ref<any>(null)
+const passwordForm = reactive({ newPassword: '' })
+
+function openPasswordDialog(row: any) {
+  passwordTarget.value = row
+  passwordForm.newPassword = ''
+  passwordVisible.value = true
+}
+
+async function handleResetPassword() {
+  if (!passwordForm.newPassword || passwordForm.newPassword.length < 6) {
+    ElMessage.warning('新密码至少6位')
+    return
+  }
+  passwordSaving.value = true
+  try {
+    await userApi.resetPassword(passwordTarget.value.id, passwordForm.newPassword)
+    ElMessage.success('密码已重置')
+    passwordVisible.value = false
+  } catch (e) {
+    showError(e, '重置密码失败')
+  } finally {
+    passwordSaving.value = false
   }
 }
 

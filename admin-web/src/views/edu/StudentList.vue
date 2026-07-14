@@ -4,15 +4,26 @@
       <h3>学员管理</h3>
       <el-button type="primary" @click="openDialog(null)">新增学员</el-button>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="name" label="姓名" />
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索姓名/电话/学校/家长" clearable style="width:260px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="name" label="姓名" sortable="custom" />
       <el-table-column prop="gender" label="性别" width="70">
         <template #default="{ row }">{{ row.gender === 1 ? '男' : row.gender === 2 ? '女' : '-' }}</template>
       </el-table-column>
-      <el-table-column prop="birthday" label="出生日期" width="110" />
+      <el-table-column prop="birthday" label="出生日期" width="110" sortable="custom" />
       <el-table-column prop="school" label="学校" />
       <el-table-column prop="contactPhone" label="联系电话" width="120" />
+      <el-table-column prop="parentName" label="家长" min-width="100" sortable>
+        <template #default="{ row }">
+          <span v-if="row.parentName">{{ row.parentName }}</span>
+          <el-tag v-else type="info" size="small">未绑定</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="80">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'warning' : 'info'">
@@ -46,7 +57,9 @@
         <el-form-item label="性别">
           <el-select v-model="form.gender"><el-option :value="1" label="男" /><el-option :value="2" label="女" /></el-select>
         </el-form-item>
-        <el-form-item label="出生日期"><el-input v-model="form.birthday" placeholder="如 2020-01-01" /></el-form-item>
+        <el-form-item label="出生日期">
+          <el-date-picker v-model="form.birthday" type="date" placeholder="选择出生日期" value-format="YYYY-MM-DD" style="width:100%" />
+        </el-form-item>
         <el-form-item label="学校"><el-input v-model="form.school" /></el-form-item>
         <el-form-item label="联系电话"><el-input v-model="form.contactPhone" /></el-form-item>
         <el-form-item label="状态">
@@ -60,10 +73,14 @@
     </el-dialog>
 
     <!-- 绑定家长弹窗 -->
-    <el-dialog title="绑定家长" v-model="bindVisible" width="400px">
+    <el-dialog title="绑定家长" v-model="bindVisible" width="450px">
       <el-form :model="bindForm" label-width="80px">
         <el-form-item label="学员">{{ currentStudent?.name }}</el-form-item>
-        <el-form-item label="家长ID"><el-input-number v-model="bindForm.parentUserId" :min="1" /></el-form-item>
+        <el-form-item label="家长">
+          <el-select v-model="bindForm.parentUserId" filterable placeholder="搜索选择家长用户" style="width:100%" @focus="loadUserOptions">
+            <el-option v-for="u in userOptions" :key="u.id" :label="u.realName + ' (' + u.username + ')'" :value="u.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="关系"><el-input v-model="bindForm.relation" placeholder="如 父亲/母亲" /></el-form-item>
       </el-form>
       <template #footer>
@@ -93,12 +110,15 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { showError } from '@/utils/error'
 import { studentApi, classApi } from '@/api/edu'
+import { userApi } from '@/api/auth'
 
 const loading = ref(false)
 const saving = ref(false)
 const binding = ref(false)
 const transferring = ref(false)
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const tableData = ref<any[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
@@ -112,13 +132,30 @@ const form = reactive<any>({ name: '', gender: 1, birthday: '', school: '', cont
 const bindForm = reactive({ parentUserId: null as number | null, relation: '父亲' })
 const transferTargetClassId = ref<number | null>(null)
 const transferClassList = ref<any[]>([])
+const userOptions = ref<any[]>([])
+
+async function loadUserOptions() {
+  if (userOptions.value.length > 0) return
+  try {
+    const res = await userApi.list({ pageNum: 1, pageSize: 200 })
+    userOptions.value = res.data?.records || []
+  } catch { /* ignore */ }
+}
 
 async function loadData() {
   loading.value = true
-  const res = await studentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  const res = await studentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = res.data.records
   total.value = res.data.total
   loading.value = false
+}
+
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pageNum.value = 1; loadData()
 }
 
 function openDialog(row: any) {
@@ -131,16 +168,19 @@ function openDialog(row: any) {
 async function handleSave() {
   saving.value = true
   try {
+    const payload: any = { ...form }
+    // 生日空字符串会导致后端 LocalDate 反序列化失败
+    if (!payload.birthday) payload.birthday = null
     if (isEdit.value) {
-      await studentApi.update(form.id, form)
+      await studentApi.update(form.id, payload)
       ElMessage.success('学员已更新')
     } else {
-      await studentApi.create(form)
+      await studentApi.create(payload)
       ElMessage.success('学员已创建')
     }
     dialogVisible.value = false
     loadData()
-  } finally { saving.value = false }
+  } catch (e) { showError(e, '保存失败') } finally { saving.value = false }
 }
 
 async function handleDelete(row: any) {
@@ -187,7 +227,7 @@ async function handleTransfer() {
     ElMessage.success('转班成功')
     transferVisible.value = false
     loadData()
-  } catch { ElMessage.error('转班失败') }
+  } catch (e) { showError(e, '转班失败') }
   finally { transferring.value = false }
 }
 
@@ -197,7 +237,7 @@ async function handleWithdraw(row: any) {
     await studentApi.withdraw(row.id)
     ElMessage.success('退班申请已提交，待财务审核')
     loadData()
-  } catch { ElMessage.error('操作失败') }
+  } catch (e) { showError(e, '退班操作失败') }
 }
 
 onMounted(loadData)

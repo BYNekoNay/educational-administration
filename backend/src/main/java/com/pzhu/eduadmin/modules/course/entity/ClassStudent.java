@@ -20,6 +20,10 @@ public class ClassStudent {
 
     private Integer status;
 
+    /** 学员姓名（不持久化） */
+    @TableField(exist = false)
+    private String studentName;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

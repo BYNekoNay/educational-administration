@@ -33,4 +33,8 @@ public class Student {
 
     @TableLogic
     private Integer isDeleted;
+
+    /** 绑定的家长姓名（不持久化，回填用，多个家长用顿号分隔） */
+    @TableField(exist = false)
+    private String parentName;
 }

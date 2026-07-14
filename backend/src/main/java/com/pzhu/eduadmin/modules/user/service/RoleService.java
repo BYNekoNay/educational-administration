@@ -13,6 +13,8 @@ public interface RoleService {
 
     Role createRole(String roleCode, String roleName);
 
+    void updateRole(Long id, String roleName);
+
     void deleteRole(Long id);
 
     List<String> getRolePermissions(String roleCode);

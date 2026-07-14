@@ -146,10 +146,25 @@ const router = createRouter({
   routes
 })
 
+// 防止无限重定向：记录连续跳转次数
+let redirectCount = 0
+const MAX_REDIRECTS = 5
+
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
+
+  // 安全阀：连续跳转过多说明出现了循环，强制清除登录态并展示登录页
+  if (redirectCount > MAX_REDIRECTS) {
+    redirectCount = 0
+    authStore.logout()
+    next()
+    return
+  }
+
   if (to.path === '/login') {
+    redirectCount = 0 // 到达登录页，重置计数
     if (authStore.token) {
+      redirectCount++
       next('/admin/dashboard')
     } else {
       next()
@@ -157,17 +172,37 @@ router.beforeEach((to, _from, next) => {
     return
   }
   if (!authStore.token) {
+    redirectCount = 0
     next('/login')
     return
   }
+
+  // 防御：非管理角色（教师/家长）不允许进入后台
+  const ADMIN_ROLES = ['SUPER_ADMIN', 'EDU_ADMIN', 'FINANCE']
+  if (authStore.roleCode && !ADMIN_ROLES.includes(authStore.roleCode)) {
+    authStore.logout()
+    redirectCount = 0
+    next('/login')
+    return
+  }
+
   // 优先使用动态权限码检查
   const requiredPermission = to.meta.permission as string | undefined
   if (requiredPermission) {
     if (!authStore.hasPermission(requiredPermission)) {
-      next('/admin/dashboard')
+      if (to.path === '/admin/dashboard') {
+        // 看板页都没有权限 → token/权限已失效，清除登录态后跳转登录页
+        authStore.logout()
+        redirectCount = 0
+        next('/login')
+      } else {
+        redirectCount++
+        next('/admin/dashboard')
+      }
       return
     }
   }
+  redirectCount = 0
   document.title = (to.meta.title as string) || '教务管理'
   next()
 })

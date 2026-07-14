@@ -4,22 +4,27 @@
       <h3>退费管理</h3>
       <el-button type="primary" @click="showRefundDialog">新增退费申请</el-button>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="studentName" label="学员" min-width="80" />
-      <el-table-column prop="amount" label="退费金额" width="110">
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索学员/申请人" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="studentName" label="学员" min-width="80" sortable />
+      <el-table-column prop="amount" label="退费金额" width="110" sortable="custom">
         <template #default="{ row }">¥{{ row.amount ? Number(row.amount).toFixed(2) : '0.00' }}</template>
       </el-table-column>
-      <el-table-column prop="lessonCount" label="课时数" width="80" />
-      <el-table-column prop="status" label="状态" width="90">
+      <el-table-column prop="lessonCount" label="课时数" width="80" sortable="custom" />
+      <el-table-column prop="status" label="状态" width="90" sortable="custom">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'warning' : row.status === 2 ? 'success' : 'danger'" size="small">
             {{ row.status === 1 ? '待审核' : row.status === 2 ? '已通过' : '已拒绝' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="applicantName" label="申请人" min-width="80" />
-      <el-table-column prop="createTime" label="申请时间" width="170" />
+      <el-table-column prop="applicantName" label="申请人" min-width="80" sortable />
+      <el-table-column prop="createTime" label="申请时间" width="170" sortable="custom" />
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <template v-if="row.status === 1">
@@ -41,8 +46,16 @@
             <el-option v-for="s in studentList" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="报名ID"><el-input-number v-model="form.enrollmentId" :min="1" /></el-form-item>
-        <el-form-item label="缴费记录ID"><el-input-number v-model="form.paymentRecordId" :min="1" /></el-form-item>
+        <el-form-item label="报名记录">
+          <el-select v-model="form.enrollmentId" filterable style="width:100%" placeholder="搜索选择报名记录">
+            <el-option v-for="e in enrollmentList" :key="e.id" :label="`${e.studentName || '学员' + e.studentId} - ${e.courseName || '课程' + e.courseId}`" :value="e.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="缴费记录">
+          <el-select v-model="form.paymentRecordId" filterable style="width:100%" placeholder="搜索选择缴费记录">
+            <el-option v-for="p in paymentList" :key="p.id" :label="`${p.studentName || '学员' + p.studentId} ¥${p.amount || 0} (${p.payTime || ''})`" :value="p.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="退费课时数"><el-input-number v-model="form.lessonCount" :min="0" :precision="2" /></el-form-item>
         <el-form-item label="退费金额"><el-input-number v-model="form.amount" :min="0" :precision="2" /></el-form-item>
       </el-form>
@@ -55,7 +68,7 @@
     <el-dialog title="审核通过" v-model="auditVisible" width="420px">
       <el-form label-width="100px">
         <el-form-item label="退费记录"><span>{{ auditRow?.id }}</span></el-form-item>
-        <el-form-item label="学员ID"><span>{{ auditRow?.studentId }}</span></el-form-item>
+        <el-form-item label="学员"><span>{{ auditRow?.studentName || auditRow?.studentId }}</span></el-form-item>
         <el-form-item label="退费金额">
           <el-input-number v-model="auditAmount" :min="0" :precision="2" style="width: 100%" />
         </el-form-item>
@@ -72,29 +85,47 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { refundApi } from '@/api/finance'
-import { studentApi } from '@/api/edu'
+import { refundApi, paymentApi } from '@/api/finance'
+import { studentApi, enrollmentApi } from '@/api/edu'
+import { showError } from '@/utils/error'
 
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const loading = ref(false), saving = ref(false), auditing = ref(false)
 const tableData = ref<any[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const dialogVisible = ref(false)
 const studentList = ref<any[]>([])
+const enrollmentList = ref<any[]>([])
+const paymentList = ref<any[]>([])
 const form = reactive<any>({ studentId: null, enrollmentId: 1, paymentRecordId: 1, lessonCount: 0, amount: 0 })
 
 async function loadOptions() {
   try {
-    const res = await studentApi.list({ pageNum: 1, pageSize: 100 })
-    studentList.value = res.data?.records || []
-  } catch { /* ignore */ }
+    const [sRes, eRes, pRes] = await Promise.all([
+      studentApi.list({ pageNum: 1, pageSize: 100 }),
+      enrollmentApi.list({ pageNum: 1, pageSize: 200 }),
+      paymentApi.list({ pageNum: 1, pageSize: 200 }),
+    ])
+    studentList.value = sRes.data?.records || []
+    enrollmentList.value = eRes.data?.records || []
+    paymentList.value = pRes.data?.records || []
+  } catch (e) { showError(e, '加载选项数据失败') }
 }
 
 const auditVisible = ref(false), auditRow = ref<any>(null), auditAmount = ref(0)
 
 async function loadData() {
   loading.value = true
-  const res = await refundApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  const res = await refundApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+}
+
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pageNum.value = 1; loadData()
 }
 
 function showRefundDialog() {
@@ -109,7 +140,7 @@ async function handleCreateRefund() {
     ElMessage.success('退费申请已提交')
     dialogVisible.value = false
     loadData()
-  } catch (_) { } finally { saving.value = false }
+  } catch (e: any) { showError(e, '提交失败') } finally { saving.value = false }
 }
 
 function handleAudit(row: any, status: number) {

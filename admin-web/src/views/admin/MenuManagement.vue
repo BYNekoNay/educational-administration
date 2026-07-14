@@ -98,6 +98,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { showError } from '@/utils/error'
 import { Plus } from '@element-plus/icons-vue'
 import { menuApi } from '@/api/auth'
 
@@ -125,7 +126,7 @@ async function loadTree() {
   try {
     const res = await menuApi.tree()
     menuTree.value = res.data || []
-  } catch { ElMessage.error('加载菜单树失败') }
+  } catch (e) { showError(e, '加载菜单树失败') }
   finally { loading.value = false }
 }
 
@@ -194,7 +195,7 @@ async function handleSave() {
     dialogVisible.value = false
     await loadTree()
   } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
+    showError(e, '操作失败')
   } finally { saving.value = false }
 }
 
@@ -204,7 +205,7 @@ async function handleDelete(id: number) {
     ElMessage.success('菜单已删除（含子节点）')
     await loadTree()
   } catch (e: any) {
-    ElMessage.error(e?.message || '删除失败')
+    showError(e, '删除失败')
   }
 }
 

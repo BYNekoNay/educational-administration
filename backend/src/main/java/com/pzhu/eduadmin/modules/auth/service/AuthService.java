@@ -31,8 +31,11 @@ public class AuthService implements IAuthService {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, request.getUsername()));
 
-        if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new BusinessException("用户名或密码错误");
+        if (user == null) {
+            throw new BusinessException("用户名不存在，请检查用户名");
+        }
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new BusinessException("密码错误，请重新输入");
         }
         if (user.getStatus() == null || user.getStatus() != 1) {
             throw new BusinessException("账号已被禁用，请联系管理员");

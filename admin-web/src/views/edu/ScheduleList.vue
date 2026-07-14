@@ -7,15 +7,20 @@
         <el-button type="primary" @click="openDialog(null)">新增课次</el-button>
       </div>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="className" label="班级" min-width="140" />
-      <el-table-column prop="teacherName" label="教师" min-width="80" />
-      <el-table-column prop="classroomName" label="教室" min-width="100" />
-      <el-table-column prop="lessonDate" label="日期" width="110" />
-      <el-table-column prop="startTime" label="开始" width="80" />
-      <el-table-column prop="endTime" label="结束" width="80" />
-      <el-table-column prop="status" label="状态" width="90">
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索班级/教师/教室" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="className" label="班级" min-width="140" sortable />
+      <el-table-column prop="teacherName" label="教师" min-width="80" sortable />
+      <el-table-column prop="classroomName" label="教室" min-width="100" sortable />
+      <el-table-column prop="lessonDate" label="日期" width="110" sortable="custom" />
+      <el-table-column prop="startTime" label="开始" width="80" sortable="custom" />
+      <el-table-column prop="endTime" label="结束" width="80" sortable="custom" />
+      <el-table-column prop="status" label="状态" width="90" sortable="custom">
         <template #default="{ row }">
           <el-tag v-if="row.status===1" type="warning">待上课</el-tag>
           <el-tag v-else-if="row.status===2" type="success">已完成</el-tag>
@@ -89,7 +94,7 @@
         <el-select v-model="item.classroomId" size="small" style="width:100px" placeholder="教室" filterable>
           <el-option v-for="r in roomList" :key="r.id" :label="r.name" :value="r.id" />
         </el-select>
-        <el-input v-model="item.lessonDate" size="small" style="width:110px" placeholder="日期" />
+        <el-date-picker v-model="item.lessonDate" type="date" size="small" value-format="YYYY-MM-DD" style="width:120px" placeholder="日期" />
         <el-input v-model="item.startTime" size="small" style="width:80px" placeholder="开始" />
         <el-input v-model="item.endTime" size="small" style="width:80px" placeholder="结束" />
         <el-button size="small" type="danger" @click="batchItems.splice(idx,1)">X</el-button>
@@ -106,9 +111,11 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { showError } from '@/utils/error'
 import { scheduleApi, classApi, teacherApi, classroomApi } from '@/api/edu'
 
 const loading = ref(false), saving = ref(false), batching = ref(false)
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const tableData = ref<any[]>([]), pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const dialogVisible = ref(false), batchVisible = ref(false), isEdit = ref(false)
 const classList = ref<any[]>([])
@@ -127,13 +134,21 @@ async function loadOptions() {
     classList.value = clRes.data?.records || []
     teacherList.value = tRes.data || []
     roomList.value = rRes.data?.records || []
-  } catch { /* ignore */ }
+  } catch (e) { showError(e, '加载排课选项失败') }
 }
 
 async function loadData() {
   loading.value = true
-  const r = await scheduleApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  const r = await scheduleApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = r.data.records; total.value = r.data.total; loading.value = false
+}
+
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pageNum.value = 1; loadData()
 }
 
 function openDialog(row: any) {

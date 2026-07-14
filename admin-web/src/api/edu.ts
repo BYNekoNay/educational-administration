@@ -80,14 +80,14 @@ export const enrollmentApi = {
   create: (data: any) => request.post('/edu/enrollments', data),
   update: (id: number, data: any) => request.put(`/edu/enrollments/${id}`, data),
   delete: (id: number) => request.delete(`/edu/enrollments/${id}`),
-  audit: (id: number, data: any) => request.put(`/edu/enrollments/${id}/audit`, data),
+  audit: (id: number, data: any) => request.put(`/edu/enrollments/${id}/audit`, null, { params: { status: data.status, remark: data.remark } }),
 }
 
 /** 调课管理 */
 export const adjustApi = {
   list: (params?: any) => request.get('/edu/adjust', { params }),
   create: (data: any) => request.post('/edu/adjust', data),
-  audit: (id: number, data: any) => request.put(`/edu/adjust/${id}/audit`, data),
+  audit: (id: number, data: any) => request.put(`/edu/adjust/${id}/audit`, null, { params: { status: data.status, remark: data.remark } }),
 }
 
 /** 考级管理 */
@@ -95,7 +95,14 @@ export const examApi = {
   levels: (params?: any) => request.get('/edu/exams/levels', { params }),
   createLevel: (data: any) => request.post('/edu/exams/levels', data),
   updateLevel: (id: number, data: any) => request.put(`/edu/exams/levels/${id}`, data),
+  deleteLevel: (id: number) => request.delete(`/edu/exams/levels/${id}`),
   signups: (params?: any) => request.get('/edu/exams/signups', { params }),
   signup: (data: any) => request.post('/edu/exams/signups', data),
   score: (id: number, data: any) => request.put(`/edu/exams/signups/${id}/score`, data),
+}
+
+/** 请假审核 */
+export const leaveRequestApi = {
+  list: (params?: any) => request.get('/edu/leave-requests', { params }),
+  audit: (id: number, data: any) => request.put(`/edu/leave-requests/${id}/audit`, null, { params: { status: data.status, remark: data.remark } }),
 }

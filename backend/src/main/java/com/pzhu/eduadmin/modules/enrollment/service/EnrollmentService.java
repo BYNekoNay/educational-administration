@@ -5,7 +5,7 @@ import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 
 public interface EnrollmentService {
 
-    Page<Enrollment> page(int pageNum, int pageSize);
+    Page<Enrollment> page(int pageNum, int pageSize, String sortField, String sortOrder);
 
     Enrollment getById(Long id);
 

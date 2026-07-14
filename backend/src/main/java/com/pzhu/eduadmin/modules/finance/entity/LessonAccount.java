@@ -24,6 +24,7 @@ public class LessonAccount {
 
     private LocalDate expireDate;
 
+    @Version
     private Integer version;
 
     @TableField(fill = FieldFill.INSERT)

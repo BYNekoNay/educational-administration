@@ -65,6 +65,14 @@ public class LearningServiceImpl implements LearningService {
     }
 
     @Override
+    public List<LearningRecord> getRecordsByStudentId(Long studentId) {
+        return learningRecordMapper.selectList(
+                new LambdaQueryWrapper<LearningRecord>()
+                        .eq(LearningRecord::getStudentId, studentId)
+                        .orderByDesc(LearningRecord::getCreateTime));
+    }
+
+    @Override
     public List<LearningRecord> batchCreateRecords(List<LearningRecord> records) {
         List<LearningRecord> result = new ArrayList<>();
         for (LearningRecord r : records) {

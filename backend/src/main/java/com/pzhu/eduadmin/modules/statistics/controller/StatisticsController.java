@@ -47,10 +47,12 @@ public class StatisticsController {
     @GetMapping("/operation-logs")
     @RequireRole({"SUPER_ADMIN"})
     public Result<PageResult<OperationLog>> listOperationLogs(PageQuery query) {
-        return Result.success(PageResult.of(statisticsService.pageOperationLogs((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(statisticsService.pageOperationLogs((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/dashboard")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Map<String, Object>> dashboard() {
         return Result.success(statisticsService.getDashboard());
     }
@@ -85,5 +87,17 @@ public class StatisticsController {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> charts = (Map<String, Object>) dashboard.get("charts");
         return Result.success(Map.of("revenueTrend", charts.get("revenueTrend")));
+    }
+
+    @GetMapping("/statistics/teacher-workload")
+    @RequireRole({"SUPER_ADMIN"})
+    public Result<Object> teacherWorkload(@RequestParam(defaultValue = "") String month) {
+        return Result.success(statisticsService.getTeacherWorkload(month));
+    }
+
+    @GetMapping("/statistics/student-loss")
+    @RequireRole({"SUPER_ADMIN"})
+    public Result<Object> studentLoss() {
+        return Result.success(statisticsService.getStudentLossTrend());
     }
 }

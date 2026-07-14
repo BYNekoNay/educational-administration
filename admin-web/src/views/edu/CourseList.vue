@@ -4,9 +4,14 @@
       <h3>课程管理</h3>
       <el-button type="primary" @click="openDialog(null)">新增课程</el-button>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="name" label="课程名称" />
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索课程名称" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="name" label="课程名称" sortable="custom" />
       <el-table-column prop="category" label="分类" width="100" />
       <el-table-column prop="totalLessons" label="总课时" width="80" />
       <el-table-column prop="lessonDuration" label="时长(分)" width="80" />
@@ -58,6 +63,7 @@ import { courseApi } from '@/api/edu'
 
 const loading = ref(false)
 const saving = ref(false)
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const tableData = ref<any[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
@@ -68,10 +74,18 @@ const form = reactive<any>({ name: '', category: '', totalLessons: 1, lessonDura
 
 async function loadData() {
   loading.value = true
-  const res = await courseApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  const res = await courseApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = res.data.records
   total.value = res.data.total
   loading.value = false
+}
+
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pageNum.value = 1; loadData()
 }
 
 function openDialog(row: any) {

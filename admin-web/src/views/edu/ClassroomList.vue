@@ -4,9 +4,14 @@
       <h3>教室管理</h3>
       <el-button type="primary" @click="openDialog(null)">新增教室</el-button>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="name" label="教室名称" />
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索教室名称/校区" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="name" label="教室名称" sortable="custom" />
       <el-table-column prop="capacity" label="容量" width="80" />
       <el-table-column prop="campus" label="校区" />
       <el-table-column prop="status" label="状态" width="80">
@@ -42,11 +47,16 @@ import {ElMessage,ElMessageBox} from 'element-plus'
 import { classroomApi } from '@/api/edu'
 
 const loading=ref(false),saving=ref(false)
+const keyword=ref(''),sortField=ref(''),sortOrder=ref('')
 const tableData=ref<any[]>([]),pageNum=ref(1),pageSize=ref(10),total=ref(0)
 const dialogVisible=ref(false),isEdit=ref(false)
 const form=reactive<any>({name:'',capacity:10,campus:'',status:1})
 
-async function loadData(){loading.value=true;const r=await classroomApi.list({pageNum:pageNum.value,pageSize:pageSize.value});tableData.value=r.data.records;total.value=r.data.total;loading.value=false}
+async function loadData(){loading.value=true;const r=await classroomApi.list({pageNum:pageNum.value,pageSize:pageSize.value,keyword:keyword.value||undefined,sortField:sortField.value||undefined,sortOrder:sortOrder.value||undefined});tableData.value=r.data.records;total.value=r.data.total;loading.value=false}
+function handleSearch(){pageNum.value=1;loadData()}
+function resetSearch(){keyword.value='';sortField.value='';sortOrder.value='';pageNum.value=1;loadData()}
+function handleSortChange({prop,order}:any){sortField.value=order?prop:'';sortOrder.value=order==='ascending'?'asc':order==='descending'?'desc':'';pageNum.value=1;loadData()}
+
 function openDialog(row:any){isEdit.value=!!row;if(row)Object.assign(form,row);else Object.assign(form,{name:'',capacity:10,campus:'',status:1});dialogVisible.value=true}
 async function handleSave(){saving.value=true;try{if(isEdit.value){await classroomApi.update(form.id,form);ElMessage.success('已更新')}else{await classroomApi.create(form);ElMessage.success('已创建')}dialogVisible.value=false;loadData()}finally{saving.value=false}}
 async function handleDelete(row:any){await ElMessageBox.confirm('确定删除？','提示',{type:'warning'});await classroomApi.delete(row.id);ElMessage.success('已删除');loadData()}

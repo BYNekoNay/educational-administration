@@ -69,6 +69,28 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional
+    public void updateRole(Long id, String roleName) {
+        Role role = getRoleById(id);
+
+        // 保护系统内置角色不可修改名称
+        if (isSystemRole(role.getRoleCode())) {
+            throw new BusinessException(400, "系统内置角色 " + role.getRoleCode() + " 不可修改");
+        }
+
+        role.setRoleName(roleName);
+        roleMapper.updateById(role);
+
+        // 操作日志
+        OperationLog log = new OperationLog();
+        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        log.setModule("权限管理");
+        log.setOperation("编辑角色 " + role.getRoleCode() + " 名称为 " + roleName);
+        log.setIp("0.0.0.0");
+        operationLogMapper.insert(log);
+    }
+
+    @Override
+    @Transactional
     public void deleteRole(Long id) {
         Role role = getRoleById(id);
 

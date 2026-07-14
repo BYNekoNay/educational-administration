@@ -1,0 +1,82 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/login",
+      "style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/home/index",
+      "style": { "navigationBarTitleText": "艺培通" }
+    },
+    {
+      "path": "pages/schedule/index",
+      "style": { "navigationBarTitleText": "我的课表" }
+    },
+    {
+      "path": "pages/messages/index",
+      "style": { "navigationBarTitleText": "消息中心" }
+    }
+  ],
+  "subPackages": [
+    {
+      "root": "pages/parent",
+      "pages": [
+        { "path": "enrollment", "style": { "navigationBarTitleText": "课程报名" } },
+        { "path": "enrollment-history", "style": { "navigationBarTitleText": "报名记录" } },
+        { "path": "payments", "style": { "navigationBarTitleText": "缴费记录" } },
+        { "path": "schedule", "style": { "navigationBarTitleText": "我的课表" } },
+        { "path": "learning", "style": { "navigationBarTitleText": "学情记录" } },
+        { "path": "lesson-account", "style": { "navigationBarTitleText": "课时账户" } },
+        { "path": "leave-request", "style": { "navigationBarTitleText": "请假申请" } },
+        { "path": "notices", "style": { "navigationBarTitleText": "消息中心" } }
+      ]
+    },
+    {
+      "root": "pages/teacher",
+      "pages": [
+        { "path": "schedule", "style": { "navigationBarTitleText": "我的课表" } },
+        { "path": "attendance", "style": { "navigationBarTitleText": "课堂考勤" } },
+        { "path": "learning", "style": { "navigationBarTitleText": "学情管理" } },
+        { "path": "statistics", "style": { "navigationBarTitleText": "课时统计" } },
+        { "path": "adjust-request", "style": { "navigationBarTitleText": "调课申请" } }
+      ]
+    }
+  ],
+  "tabBar": {
+    "color": "#8C7E74",
+    "selectedColor": "#0E7490",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页",
+        "iconPath": "static/tab/home.png",
+        "selectedIconPath": "static/tab/home-active.png"
+      },
+      {
+        "pagePath": "pages/schedule/index",
+        "text": "课表",
+        "iconPath": "static/tab/schedule.png",
+        "selectedIconPath": "static/tab/schedule-active.png"
+      },
+      {
+        "pagePath": "pages/messages/index",
+        "text": "消息",
+        "iconPath": "static/tab/messages.png",
+        "selectedIconPath": "static/tab/messages-active.png"
+      }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "艺培通",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#FAF8F5",
+    "backgroundTextStyle": "dark"
+  },
+  "easycom": {
+    "autoscan": true,
+    "custom": {}
+  }
+}

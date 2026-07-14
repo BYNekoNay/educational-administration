@@ -11,7 +11,7 @@ import java.util.List;
 public interface ScheduleService {
 
     // 课次
-    Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize);
+    Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize, String sortField, String sortOrder);
 
     ScheduleLesson getLessonById(Long id);
 
@@ -27,7 +27,7 @@ public interface ScheduleService {
     void batchCreate(List<ScheduleLesson> lessons);
 
     // 教室
-    Page<Classroom> pageClassrooms(int pageNum, int pageSize);
+    Page<Classroom> pageClassrooms(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     Classroom getClassroomById(Long id);
 

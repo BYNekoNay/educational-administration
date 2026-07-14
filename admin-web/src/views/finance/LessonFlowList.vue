@@ -1,25 +1,28 @@
 <template>
   <div>
     <h3 style="margin-bottom: 16px">课时流水</h3>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="studentName" label="学员" min-width="80" />
-      <el-table-column label="来源类型" width="90">
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索学员" clearable style="width:260px" />
+    </div>
+    <el-table :data="filteredData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="studentName" label="学员" min-width="80" sortable />
+      <el-table-column label="来源类型" width="90" sortable>
         <template #default="{ row }">
           <el-tag :type="sourceTypeTag(row.sourceType)" size="small">{{ sourceTypeLabel(row.sourceType) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="变动课时" width="100">
+      <el-table-column label="变动课时" width="100" sortable>
         <template #default="{ row }">
           <span :class="row.changeAmount >= 0 ? 'amount-plus' : 'amount-minus'">
             {{ row.changeAmount >= 0 ? '+' : '' }}{{ row.changeAmount }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="beforeBalance" label="变动前" width="80" />
-      <el-table-column prop="afterBalance" label="变动后" width="80" />
-      <el-table-column prop="remark" label="备注" min-width="120" />
-      <el-table-column prop="createTime" label="时间" width="170" />
+      <el-table-column prop="beforeBalance" label="变动前" width="80" sortable="custom" />
+      <el-table-column prop="afterBalance" label="变动后" width="80" sortable="custom" />
+      <el-table-column prop="remark" label="备注" min-width="120" sortable />
+      <el-table-column prop="createTime" label="时间" width="170" sortable="custom" />
     </el-table>
     <el-pagination style="margin-top: 16px; justify-content: flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
@@ -28,10 +31,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { lessonFlowApi } from '@/api/finance'
 
 const loading = ref(false)
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
+const filteredData = computed(() => {
+  if (!keyword.value) return tableData.value
+  const kw = keyword.value.toLowerCase()
+  return tableData.value.filter((r: any) =>
+    (r.studentName && String(r.studentName).toLowerCase().includes(kw))
+  )
+})
 const tableData = ref<any[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 
@@ -46,8 +57,14 @@ function sourceTypeTag(v: number) {
 
 async function loadData() {
   loading.value = true
-  const res = await lessonFlowApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  const res = await lessonFlowApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+}
+
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pageNum.value = 1; loadData()
 }
 
 onMounted(loadData)

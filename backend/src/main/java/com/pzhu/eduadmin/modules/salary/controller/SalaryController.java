@@ -27,7 +27,8 @@ public class SalaryController {
     @GetMapping("/rules")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<SalaryRule>> listRules(PageQuery query) {
-        return Result.success(PageResult.of(salaryService.pageSalaryRules((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(salaryService.pageSalaryRules((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping("/rules")
@@ -43,14 +44,22 @@ public class SalaryController {
         return Result.success(salaryService.updateSalaryRule(rule));
     }
 
+    @DeleteMapping("/rules/{id}")
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    public Result<Void> deleteRule(@PathVariable Long id) {
+        salaryService.deleteSalaryRule(id);
+        return Result.success();
+    }
+
     // ---- 薪资列表 ----
     @GetMapping
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<TeacherSalary>> listSalaries(PageQuery query) {
-        return Result.success(PageResult.of(salaryService.pageTeacherSalaries((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(salaryService.pageTeacherSalaries((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
-    @PostMapping
+    @PostMapping({"/calculate", ""})
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<TeacherSalary> calculate(@RequestBody Map<String, Object> body) {
         String salaryMonth = (String) body.get("salaryMonth");

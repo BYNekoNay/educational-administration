@@ -1,8 +1,10 @@
 package com.pzhu.eduadmin.modules.student.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
@@ -19,16 +21,18 @@ import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
+import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +40,7 @@ public class StudentServiceImpl implements StudentService {
 
     private final StudentMapper studentMapper;
     private final ParentStudentMapper parentStudentMapper;
+    private final UserMapper userMapper;
     private final ClassStudentMapper classStudentMapper;
     private final ClassGroupMapper classGroupMapper;
     private final PaymentRecordMapper paymentRecordMapper;
@@ -43,11 +48,73 @@ public class StudentServiceImpl implements StudentService {
     private final EnrollmentMapper enrollmentMapper;
     private final OperationLogMapper operationLogMapper;
 
+    private static final Map<String, SFunction<Student, ?>> STUDENT_SORT_MAP = Map.of(
+            "id", Student::getId,
+            "name", Student::getName,
+            "birthday", Student::getBirthday,
+            "status", Student::getStatus
+    );
+
     @Override
-    public Page<Student> pageStudents(int pageNum, int pageSize) {
-        return studentMapper.selectPage(
-                new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<>());
+    public Page<Student> pageStudents(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
+        LambdaQueryWrapper<Student> wrapper = new LambdaQueryWrapper<>();
+        Set<Long> studentIdsByParent = findStudentIdsByParentName(keyword);
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> {
+                w.like(Student::getName, keyword)
+                        .or().like(Student::getContactPhone, keyword)
+                        .or().like(Student::getSchool, keyword);
+                if (!studentIdsByParent.isEmpty()) {
+                    w.or().in(Student::getId, studentIdsByParent);
+                }
+            });
+        }
+        QueryHelper.applySort(wrapper, sortField, sortOrder, STUDENT_SORT_MAP, () -> wrapper.orderByDesc(Student::getId));
+        Page<Student> page = studentMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        enrichParentNames(page.getRecords());
+        return page;
+    }
+
+    private Set<Long> findStudentIdsByParentName(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return Collections.emptySet();
+        }
+        List<User> parents = userMapper.selectList(
+                new LambdaQueryWrapper<User>().like(User::getRealName, keyword));
+        if (parents.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<Long> parentUserIds = parents.stream().map(User::getId).collect(Collectors.toSet());
+        List<ParentStudent> bindings = parentStudentMapper.selectList(
+                new LambdaQueryWrapper<ParentStudent>().in(ParentStudent::getParentUserId, parentUserIds));
+        return bindings.stream().map(ParentStudent::getStudentId).collect(Collectors.toSet());
+    }
+
+    private void enrichParentNames(List<Student> records) {
+        if (records == null || records.isEmpty()) return;
+        Set<Long> studentIds = records.stream().map(Student::getId).collect(Collectors.toSet());
+        // 查 parent_student 关联表
+        List<ParentStudent> bindings = parentStudentMapper.selectList(
+                new LambdaQueryWrapper<ParentStudent>().in(ParentStudent::getStudentId, studentIds));
+        if (bindings.isEmpty()) return;
+        // 收集所有 parentUserId
+        Set<Long> parentUserIds = bindings.stream().map(ParentStudent::getParentUserId).collect(Collectors.toSet());
+        // 查询父账号姓名
+        Map<Long, String> userMap = parentUserIds.isEmpty()
+                ? Collections.emptyMap()
+                : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, parentUserIds))
+                        .stream().collect(Collectors.toMap(User::getId, User::getRealName, (a, b) -> a));
+        // 按 studentId 聚合家长姓名
+        Map<Long, String> studentParentMap = new HashMap<>();
+        for (ParentStudent b : bindings) {
+            String parentName = userMap.getOrDefault(b.getParentUserId(), "用户" + b.getParentUserId());
+            if (b.getRelation() != null && !b.getRelation().isEmpty()) {
+                parentName = parentName + "(" + b.getRelation() + ")";
+            }
+            studentParentMap.merge(b.getStudentId(), parentName, (old, n) -> old + "、" + n);
+        }
+        // 回填到 Student
+        records.forEach(s -> s.setParentName(studentParentMap.get(s.getId())));
     }
 
     @Override

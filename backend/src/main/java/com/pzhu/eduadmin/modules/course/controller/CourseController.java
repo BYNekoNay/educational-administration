@@ -24,7 +24,8 @@ public class CourseController {
 
     @GetMapping("/courses")
     public Result<PageResult<Course>> listCourses(PageQuery query) {
-        return Result.success(PageResult.of(courseService.pageCourses((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(courseService.pageCourses((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/courses/{id}")

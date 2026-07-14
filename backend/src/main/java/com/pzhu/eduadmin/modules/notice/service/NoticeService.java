@@ -5,7 +5,7 @@ import com.pzhu.eduadmin.modules.notice.entity.Notice;
 
 public interface NoticeService {
 
-    Page<Notice> page(int pageNum, int pageSize);
+    Page<Notice> page(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     Notice getById(Long id);
 

@@ -2,8 +2,10 @@ package com.pzhu.eduadmin.modules.enrollment.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
@@ -41,11 +43,17 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private final CourseMapper courseMapper;
     private final ClassGroupMapper classGroupMapper;
 
+    private static final Map<String, SFunction<Enrollment, ?>> ENROLLMENT_SORT_MAP = Map.of(
+            "id", Enrollment::getId,
+            "createTime", Enrollment::getCreateTime,
+            "status", Enrollment::getStatus
+    );
+
     @Override
-    public Page<Enrollment> page(int pageNum, int pageSize) {
-        Page<Enrollment> page = enrollmentMapper.selectPage(
-                new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<Enrollment>().orderByDesc(Enrollment::getCreateTime));
+    public Page<Enrollment> page(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<Enrollment> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, ENROLLMENT_SORT_MAP, () -> wrapper.orderByDesc(Enrollment::getCreateTime));
+        Page<Enrollment> page = enrollmentMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateNames(page.getRecords());
         return page;
     }

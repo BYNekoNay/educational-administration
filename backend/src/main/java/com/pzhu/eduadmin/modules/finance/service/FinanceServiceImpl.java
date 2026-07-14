@@ -2,8 +2,10 @@ package com.pzhu.eduadmin.modules.finance.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
 import com.pzhu.eduadmin.modules.course.entity.Course;
@@ -48,10 +50,24 @@ public class FinanceServiceImpl implements FinanceService {
     private final StudentMapper studentMapper;
     private final UserMapper userMapper;
 
+    private static final Map<String, SFunction<PaymentRecord, ?>> PAYMENT_SORT_MAP = Map.of(
+            "id", PaymentRecord::getId, "payTime", PaymentRecord::getPayTime, "amount", PaymentRecord::getAmount, "lessonCount", PaymentRecord::getLessonCount
+    );
+    private static final Map<String, SFunction<RefundRecord, ?>> REFUND_SORT_MAP = Map.of(
+            "id", RefundRecord::getId, "createTime", RefundRecord::getCreateTime, "amount", RefundRecord::getAmount, "status", RefundRecord::getStatus
+    );
+    private static final Map<String, SFunction<LessonAccount, ?>> ACCOUNT_SORT_MAP = Map.of(
+            "id", LessonAccount::getId, "remainingLessons", LessonAccount::getRemainingLessons, "totalLessons", LessonAccount::getTotalLessons, "expireDate", LessonAccount::getExpireDate
+    );
+    private static final Map<String, SFunction<LessonFlow, ?>> FLOW_SORT_MAP = Map.of(
+            "id", LessonFlow::getId, "createTime", LessonFlow::getCreateTime, "changeAmount", LessonFlow::getChangeAmount
+    );
+
     @Override
-    public Page<PaymentRecord> pagePaymentRecords(int pageNum, int pageSize) {
-        Page<PaymentRecord> page = paymentRecordMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<PaymentRecord>().orderByDesc(PaymentRecord::getPayTime));
+    public Page<PaymentRecord> pagePaymentRecords(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<PaymentRecord> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, PAYMENT_SORT_MAP, () -> wrapper.orderByDesc(PaymentRecord::getPayTime));
+        Page<PaymentRecord> page = paymentRecordMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populatePaymentNames(page.getRecords());
         return page;
     }
@@ -139,9 +155,10 @@ public class FinanceServiceImpl implements FinanceService {
     }
 
     @Override
-    public Page<RefundRecord> pageRefundRecords(int pageNum, int pageSize) {
-        Page<RefundRecord> page = refundRecordMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<RefundRecord>().orderByDesc(RefundRecord::getCreateTime));
+    public Page<RefundRecord> pageRefundRecords(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<RefundRecord> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, REFUND_SORT_MAP, () -> wrapper.orderByDesc(RefundRecord::getCreateTime));
+        Page<RefundRecord> page = refundRecordMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateRefundNames(page.getRecords());
         return page;
     }
@@ -275,8 +292,10 @@ public class FinanceServiceImpl implements FinanceService {
     // ==================== 课时账户 ====================
 
     @Override
-    public Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize) {
-        Page<LessonAccount> page = lessonAccountMapper.selectPage(new Page<>(pageNum, pageSize), new LambdaQueryWrapper<>());
+    public Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<LessonAccount> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, ACCOUNT_SORT_MAP, () -> wrapper.orderByDesc(LessonAccount::getId));
+        Page<LessonAccount> page = lessonAccountMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateAccountNames(page.getRecords());
         return page;
     }
@@ -302,14 +321,17 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     public List<LessonAccount> getByStudentId(Long studentId) {
-        return lessonAccountMapper.selectList(
+        List<LessonAccount> list = lessonAccountMapper.selectList(
                 new LambdaQueryWrapper<LessonAccount>().eq(LessonAccount::getStudentId, studentId));
+        populateAccountNames(list);
+        return list;
     }
 
     @Override
-    public Page<LessonFlow> pageLessonFlows(int pageNum, int pageSize) {
-        Page<LessonFlow> page = lessonFlowMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<LessonFlow>().orderByDesc(LessonFlow::getCreateTime));
+    public Page<LessonFlow> pageLessonFlows(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<LessonFlow> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, FLOW_SORT_MAP, () -> wrapper.orderByDesc(LessonFlow::getCreateTime));
+        Page<LessonFlow> page = lessonFlowMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateFlowNames(page.getRecords());
         return page;
     }
@@ -326,10 +348,12 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     public List<PaymentRecord> getPaymentsByStudentIds(List<Long> studentIds) {
-        return paymentRecordMapper.selectList(
+        List<PaymentRecord> list = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>()
                         .in(PaymentRecord::getStudentId, studentIds)
                         .orderByDesc(PaymentRecord::getPayTime));
+        populatePaymentNames(list);
+        return list;
     }
 
     @Override

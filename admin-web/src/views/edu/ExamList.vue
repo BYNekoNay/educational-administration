@@ -3,15 +3,18 @@
     <h3 style="margin-bottom: 16px">考级管理</h3>
     <el-tabs v-model="activeTab">
       <el-tab-pane label="考级项目" name="levels">
-        <div style="margin-bottom: 12px">
-          <el-button type="primary" @click="showLevelDialog(null)">新增项目</el-button>
+        <div style="margin-bottom: 12px;display:flex;gap:8px;align-items:center">
+          <el-input v-model="levelKeyword" placeholder="搜索考级名称/级别" clearable style="width:220px" @keyup.enter="handleLevelSearch" />
+          <el-button type="primary" @click="handleLevelSearch">搜索</el-button>
+          <el-button @click="resetLevelSearch">重置</el-button>
+          <el-button type="primary" @click="showLevelDialog(null)" style="margin-left:auto">新增项目</el-button>
         </div>
-        <el-table :data="levels" v-loading="levelsLoading" border stripe>
-          <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="name" label="考级名称" />
-          <el-table-column prop="levelName" label="级别" width="100" />
-          <el-table-column prop="examDate" label="考试日期" width="120" />
-          <el-table-column prop="fee" label="费用" width="80">
+        <el-table :data="levels" v-loading="levelsLoading" border stripe @sort-change="handleLevelSortChange">
+          <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+          <el-table-column prop="name" label="考级名称" sortable />
+          <el-table-column prop="levelName" label="级别" width="100" sortable />
+          <el-table-column prop="examDate" label="考试日期" width="120" sortable="custom" />
+          <el-table-column prop="fee" label="费用" width="80" sortable="custom">
             <template #default="{ row }">¥{{ row.fee || 0 }}</template>
           </el-table-column>
           <el-table-column label="操作" width="120">
@@ -46,13 +49,13 @@
           </el-select>
           <el-button type="primary" @click="showSignupDialog">新增报名</el-button>
         </div>
-        <el-table :data="signups" v-loading="signupsLoading" border stripe>
-          <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="examId" label="考级项目" width="100" />
-          <el-table-column prop="studentId" label="学员ID" width="80" />
-          <el-table-column prop="score" label="成绩" width="80" />
-          <el-table-column prop="certificateNo" label="证书编号" width="150" />
-          <el-table-column prop="status" label="状态" width="90">
+        <el-table :data="signups" v-loading="signupsLoading" border stripe @sort-change="handleSignupSortChange">
+          <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+          <el-table-column prop="examName" label="考级项目" width="160" sortable />
+          <el-table-column prop="studentName" label="学员" width="120" sortable />
+          <el-table-column prop="score" label="成绩" width="80" sortable="custom" />
+          <el-table-column prop="certificateNo" label="证书编号" width="150" sortable />
+          <el-table-column prop="status" label="状态" width="90" sortable="custom">
             <template #default="{ row }">
               <el-tag :type="row.status === 1 ? 'info' : row.status === 2 ? 'success' : 'warning'" size="small">
                 {{ row.status === 1 ? '已报名' : row.status === 2 ? '已通过' : '未通过' }}
@@ -71,8 +74,16 @@
 
         <el-dialog :title="editingSignup?.id ? '编辑报名' : '新增报名'" v-model="signupVisible" width="400px">
           <el-form :model="signupForm" label-width="80px">
-            <el-form-item label="考级项目"><el-input-number v-model="signupForm.examId" :min="1" /></el-form-item>
-            <el-form-item label="学员ID"><el-input-number v-model="signupForm.studentId" :min="1" /></el-form-item>
+            <el-form-item label="考级项目">
+              <el-select v-model="signupForm.examId" style="width:100%">
+                <el-option v-for="l in levels" :key="l.id" :label="l.name + (l.levelName ? ' - ' + l.levelName : '')" :value="l.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="学员">
+              <el-select v-model="signupForm.studentId" filterable style="width:100%" placeholder="搜索选择学员">
+                <el-option v-for="s in studentList" :key="s.id" :label="s.name" :value="s.id" />
+              </el-select>
+            </el-form-item>
             <el-form-item label="成绩"><el-input-number v-model="signupForm.score" :min="0" :max="100" /></el-form-item>
             <el-form-item label="证书编号"><el-input v-model="signupForm.certificateNo" /></el-form-item>
             <el-form-item label="状态">
@@ -94,11 +105,13 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { examApi } from '@/api/edu'
+import { examApi, studentApi } from '@/api/edu'
+import { showError } from '@/utils/error'
 
 const activeTab = ref('levels')
 
 // ---- 考级项目 ----
+const levelKeyword = ref(''), levelSortField = ref(''), levelSortOrder = ref('')
 const levels = ref<any[]>([]), levelsLoading = ref(false), levelsPage = ref(1), levelsPageSize = ref(10), levelsTotal = ref(0)
 const levelVisible = ref(false), levelSaving = ref(false)
 const editingLevel = ref<any>(null)
@@ -106,8 +119,15 @@ const levelForm = reactive<any>({ name: '', levelName: '', examDate: '', fee: 0 
 
 async function loadLevels() {
   levelsLoading.value = true
-  const res = await examApi.levels({ pageNum: levelsPage.value, pageSize: levelsPageSize.value })
+  const res = await examApi.levels({ pageNum: levelsPage.value, pageSize: levelsPageSize.value, keyword: levelKeyword.value || undefined, sortField: levelSortField.value || undefined, sortOrder: levelSortOrder.value || undefined })
   levels.value = res.data.records; levelsTotal.value = res.data.total; levelsLoading.value = false
+}
+function handleLevelSearch() { levelsPage.value = 1; loadLevels() }
+function resetLevelSearch() { levelKeyword.value = ''; levelSortField.value = ''; levelSortOrder.value = ''; levelsPage.value = 1; loadLevels() }
+function handleLevelSortChange({ prop, order }: any) {
+  levelSortField.value = order ? prop : ''
+  levelSortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  levelsPage.value = 1; loadLevels()
 }
 function showLevelDialog(row: any) {
   editingLevel.value = row
@@ -125,28 +145,42 @@ async function saveLevel() {
       await examApi.createLevel(payload)
     }
     ElMessage.success('保存成功'); levelVisible.value = false; loadLevels()
-  } catch (_) { } finally { levelSaving.value = false }
+  } catch (e: any) { showError(e, '保存失败') } finally { levelSaving.value = false }
 }
 async function deleteLevel(id: number) {
   ElMessageBox.confirm('确认删除？', '删除确认', { confirmButtonText: '确认', type: 'warning' }).then(async () => {
-    await examApi.updateLevel(id, {}) // delete not defined, skip
-    ElMessage.success('已删除'); loadLevels()
+    try {
+      await examApi.deleteLevel(id)
+      ElMessage.success('已删除')
+      loadLevels()
+    } catch (e: any) {
+      showError(e, '删除失败')
+    }
   }).catch(() => {})
 }
 
 // ---- 报名管理 ----
+const signupSortField = ref(''), signupSortOrder = ref('')
 const signups = ref<any[]>([]), signupsLoading = ref(false), signupsPage = ref(1), signupsPageSize = ref(10), signupsTotal = ref(0)
 const filterExamId = ref<number | null>(null)
 const signupVisible = ref(false), signupSaving = ref(false)
 const editingSignup = ref<any>(null)
+const studentList = ref<any[]>([])
 const signupForm = reactive<any>({ examId: 1, studentId: 1, score: null, certificateNo: '', status: 1 })
 
 async function loadSignups() {
   signupsLoading.value = true
   const params: any = { pageNum: signupsPage.value, pageSize: signupsPageSize.value }
   if (filterExamId.value) params.examId = filterExamId.value
+  if (signupSortField.value) params.sortField = signupSortField.value
+  if (signupSortOrder.value) params.sortOrder = signupSortOrder.value
   const res = await examApi.signups(params)
   signups.value = res.data.records; signupsTotal.value = res.data.total; signupsLoading.value = false
+}
+function handleSignupSortChange({ prop, order }: any) {
+  signupSortField.value = order ? prop : ''
+  signupSortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  signupsPage.value = 1; loadSignups()
 }
 function showSignupDialog(row: any) {
   editingSignup.value = row
@@ -163,8 +197,15 @@ async function saveSignup() {
       await examApi.signup({ ...signupForm })
     }
     ElMessage.success('保存成功'); signupVisible.value = false; loadSignups()
-  } catch (_) { } finally { signupSaving.value = false }
+  } catch (e: any) { showError(e, '保存失败') } finally { signupSaving.value = false }
 }
 
-onMounted(() => { loadLevels(); loadSignups() })
+async function loadStudents() {
+  try {
+    const res = await studentApi.list({ pageNum: 1, pageSize: 200 })
+    studentList.value = res.data?.records || []
+  } catch (e) { showError(e, '加载学员列表失败') }
+}
+
+onMounted(() => { loadLevels(); loadSignups(); loadStudents() })
 </script>

@@ -1,8 +1,10 @@
 package com.pzhu.eduadmin.modules.attendance.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
@@ -44,10 +46,17 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final OperationLogMapper operationLogMapper;
     private final StudentMapper studentMapper;
 
+    private static final Map<String, SFunction<Attendance, ?>> ATTENDANCE_SORT_MAP = Map.of(
+            "id", Attendance::getId,
+            "checkTime", Attendance::getCheckTime,
+            "status", Attendance::getStatus
+    );
+
     @Override
-    public Page<Attendance> page(int pageNum, int pageSize) {
-        Page<Attendance> page = attendanceMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<Attendance>().orderByDesc(Attendance::getCheckTime));
+    public Page<Attendance> page(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<Attendance> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, ATTENDANCE_SORT_MAP, () -> wrapper.orderByDesc(Attendance::getCheckTime));
+        Page<Attendance> page = attendanceMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateAttendanceNames(page.getRecords());
         return page;
     }

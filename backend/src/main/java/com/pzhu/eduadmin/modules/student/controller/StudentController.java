@@ -21,7 +21,8 @@ public class StudentController {
 
     @GetMapping
     public Result<PageResult<Student>> list(PageQuery query) {
-        return Result.success(PageResult.of(studentService.pageStudents((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(studentService.pageStudents((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/{id}")

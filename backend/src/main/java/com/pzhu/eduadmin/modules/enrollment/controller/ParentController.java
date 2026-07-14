@@ -9,7 +9,7 @@ import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.service.EnrollmentService;
 import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
-import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
+import com.pzhu.eduadmin.modules.finance.service.FinanceService;
 import com.pzhu.eduadmin.modules.notice.entity.Notice;
 import com.pzhu.eduadmin.modules.notice.mapper.NoticeMapper;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
@@ -36,7 +36,7 @@ public class ParentController {
     private final ParentStudentMapper parentStudentMapper;
     private final StudentMapper studentMapper;
     private final NoticeMapper noticeMapper;
-    private final PaymentRecordMapper paymentRecordMapper;
+    private final FinanceService financeService;
 
     @GetMapping("/courses")
     public Result<List<Course>> listCourses() {
@@ -84,15 +84,23 @@ public class ParentController {
     }
 
     @GetMapping("/payments")
-    public Result<List<PaymentRecord>> listPayments() {
+    public Result<List<PaymentRecord>> listPayments(@RequestParam(required = false) Long studentId) {
         Long parentUserId = CurrentUserHolder.get().getUserId();
-        List<Long> studentIds = parentStudentMapper.selectList(
-                new LambdaQueryWrapper<ParentStudent>().eq(ParentStudent::getParentUserId, parentUserId))
-                .stream().map(ParentStudent::getStudentId).toList();
+        List<Long> studentIds;
+        if (studentId != null) {
+            // verify this student belongs to the parent
+            long count = parentStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ParentStudent>()
+                            .eq(ParentStudent::getParentUserId, parentUserId)
+                            .eq(ParentStudent::getStudentId, studentId));
+            if (count == 0) return Result.success(Collections.emptyList());
+            studentIds = List.of(studentId);
+        } else {
+            studentIds = parentStudentMapper.selectList(
+                    new LambdaQueryWrapper<ParentStudent>().eq(ParentStudent::getParentUserId, parentUserId))
+                    .stream().map(ParentStudent::getStudentId).toList();
+        }
         if (studentIds.isEmpty()) return Result.success(Collections.emptyList());
-        return Result.success(paymentRecordMapper.selectList(
-                new LambdaQueryWrapper<PaymentRecord>()
-                        .in(PaymentRecord::getStudentId, studentIds)
-                        .orderByDesc(PaymentRecord::getPayTime)));
+        return Result.success(financeService.getPaymentsByStudentIds(studentIds));
     }
 }

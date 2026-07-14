@@ -91,8 +91,9 @@ public class LearningController {
     }
 
     @GetMapping("/parent/students/{studentId}/learning-records")
-    public Result<List<LearningRecord>> childLearningRecords(@RequestParam Long lessonId,
-                                                              @PathVariable Long studentId) {
+    public Result<List<LearningRecord>> childLearningRecords(
+            @RequestParam(required = false) Long lessonId,
+            @PathVariable Long studentId) {
         Long parentUserId = CurrentUserHolder.get().getUserId();
         if (studentId == 0) {
             ParentStudent binding = parentStudentMapper.selectOne(
@@ -105,7 +106,10 @@ public class LearningController {
         } else {
             checkParentBinding(parentUserId, studentId);
         }
-        return Result.success(learningService.getRecordsByLessonIdAndStudentId(lessonId, studentId));
+        if (lessonId != null) {
+            return Result.success(learningService.getRecordsByLessonIdAndStudentId(lessonId, studentId));
+        }
+        return Result.success(learningService.getRecordsByStudentId(studentId));
     }
 
     @GetMapping("/parent/homeworks")

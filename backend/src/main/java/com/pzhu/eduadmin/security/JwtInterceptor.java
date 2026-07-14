@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,8 +38,11 @@ public class JwtInterceptor implements HandlerInterceptor {
         Claims claims;
         try {
             claims = jwtUtil.parseToken(token);
+        } catch (ExpiredJwtException e) {
+            writeUnauthorized(response, "登录已过期，请重新登录");
+            return false;
         } catch (Exception e) {
-            writeUnauthorized(response, "登录状态无效，请重新登录");
+            writeUnauthorized(response, "登录凭证无效，请重新登录");
             return false;
         }
 
@@ -73,7 +77,7 @@ public class JwtInterceptor implements HandlerInterceptor {
     }
 
     private void writeJson(HttpServletResponse response, int code, String message) throws Exception {
-        response.setStatus(200);
+        response.setStatus(code);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"code\":" + code + ",\"message\":\"" + message + "\",\"data\":null}");
     }

@@ -26,7 +26,8 @@ public class UserController {
     @GetMapping
     public Result<PageResult<User>> list(PageQuery query) {
         return Result.success(PageResult.of(userService.pageUsers(
-                (int) query.getPageNum(), (int) query.getPageSize(), query.getKeyword())));
+                (int) query.getPageNum(), (int) query.getPageSize(), query.getKeyword(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @PutMapping("/{id}/status")
@@ -43,5 +44,11 @@ public class UserController {
     @PutMapping("/{id}")
     public Result<User> update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
         return Result.success(userService.updateUser(id, request));
+    }
+
+    @PutMapping("/{id}/password")
+    public Result<Void> resetPassword(@PathVariable Long id, @RequestBody java.util.Map<String, String> body) {
+        userService.resetPassword(id, body.get("newPassword"));
+        return Result.success();
     }
 }

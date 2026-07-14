@@ -8,7 +8,7 @@ import java.util.Map;
 
 public interface StudentService {
 
-    Page<Student> pageStudents(int pageNum, int pageSize);
+    Page<Student> pageStudents(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     Student getStudentById(Long id);
 

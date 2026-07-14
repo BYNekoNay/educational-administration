@@ -23,6 +23,14 @@ public class ExamSignup {
 
     private Integer status;
 
+    /** 考级项目名称（不持久化） */
+    @TableField(exist = false)
+    private String examName;
+
+    /** 学员姓名（不持久化） */
+    @TableField(exist = false)
+    private String studentName;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

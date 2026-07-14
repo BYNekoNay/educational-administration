@@ -1,7 +1,9 @@
 package com.pzhu.eduadmin.modules.statistics.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
@@ -18,6 +20,8 @@ import com.pzhu.eduadmin.modules.statistics.entity.StatisticsSnapshot;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.modules.statistics.mapper.OrganizationMapper;
 import com.pzhu.eduadmin.modules.statistics.mapper.StatisticsSnapshotMapper;
+import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,6 +41,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final StatisticsSnapshotMapper statisticsSnapshotMapper;
     private final OrganizationMapper organizationMapper;
     private final OperationLogMapper operationLogMapper;
+    private final UserMapper userMapper;
     private final EnrollmentMapper enrollmentMapper;
     private final AttendanceMapper attendanceMapper;
     private final ScheduleLessonMapper scheduleLessonMapper;
@@ -68,10 +73,37 @@ public class StatisticsServiceImpl implements StatisticsService {
         return organizationMapper.selectById(organization.getId());
     }
 
+    private static final Map<String, SFunction<OperationLog, ?>> OP_LOG_SORT_MAP = Map.of(
+            "id", OperationLog::getId, "createTime", OperationLog::getCreateTime,
+            "module", OperationLog::getModule, "operatorId", OperationLog::getOperatorId
+    );
+
     @Override
-    public Page<OperationLog> pageOperationLogs(int pageNum, int pageSize) {
-        return operationLogMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<OperationLog>().orderByDesc(OperationLog::getCreateTime));
+    public Page<OperationLog> pageOperationLogs(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
+        LambdaQueryWrapper<OperationLog> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applyKeyword(wrapper, keyword, OperationLog::getModule, OperationLog::getOperation);
+        QueryHelper.applySort(wrapper, sortField, sortOrder, OP_LOG_SORT_MAP, () -> wrapper.orderByDesc(OperationLog::getCreateTime));
+        Page<OperationLog> page = operationLogMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        if (!page.getRecords().isEmpty()) {
+            Set<Long> operatorIds = page.getRecords().stream()
+                    .map(OperationLog::getOperatorId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (!operatorIds.isEmpty()) {
+                List<User> users = userMapper.selectList(
+                        new LambdaQueryWrapper<User>().in(User::getId, operatorIds));
+                Map<Long, String> nameMap = users.stream()
+                        .collect(Collectors.toMap(User::getId,
+                                u -> u.getRealName() != null && !u.getRealName().isBlank()
+                                        ? u.getRealName() : u.getUsername(),
+                                (a, b) -> a));
+                page.getRecords().forEach(log -> {
+                    String name = nameMap.get(log.getOperatorId());
+                    log.setOperatorName(name != null ? name : "用户" + log.getOperatorId());
+                });
+            }
+        }
+        return page;
     }
 
     // ==================== Dashboard 聚合 ====================
@@ -195,5 +227,88 @@ public class StatisticsServiceImpl implements StatisticsService {
         return records.stream()
                 .map(r -> r.getAmount() != null ? r.getAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // ==================== 教师工作量统计 ====================
+
+    @Override
+    public List<Map<String, Object>> getTeacherWorkload(String month) {
+        YearMonth ym = (month != null && !month.isBlank())
+                ? YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyy-MM"))
+                : YearMonth.now();
+        LocalDate monthStart = ym.atDay(1);
+        LocalDate monthEnd = ym.atEndOfMonth();
+
+        // 查询指定月份所有已完成课次
+        List<ScheduleLesson> lessons = scheduleLessonMapper.selectList(
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .ge(ScheduleLesson::getLessonDate, monthStart)
+                        .le(ScheduleLesson::getLessonDate, monthEnd)
+                        .eq(ScheduleLesson::getStatus, 2));
+
+        // 按教师聚合统计
+        Map<Long, Long> teacherCountMap = lessons.stream()
+                .collect(Collectors.groupingBy(ScheduleLesson::getTeacherId, Collectors.counting()));
+
+        // 获取教师姓名
+        Set<Long> teacherIds = teacherCountMap.keySet();
+        final Map<Long, String> nameMap;
+        if (!teacherIds.isEmpty()) {
+            List<User> users = userMapper.selectList(
+                    new LambdaQueryWrapper<User>().in(User::getId, teacherIds));
+            nameMap = users.stream().collect(Collectors.toMap(User::getId,
+                    u -> u.getRealName() != null && !u.getRealName().isBlank() ? u.getRealName() : u.getUsername(),
+                    (a, b) -> a));
+        } else {
+            nameMap = Collections.emptyMap();
+        }
+
+        return teacherCountMap.entrySet().stream().map(e -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("teacherId", e.getKey());
+            item.put("teacherName", nameMap.getOrDefault(e.getKey(), "教师" + e.getKey()));
+            item.put("lessonCount", e.getValue());
+            return item;
+        }).collect(Collectors.toList());
+    }
+
+    // ==================== 学员流失率趋势 ====================
+
+    @Override
+    public List<Map<String, Object>> getStudentLossTrend() {
+        List<Map<String, Object>> trend = new ArrayList<>();
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM");
+
+        for (int i = 5; i >= 0; i--) {
+            YearMonth ym = YearMonth.now().minusMonths(i);
+            LocalDate monthStart = ym.atDay(1);
+            LocalDate monthEnd = ym.atEndOfMonth();
+
+            // 月初在班人数（status = 1）
+            long beginCount = classStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getStatus, 1)
+                            .le(ClassStudent::getJoinTime, monthEnd.atTime(23, 59, 59)));
+
+            // 本月退班人数（status = 3 且 updateTime 在本月）
+            long lossCount = classStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getStatus, 3)
+                            .ge(ClassStudent::getUpdateTime, monthStart.atStartOfDay())
+                            .le(ClassStudent::getUpdateTime, monthEnd.atTime(23, 59, 59)));
+
+            BigDecimal rate = beginCount > 0
+                    ? BigDecimal.valueOf(lossCount).multiply(BigDecimal.valueOf(100))
+                            .divide(BigDecimal.valueOf(beginCount + lossCount), 1, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("month", ym.format(fmt));
+            item.put("activeCount", beginCount);
+            item.put("lossCount", lossCount);
+            item.put("lossRate", rate);
+            trend.add(item);
+        }
+        return trend;
     }
 }

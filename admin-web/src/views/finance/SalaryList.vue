@@ -1,19 +1,24 @@
 <template>
   <div>
     <h3 style="margin-bottom: 16px">薪资管理</h3>
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索教师" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
     <el-tabs v-model="activeTab">
       <el-tab-pane label="薪资规则" name="rules">
         <div style="margin-bottom: 12px">
           <el-button type="primary" @click="showRuleDialog(null)">新增规则</el-button>
         </div>
-        <el-table :data="rules" v-loading="rulesLoading" border stripe>
-          <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="teacherName" label="教师" min-width="80" />
-          <el-table-column prop="courseName" label="课程" min-width="100" />
-          <el-table-column prop="lessonUnitPrice" label="课时单价" width="100">
+        <el-table :data="rules" v-loading="rulesLoading" border stripe @sort-change="(v:any) => handleSortChange(v, 'rules')">
+          <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+          <el-table-column prop="teacherName" label="教师" min-width="80" sortable />
+          <el-table-column prop="courseName" label="课程" min-width="100" sortable />
+          <el-table-column prop="lessonUnitPrice" label="课时单价" width="100" sortable="custom">
             <template #default="{ row }">¥{{ row.lessonUnitPrice || 0 }}</template>
           </el-table-column>
-          <el-table-column prop="substituteRate" label="代课系数" width="80" />
+          <el-table-column prop="substituteRate" label="代课系数" width="80" sortable="custom" />
           <el-table-column label="操作" width="100">
             <template #default="{ row }">
               <el-button size="small" @click="showRuleDialog(row)">编辑</el-button>
@@ -55,29 +60,29 @@
           <el-input-number v-model="calcBonus" :min="0" :precision="2" placeholder="奖金" style="width: 100px" />
           <el-button type="primary" @click="handleCalculate" :loading="calculating">核算薪资</el-button>
         </div>
-        <el-table :data="salaries" v-loading="salariesLoading" border stripe>
-          <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="teacherName" label="教师" min-width="80" />
-          <el-table-column prop="salaryMonth" label="月份" width="100" />
-          <el-table-column prop="lessonCount" label="主讲课时" width="80" />
-          <el-table-column prop="substituteCount" label="代课课时" width="80" />
-          <el-table-column prop="baseAmount" label="基础工资" width="100">
+        <el-table :data="salaries" v-loading="salariesLoading" border stripe @sort-change="(v:any) => handleSortChange(v, 'salaries')">
+          <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+          <el-table-column prop="teacherName" label="教师" min-width="80" sortable />
+          <el-table-column prop="salaryMonth" label="月份" width="100" sortable="custom" />
+          <el-table-column prop="lessonCount" label="主讲课时" width="80" sortable="custom" />
+          <el-table-column prop="substituteCount" label="代课课时" width="80" sortable="custom" />
+          <el-table-column prop="baseAmount" label="基础工资" width="100" sortable="custom">
             <template #default="{ row }">¥{{ row.baseAmount || 0 }}</template>
           </el-table-column>
-          <el-table-column prop="bonusAmount" label="奖金" width="80">
+          <el-table-column prop="bonusAmount" label="奖金" width="80" sortable="custom">
             <template #default="{ row }">¥{{ row.bonusAmount || 0 }}</template>
           </el-table-column>
-          <el-table-column prop="totalAmount" label="应发工资" width="100">
+          <el-table-column prop="totalAmount" label="应发工资" width="100" sortable="custom">
             <template #default="{ row }">
               <b>¥{{ row.totalAmount || 0 }}</b>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="90">
+          <el-table-column prop="status" label="状态" width="90" sortable="custom">
             <template #default="{ row }">
               <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="calcSnapshotTime" label="核算时间" width="170" />
+          <el-table-column prop="calcSnapshotTime" label="核算时间" width="170" sortable="custom" />
           <el-table-column label="操作" width="220" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.status === 1" size="small" type="success" @click="handleConfirm(row.id)">确认</el-button>
@@ -117,6 +122,7 @@ import { teacherApi, courseApi } from '@/api/edu'
 const activeTab = ref('rules')
 
 // ---- 规则 Tab ----
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const rules = ref<any[]>([]), rulesLoading = ref(false), rulesPage = ref(1), rulesPageSize = ref(10), rulesTotal = ref(0)
 const ruleVisible = ref(false), ruleSaving = ref(false)
 const editingRule = ref<any>(null)
@@ -137,8 +143,15 @@ async function loadOptions() {
 
 async function loadRules() {
   rulesLoading.value = true
-  const res = await salaryApi.rules({ pageNum: rulesPage.value, pageSize: rulesPageSize.value })
+  const res = await salaryApi.rules({ pageNum: rulesPage.value, pageSize: rulesPageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   rules.value = res.data.records; rulesTotal.value = res.data.total; rulesLoading.value = false
+}
+function handleSearch() { rulesPage.value = 1; salariesPage.value = 1; activeTab.value === 'rules' ? loadRules() : loadSalaries() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; rulesPage.value = 1; salariesPage.value = 1; activeTab.value === 'rules' ? loadRules() : loadSalaries() }
+function handleSortChange({ prop, order }: any, tab: string) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  if (tab === 'rules') { rulesPage.value = 1; loadRules() } else { salariesPage.value = 1; loadSalaries() }
 }
 function showRuleDialog(row: any) {
   editingRule.value = row
@@ -155,7 +168,7 @@ async function saveRule() {
       await salaryApi.createRule({ ...ruleForm })
     }
     ElMessage.success('保存成功'); ruleVisible.value = false; loadRules()
-  } catch (_) { } finally { ruleSaving.value = false }
+  } catch (e) { showError(e, '薪资规则保存失败') } finally { ruleSaving.value = false }
 }
 
 // ---- 薪资 Tab ----
@@ -171,7 +184,7 @@ function statusTag(s: number) { const map: Record<number, string> = { 1: 'primar
 
 async function loadSalaries() {
   salariesLoading.value = true
-  const res = await salaryApi.list({ pageNum: salariesPage.value, pageSize: salariesPageSize.value })
+  const res = await salaryApi.list({ pageNum: salariesPage.value, pageSize: salariesPageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   salaries.value = res.data.records; salariesTotal.value = res.data.total; salariesLoading.value = false
 }
 
@@ -181,7 +194,7 @@ async function handleCalculate() {
     const res = await salaryApi.calculate({ salaryMonth: calcMonth.value, teacherId: calcTeacherId.value, bonusAmount: calcBonus.value })
     ElMessage.success(`核算完成：主讲${res.data.lessonCount}课时 代课${res.data.substituteCount}课时 应发¥${res.data.totalAmount}`)
     loadSalaries()
-  } catch (_) { } finally { calculating.value = false }
+  } catch (e: any) { ElMessage.error(e?.response?.data?.message || '核算失败') } finally { calculating.value = false }
 }
 
 async function handleConfirm(id: number) {
@@ -198,7 +211,7 @@ async function saveAdjust() {
   try {
     await salaryApi.adjustments({ ...adjustForm })
     ElMessage.success('调整已保存'); adjustVisible.value = false
-  } catch (_) { } finally { adjustSaving.value = false }
+  } catch (e: any) { ElMessage.error(e?.response?.data?.message || '调整失败') } finally { adjustSaving.value = false }
 }
 
 onMounted(() => { loadOptions(); loadRules(); loadSalaries() })

@@ -22,6 +22,9 @@ public interface LearningService {
 
     List<LearningRecord> getRecordsByLessonId(Long lessonId);
 
+    /** 按学员ID查询所有学习记录 */
+    List<LearningRecord> getRecordsByStudentId(Long studentId);
+
     /** 批量保存学情记录 */
     List<LearningRecord> batchCreateRecords(List<LearningRecord> records);
 }

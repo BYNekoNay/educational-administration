@@ -9,7 +9,7 @@ import java.util.List;
 
 public interface AttendanceService {
 
-    Page<Attendance> page(int pageNum, int pageSize);
+    Page<Attendance> page(int pageNum, int pageSize, String sortField, String sortOrder);
 
     Attendance getById(Long id);
 

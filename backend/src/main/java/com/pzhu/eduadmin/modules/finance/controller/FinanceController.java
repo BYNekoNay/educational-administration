@@ -36,7 +36,8 @@ public class FinanceController {
     @GetMapping("/payments")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<PaymentRecord>> listPayments(PageQuery query) {
-        return Result.success(PageResult.of(financeService.pagePaymentRecords((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(financeService.pagePaymentRecords((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping("/payments")
@@ -53,7 +54,8 @@ public class FinanceController {
     @GetMapping("/refunds")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<RefundRecord>> listRefunds(PageQuery query) {
-        return Result.success(PageResult.of(financeService.pageRefundRecords((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(financeService.pageRefundRecords((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping("/refunds")
@@ -78,7 +80,8 @@ public class FinanceController {
     @GetMapping("/lesson-accounts")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<LessonAccount>> listLessonAccounts(PageQuery query) {
-        return Result.success(PageResult.of(financeService.pageLessonAccounts((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(financeService.pageLessonAccounts((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/lesson-accounts/{id}")
@@ -90,7 +93,8 @@ public class FinanceController {
     @GetMapping("/lesson-flows")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<LessonFlow>> listLessonFlows(PageQuery query) {
-        return Result.success(PageResult.of(financeService.pageLessonFlows((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(financeService.pageLessonFlows((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     // ---- 续费登记（C6） ----
@@ -111,7 +115,8 @@ public class FinanceController {
     @GetMapping("/salary-rules")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<SalaryRule>> listSalaryRules(PageQuery query) {
-        return Result.success(PageResult.of(salaryService.pageSalaryRules((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(salaryService.pageSalaryRules((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping("/salary-rules")

@@ -20,7 +20,8 @@ public class NoticeController {
 
     @GetMapping("/api/admin/notices")
     public Result<PageResult<Notice>> list(PageQuery query) {
-        return Result.success(PageResult.of(noticeService.page((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(noticeService.page((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/api/admin/notices/{id}")

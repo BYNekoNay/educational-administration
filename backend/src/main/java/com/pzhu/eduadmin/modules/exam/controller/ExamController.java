@@ -21,7 +21,8 @@ public class ExamController {
 
     @GetMapping("/levels")
     public Result<PageResult<ExamLevel>> listExamLevels(PageQuery query) {
-        return Result.success(PageResult.of(examService.pageExamLevels((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(examService.pageExamLevels((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/levels/{id}")
@@ -40,9 +41,16 @@ public class ExamController {
         return Result.success(examService.updateExamLevel(examLevel));
     }
 
+    @DeleteMapping("/levels/{id}")
+    public Result<Void> deleteExamLevel(@PathVariable Long id) {
+        examService.deleteExamLevel(id);
+        return Result.success();
+    }
+
     @GetMapping("/signups")
     public Result<PageResult<ExamSignup>> listExamSignups(PageQuery query) {
-        return Result.success(PageResult.of(examService.pageExamSignups((int) query.getPageNum(), (int) query.getPageSize())));
+        return Result.success(PageResult.of(examService.pageExamSignups((int) query.getPageNum(), (int) query.getPageSize(),
+                query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping("/signups")

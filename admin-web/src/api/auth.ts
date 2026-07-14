@@ -15,6 +15,8 @@ export const userApi = {
   update: (id: number, data: any) => request.put(`/admin/users/${id}`, data),
   updateStatus: (id: number, status: number) =>
     request.put(`/admin/users/${id}/status`, null, { params: { status } }),
+  resetPassword: (id: number, newPassword: string) =>
+    request.put(`/admin/users/${id}/password`, { newPassword }),
 }
 
 /** 角色管理 */
@@ -28,6 +30,9 @@ export const roleApi = {
   /** 新增角色 { roleCode, roleName } */
   create: (data: { roleCode: string; roleName: string }) =>
     request.post('/admin/roles', data),
+  /** 更新角色名称 { roleName } */
+  update: (id: number, data: { roleName: string }) =>
+    request.put(`/admin/roles/${id}`, data),
   /** 删除角色 */
   delete: (id: number) => request.delete(`/admin/roles/${id}`),
 }

@@ -1,5 +1,25 @@
 {
   "name": "mobile-uniapp",
   "version": "0.9.0",
-  "description": "艺术培训机构全流程教务管理平台 - 家长端/教师端 uni-app"
+  "description": "艺术培训机构全流程教务管理平台 - 家长端/教师端 uni-app",
+  "scripts": {
+    "dev:h5": "vite",
+    "build:h5": "vite build",
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "build:mp-weixin": "uni build -p mp-weixin",
+    "serve": "vite preview"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-5020120260710001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-5020120260710001",
+    "@dcloudio/uni-mp-weixin": "^3.0.0-alpha-5020120260710001",
+    "@dcloudio/uni-shared": "3.0.0-alpha-5020120260710001",
+    "@dcloudio/uni-ui": "^1.5.12",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@dcloudio/uni-cli-shared": "3.0.0-alpha-5020120260710001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5020120260710001",
+    "vite": "^5.2.0"
+  }
 }

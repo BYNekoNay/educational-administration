@@ -7,7 +7,7 @@ import com.pzhu.eduadmin.modules.user.entity.User;
 
 public interface UserService {
 
-    Page<User> pageUsers(int pageNum, int pageSize, String keyword);
+    Page<User> pageUsers(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     User getUserById(Long id);
 
@@ -16,4 +16,6 @@ public interface UserService {
     User updateUser(Long id, UpdateUserRequest request);
 
     void updateUserStatus(Long id, Integer status);
+
+    void resetPassword(Long id, String newPassword);
 }

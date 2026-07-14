@@ -43,6 +43,16 @@ public class RoleController {
         return Result.success();
     }
 
+    @PutMapping("/{id}")
+    public Result<Role> updateRoleName(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String roleName = body.get("roleName");
+        if (roleName == null || roleName.isBlank()) {
+            throw new BusinessException(400, "角色名称不能为空");
+        }
+        roleService.updateRole(id, roleName.trim());
+        return Result.success(roleService.getRoleById(id));
+    }
+
     @PostMapping
     public Result<Role> create(@RequestBody Map<String, String> body) {
         String roleCode = body.get("roleCode");

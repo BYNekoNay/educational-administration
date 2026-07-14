@@ -1,8 +1,10 @@
 package com.pzhu.eduadmin.modules.schedule.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
@@ -38,11 +40,23 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final ClassGroupMapper classGroupMapper;
     private final UserMapper userMapper;
 
+    private static final Map<String, SFunction<ScheduleLesson, ?>> LESSON_SORT_MAP = Map.of(
+            "id", ScheduleLesson::getId,
+            "lessonDate", ScheduleLesson::getLessonDate,
+            "startTime", ScheduleLesson::getStartTime,
+            "status", ScheduleLesson::getStatus
+    );
+    private static final Map<String, SFunction<Classroom, ?>> ROOM_SORT_MAP = Map.of(
+            "id", Classroom::getId,
+            "name", Classroom::getName,
+            "capacity", Classroom::getCapacity
+    );
+
     @Override
-    public Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize) {
-        Page<ScheduleLesson> page = scheduleLessonMapper.selectPage(
-                new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<ScheduleLesson>().orderByDesc(ScheduleLesson::getLessonDate));
+    public Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<ScheduleLesson> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, LESSON_SORT_MAP, () -> wrapper.orderByDesc(ScheduleLesson::getLessonDate));
+        Page<ScheduleLesson> page = scheduleLessonMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateScheduleNames(page.getRecords());
         return page;
     }
@@ -117,8 +131,11 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
-    public Page<Classroom> pageClassrooms(int pageNum, int pageSize) {
-        return classroomMapper.selectPage(new Page<>(pageNum, pageSize), new LambdaQueryWrapper<>());
+    public Page<Classroom> pageClassrooms(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
+        LambdaQueryWrapper<Classroom> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applyKeyword(wrapper, keyword, Classroom::getName, Classroom::getCampus);
+        QueryHelper.applySort(wrapper, sortField, sortOrder, ROOM_SORT_MAP, () -> wrapper.orderByDesc(Classroom::getId));
+        return classroomMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
     }
 
     @Override
@@ -128,6 +145,12 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public Classroom createClassroom(Classroom classroom) {
+        if (classroom.getName() == null || classroom.getName().isBlank()) {
+            throw new BusinessException(400, "教室名称不能为空");
+        }
+        if (classroom.getCapacity() == null || classroom.getCapacity() <= 0) {
+            throw new BusinessException(400, "教室容量必须大于0");
+        }
         classroomMapper.insert(classroom);
         return classroom;
     }

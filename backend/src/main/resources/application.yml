@@ -4,11 +4,24 @@ server:
 spring:
   application:
     name: eduadmin
+  # 开发环境排除 Redis 自动配置（无需本地 Redis 服务）。
+  # 如需启用 Redis 缓存（会话共享/JWT 黑名单/统计数据缓存）：
+  # 1. 注释掉下方 autoconfigure.exclude 中的 Redis 相关两项
+  # 2. 确保 Redis 6.x+ 运行在 localhost:6379
+  # 3. 取消注释下方 spring.data.redis 配置段
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
   datasource:
     url: jdbc:mysql://localhost:3306/edu_admin?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
-    password: 123456
+    password: ${DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
   configuration:

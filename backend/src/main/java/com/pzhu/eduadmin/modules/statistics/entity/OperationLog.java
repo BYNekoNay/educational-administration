@@ -14,6 +14,9 @@ public class OperationLog {
 
     private Long operatorId;
 
+    @TableField(exist = false)
+    private String operatorName;
+
     private String module;
 
     private String operation;

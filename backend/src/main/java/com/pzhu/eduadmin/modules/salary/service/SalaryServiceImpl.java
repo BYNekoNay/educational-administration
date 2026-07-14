@@ -1,8 +1,10 @@
 package com.pzhu.eduadmin.modules.salary.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
 import com.pzhu.eduadmin.modules.course.entity.Course;
@@ -45,9 +47,17 @@ public class SalaryServiceImpl implements SalaryService {
     private final UserMapper userMapper;
     private final CourseMapper courseMapper;
 
+    private static final Map<String, SFunction<SalaryRule, ?>> RULE_SORT_MAP = Map.of("id", SalaryRule::getId);
+    private static final Map<String, SFunction<TeacherSalary, ?>> SALARY_SORT_MAP = Map.of(
+            "id", TeacherSalary::getId, "salaryMonth", TeacherSalary::getSalaryMonth,
+            "totalAmount", TeacherSalary::getTotalAmount, "calcSnapshotTime", TeacherSalary::getCalcSnapshotTime
+    );
+
     @Override
-    public Page<SalaryRule> pageSalaryRules(int pageNum, int pageSize) {
-        Page<SalaryRule> page = salaryRuleMapper.selectPage(new Page<>(pageNum, pageSize), new LambdaQueryWrapper<>());
+    public Page<SalaryRule> pageSalaryRules(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<SalaryRule> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, RULE_SORT_MAP, () -> wrapper.orderByDesc(SalaryRule::getId));
+        Page<SalaryRule> page = salaryRuleMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateSalaryRuleNames(page.getRecords());
         return page;
     }
@@ -83,9 +93,15 @@ public class SalaryServiceImpl implements SalaryService {
     }
 
     @Override
-    public Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize) {
-        Page<TeacherSalary> page = teacherSalaryMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<TeacherSalary>().orderByDesc(TeacherSalary::getSalaryMonth));
+    public void deleteSalaryRule(Long id) {
+        salaryRuleMapper.deleteById(id);
+    }
+
+    @Override
+    public Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String sortField, String sortOrder) {
+        LambdaQueryWrapper<TeacherSalary> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applySort(wrapper, sortField, sortOrder, SALARY_SORT_MAP, () -> wrapper.orderByDesc(TeacherSalary::getSalaryMonth));
+        Page<TeacherSalary> page = teacherSalaryMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateTeacherSalaryNames(page.getRecords());
         return page;
     }

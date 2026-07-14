@@ -4,14 +4,19 @@
       <h3>班级管理</h3>
       <el-button type="primary" @click="openDialog(null)">新增班级</el-button>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="className" label="班级名称" />
-      <el-table-column prop="courseId" label="课程ID" width="80" />
-      <el-table-column prop="teacherId" label="教师ID" width="80" />
-      <el-table-column prop="maxStudentCount" label="最大人数" width="80" />
-      <el-table-column prop="startDate" label="开课日期" width="110" />
-      <el-table-column prop="status" label="状态" width="80">
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <el-input v-model="keyword" placeholder="搜索班级/课程/教师" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
+      <el-table-column prop="className" label="班级名称" sortable />
+      <el-table-column prop="courseName" label="课程" min-width="120" sortable />
+      <el-table-column prop="teacherName" label="教师" min-width="100" sortable />
+      <el-table-column prop="maxStudentCount" label="最大人数" width="80" sortable="custom" />
+      <el-table-column prop="startDate" label="开课日期" width="110" sortable="custom" />
+      <el-table-column prop="status" label="状态" width="80" sortable="custom">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'warning'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
         </template>
@@ -38,10 +43,20 @@
     <el-dialog :title="isEdit ? '编辑班级' : '新增班级'" v-model="dialogVisible" width="500px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="班级名称"><el-input v-model="form.className" /></el-form-item>
-        <el-form-item label="课程ID"><el-input-number v-model="form.courseId" :min="1" /></el-form-item>
-        <el-form-item label="教师ID"><el-input-number v-model="form.teacherId" :min="1" /></el-form-item>
+        <el-form-item label="课程">
+          <el-select v-model="form.courseId" style="width:100%">
+            <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="教师">
+          <el-select v-model="form.teacherId" style="width:100%">
+            <el-option v-for="t in teachers" :key="t.id" :label="t.realName || t.username" :value="t.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="最大人数"><el-input-number v-model="form.maxStudentCount" :min="1" /></el-form-item>
-        <el-form-item label="开课日期"><el-input v-model="form.startDate" placeholder="如 2026-07-01" /></el-form-item>
+        <el-form-item label="开课日期">
+          <el-date-picker v-model="form.startDate" type="date" placeholder="选择开课日期" value-format="YYYY-MM-DD" style="width:100%" />
+        </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status"><el-option :value="1" label="启用" /><el-option :value="0" label="停用" /></el-select>
         </el-form-item>
@@ -67,7 +82,7 @@
     <!-- 班级学员管理弹窗 -->
     <el-dialog :title="'班级学员 - ' + (currentClass?.className || '')" v-model="studentListVisible" width="700px">
       <el-table :data="classStudents" border stripe v-loading="studentLoading">
-        <el-table-column prop="studentId" label="学员ID" width="80" />
+        <el-table-column prop="studentName" label="学员" min-width="100" />
         <el-table-column prop="joinTime" label="加入时间" width="170" />
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
@@ -105,8 +120,10 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { classApi, studentApi } from '@/api/edu'
+import { showError } from '@/utils/error'
+import { classApi, studentApi, courseApi, teacherApi } from '@/api/edu'
 
+const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const adding = ref(false)
@@ -124,46 +141,73 @@ const isEdit = ref(false)
 const currentClass = ref<any>(null)
 const classStudents = ref<any[]>([])
 const allClasses = ref<any[]>([])
+const courses = ref<any[]>([])
+const teachers = ref<any[]>([])
 const targetClassId = ref<number | null>(null)
 const transferringStudentId = ref<number | null>(null)
-const form = reactive<any>({ className: '', courseId: 1, teacherId: 1, maxStudentCount: 15, startDate: '', status: 1 })
+const form = reactive<any>({ className: '', courseId: null, teacherId: null, maxStudentCount: 15, startDate: '', status: 1 })
 const addForm = reactive({ studentId: null as number | null })
 
 async function loadData() {
   loading.value = true
-  const res = await classApi.list({ pageNum: pageNum.value, pageSize: pageSize.value })
+  const res = await classApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = res.data.records
   total.value = res.data.total
   loading.value = false
 }
 
-function openDialog(row: any) {
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
+function handleSortChange({ prop, order }: any) {
+  sortField.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  pageNum.value = 1; loadData()
+}
+
+async function loadOptions() {
+  if (courses.value.length > 0 && teachers.value.length > 0) return
+  try {
+    const [cRes, tRes] = await Promise.all([
+      courseApi.list({ pageNum: 1, pageSize: 100 }),
+      teacherApi.list()
+    ])
+    courses.value = cRes.data?.records || []
+    teachers.value = tRes.data || []
+  } catch (e) { showError(e, '加载课程或教师数据失败') }
+}
+
+async function openDialog(row: any) {
   isEdit.value = !!row
+  await loadOptions()
   if (row) Object.assign(form, row)
-  else Object.assign(form, { className: '', courseId: 1, teacherId: 1, maxStudentCount: 15, startDate: '', status: 1 })
+  else Object.assign(form, { className: '', courseId: null, teacherId: null, maxStudentCount: 15, startDate: '', status: 1 })
   dialogVisible.value = true
 }
 
 async function handleSave() {
   saving.value = true
   try {
+    const payload = { ...form }
+    if (!payload.startDate) payload.startDate = null
     if (isEdit.value) {
-      await classApi.update(form.id, form)
+      await classApi.update(form.id, payload)
       ElMessage.success('班级已更新')
     } else {
-      await classApi.create(form)
+      await classApi.create(payload)
       ElMessage.success('班级已创建')
     }
     dialogVisible.value = false
     loadData()
-  } finally { saving.value = false }
+  } catch (e) { showError(e, '保存失败') } finally { saving.value = false }
 }
 
 async function handleDelete(row: any) {
   await ElMessageBox.confirm('确定删除该班级？', '提示', { type: 'warning' })
-  await classApi.delete(row.id)
-  ElMessage.success('已删除')
-  loadData()
+  try {
+    await classApi.delete(row.id)
+    ElMessage.success('已删除')
+    loadData()
+  } catch (e) { showError(e, '删除失败') }
 }
 
 function openAddStudent(row: any) {
@@ -182,7 +226,7 @@ async function handleAddStudent() {
     })
     ElMessage.success('学员已加入班级')
     addStudentVisible.value = false
-  } finally { adding.value = false }
+  } catch (e) { showError(e, '加入学员失败') } finally { adding.value = false }
 }
 
 async function openStudentList(row: any) {
@@ -192,17 +236,16 @@ async function openStudentList(row: any) {
   try {
     const res = await classApi.students(row.id, { pageSize: 100 })
     classStudents.value = res.data.records
-  } catch { ElMessage.error('加载学员列表失败') }
-  finally { studentLoading.value = false }
+  } catch (e) { showError(e, '加载学员列表失败') } finally { studentLoading.value = false }
 }
 
 async function handleWithdrawStudent(row: any) {
-  await ElMessageBox.confirm(`确定将学员(ID=${row.studentId})退班？`, '退班确认', { type: 'warning' })
+  await ElMessageBox.confirm(`确定将学员"${row.studentName || row.studentId}"退班？`, '退班确认', { type: 'warning' })
   try {
     await studentApi.withdraw(row.studentId)
     ElMessage.success('退班申请已提交，待财务审核')
     openStudentList(currentClass.value)
-  } catch { ElMessage.error('操作失败') }
+  } catch (e) { showError(e, '退班操作失败') }
 }
 
 async function handleTransferStudent(row: any) {
@@ -225,8 +268,7 @@ async function confirmTransfer() {
     ElMessage.success('转班成功')
     transferVisible.value = false
     openStudentList(currentClass.value)
-  } catch { ElMessage.error('转班失败') }
-  finally { transferring.value = false }
+  } catch (e) { showError(e, '转班失败') } finally { transferring.value = false }
 }
 
 onMounted(loadData)

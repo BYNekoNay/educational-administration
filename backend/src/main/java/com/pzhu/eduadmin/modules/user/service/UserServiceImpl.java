@@ -1,8 +1,10 @@
 package com.pzhu.eduadmin.modules.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
@@ -15,6 +17,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
@@ -22,16 +26,18 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final OperationLogMapper operationLogMapper;
 
+    private static final Map<String, SFunction<User, ?>> USER_SORT_MAP = Map.of(
+            "id", User::getId,
+            "username", User::getUsername,
+            "realName", User::getRealName,
+            "createTime", User::getCreateTime
+    );
+
     @Override
-    public Page<User> pageUsers(int pageNum, int pageSize, String keyword) {
+    public Page<User> pageUsers(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        if (StringUtils.hasText(keyword)) {
-            wrapper.and(w -> w
-                    .like(User::getUsername, keyword)
-                    .or()
-                    .like(User::getRealName, keyword));
-        }
-        wrapper.orderByDesc(User::getCreateTime);
+        QueryHelper.applyKeyword(wrapper, keyword, User::getUsername, User::getRealName, User::getPhone);
+        QueryHelper.applySort(wrapper, sortField, sortOrder, USER_SORT_MAP, () -> wrapper.orderByDesc(User::getCreateTime));
         return userMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
     }
 
@@ -87,6 +93,17 @@ public class UserServiceImpl implements UserService {
         userMapper.updateById(user);
 
         logOperation("用户管理", status == 1 ? "启用用户(id=" + id + ")" : "禁用用户(id=" + id + ")");
+    }
+
+    @Override
+    public void resetPassword(Long id, String newPassword) {
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        user.setPassword(new BCryptPasswordEncoder().encode(newPassword));
+        userMapper.updateById(user);
+        logOperation("用户管理", "重置密码(id=" + id + ", username=" + user.getUsername() + ")");
     }
 
     private void logOperation(String module, String operation) {

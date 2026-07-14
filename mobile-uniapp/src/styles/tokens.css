@@ -1,0 +1,72 @@
+/* ============================================================
+   艺培通 Mobile — Design Tokens
+   艺术培训 · 温暖精致 · 学院气息
+   ============================================================ */
+
+:root {
+  /* ─── Brand / Primary ─── */
+  --primary:       #0E7490;   /* 深青色 — 学院感 */
+  --primary-light: #22D3EE;   /* 亮青色 */
+  --primary-bg:    #ECFEFF;   /* 极浅青背景 */
+  --primary-dark:  #0C5E75;   /* 深青按压 */
+  --primary-gradient: linear-gradient(135deg, #0E7490, #06B6D4);
+
+  /* ─── Accent / 艺术点缀色 ─── */
+  --accent-warm:  #F97316;   /* 暖橙 — 颜料感 */
+  --accent-rose:  #E11D48;   /* 玫瑰红 */
+  --accent-amber: #F59E0B;   /* 琥珀金 */
+  --accent-violet: #8B5CF6;  /* 紫罗兰 */
+
+  /* ─── Semantic ─── */
+  --success:  #10B981;
+  --warning:  #F59E0B;
+  --error:    #EF4444;
+  --info:     #06B6D4;
+
+  /* ─── Text Colors (暖灰调) ─── */
+  --text-primary:    #2D2A26;   /* 主文字 — 暖黑 */
+  --text-regular:    #4D4139;   /* 常规文字 — 暖深 */
+  --text-secondary:  #8C7E74;   /* 辅助文字 — 暖灰 */
+  --text-placeholder:#C4B8AE;   /* 占位符 — 浅暖灰 */
+
+  /* ─── Background & Border (奶油白体系) ─── */
+  --bg-page:    #FAF8F5;   /* 页面背景 — 奶油白 */
+  --bg-card:    #FFFFFF;   /* 卡片白底 */
+  --bg-warm:    #F5F0ED;   /* 暖灰区块 */
+  --bg-grey:    #EDEBE8;   /* 分割线 */
+  --border:     #E8E0DA;   /* 边框 — 暖调 */
+  --divider:    #F0ECE8;   /* 细分割线 */
+
+  /* ─── Typography ─── */
+  --font: -apple-system, BlinkMacSystemFont, 'PingFang SC',
+          'Noto Sans SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+
+  --fs-title:    36rpx;   /* 页面大标题 */
+  --fs-heading:  32rpx;   /* 标题 */
+  --fs-subhead:  30rpx;   /* 副标题 */
+  --fs-body:     28rpx;   /* 正文 */
+  --fs-small:    24rpx;   /* 辅助文字 */
+  --fs-mini:     20rpx;   /* 极小文字 */
+
+  /* ─── Radius (更圆润) ─── */
+  --radius-sm:  10rpx;
+  --radius-md:  18rpx;
+  --radius-lg:  28rpx;
+  --radius-xl:  36rpx;
+
+  /* ─── Spacing ─── */
+  --space-xs:   8rpx;
+  --space-sm:   16rpx;
+  --space-md:   24rpx;
+  --space-lg:   32rpx;
+  --space-xl:   48rpx;
+
+  /* ─── Cell (列表项) ─── */
+  --cell-height:  96rpx;
+  --cell-padding: 32rpx;
+
+  /* ─── Shadow (温暖柔和) ─── */
+  --shadow-sm:   0 2rpx 8rpx rgba(45,42,38,0.04);
+  --shadow-card: 0 4rpx 20rpx rgba(45,42,38,0.06);
+  --shadow-float: 0 8rpx 32rpx rgba(45,42,38,0.10);
+}

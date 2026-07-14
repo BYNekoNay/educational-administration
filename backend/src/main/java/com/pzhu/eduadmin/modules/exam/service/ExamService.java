@@ -6,7 +6,7 @@ import com.pzhu.eduadmin.modules.exam.entity.ExamSignup;
 
 public interface ExamService {
 
-    Page<ExamLevel> pageExamLevels(int pageNum, int pageSize);
+    Page<ExamLevel> pageExamLevels(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     ExamLevel getExamLevelById(Long id);
 
@@ -14,7 +14,9 @@ public interface ExamService {
 
     ExamLevel updateExamLevel(ExamLevel examLevel);
 
-    Page<ExamSignup> pageExamSignups(int pageNum, int pageSize);
+    void deleteExamLevel(Long id);
+
+    Page<ExamSignup> pageExamSignups(int pageNum, int pageSize, String sortField, String sortOrder);
 
     ExamSignup createExamSignup(ExamSignup signup);
 

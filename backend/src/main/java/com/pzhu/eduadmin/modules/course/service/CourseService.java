@@ -8,7 +8,7 @@ import com.pzhu.eduadmin.modules.course.entity.Course;
 public interface CourseService {
 
     // 课程
-    Page<Course> pageCourses(int pageNum, int pageSize);
+    Page<Course> pageCourses(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     Course getCourseById(Long id);
 

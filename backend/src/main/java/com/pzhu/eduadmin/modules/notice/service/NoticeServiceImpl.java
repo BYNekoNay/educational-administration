@@ -1,7 +1,9 @@
 package com.pzhu.eduadmin.modules.notice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.notice.entity.Notice;
 import com.pzhu.eduadmin.modules.notice.mapper.NoticeMapper;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
@@ -10,6 +12,8 @@ import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class NoticeServiceImpl implements NoticeService {
@@ -17,9 +21,18 @@ public class NoticeServiceImpl implements NoticeService {
     private final NoticeMapper noticeMapper;
     private final OperationLogMapper operationLogMapper;
 
+    private static final Map<String, SFunction<Notice, ?>> NOTICE_SORT_MAP = Map.of(
+            "id", Notice::getId,
+            "title", Notice::getTitle,
+            "publishTime", Notice::getPublishTime
+    );
+
     @Override
-    public Page<Notice> page(int pageNum, int pageSize) {
-        return noticeMapper.selectPage(new Page<>(pageNum, pageSize), new LambdaQueryWrapper<>());
+    public Page<Notice> page(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
+        LambdaQueryWrapper<Notice> wrapper = new LambdaQueryWrapper<>();
+        QueryHelper.applyKeyword(wrapper, keyword, Notice::getTitle);
+        QueryHelper.applySort(wrapper, sortField, sortOrder, NOTICE_SORT_MAP, () -> wrapper.orderByDesc(Notice::getId));
+        return noticeMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
     }
 
     @Override

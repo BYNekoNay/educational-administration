@@ -25,6 +25,14 @@ public class ClassGroup {
 
     private Integer status;
 
+    /** 课程名称（不持久化） */
+    @TableField(exist = false)
+    private String courseName;
+
+    /** 教师姓名（不持久化） */
+    @TableField(exist = false)
+    private String teacherName;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
