@@ -237,7 +237,6 @@ public class AttendanceServiceImpl implements AttendanceService {
         if (account == null) return;
 
         account.setRemainingLessons(account.getRemainingLessons().add(old.getDeductLessons()));
-        account.setVersion(account.getVersion() + 1);
         int rows = lessonAccountMapper.updateById(account);
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
 
@@ -271,7 +270,6 @@ public class AttendanceServiceImpl implements AttendanceService {
         // 余额不足时最多扣到0
         BigDecimal actualDeduct = before.compareTo(deduct) >= 0 ? deduct : before;
         account.setRemainingLessons(before.subtract(actualDeduct));
-        account.setVersion(account.getVersion() + 1);
         int rows = lessonAccountMapper.updateById(account);
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
 

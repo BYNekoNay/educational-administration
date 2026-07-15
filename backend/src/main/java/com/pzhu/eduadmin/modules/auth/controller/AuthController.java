@@ -5,6 +5,7 @@ import com.pzhu.eduadmin.modules.auth.service.IAuthService;
 import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
 import com.pzhu.eduadmin.modules.user.dto.LoginRequest;
 import com.pzhu.eduadmin.modules.user.dto.LoginResponse;
+import com.pzhu.eduadmin.modules.user.dto.RegisterRequest;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
 import jakarta.validation.Valid;
@@ -28,6 +29,11 @@ public class AuthController {
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return Result.success(authService.login(request));
+    }
+
+    @PostMapping("/register")
+    public Result<LoginResponse> register(@Valid @RequestBody RegisterRequest request) {
+        return Result.success(authService.register(request));
     }
 
     @GetMapping("/profile")

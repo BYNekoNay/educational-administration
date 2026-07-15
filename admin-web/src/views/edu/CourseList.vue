@@ -60,6 +60,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { courseApi } from '@/api/edu'
+import { showError } from '@/utils/error'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -107,14 +108,21 @@ async function handleSave() {
     }
     dialogVisible.value = false
     loadData()
+  } catch (e) {
+    showError(e, '保存失败')
   } finally { saving.value = false }
 }
 
 async function handleDelete(row: any) {
-  await ElMessageBox.confirm('确定删除该课程？', '提示', { type: 'warning' })
-  await courseApi.delete(row.id)
-  ElMessage.success('已删除')
-  loadData()
+  try {
+    await ElMessageBox.confirm('确定删除该课程？', '提示', { type: 'warning' })
+    await courseApi.delete(row.id)
+    ElMessage.success('已删除')
+    loadData()
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    showError(e, '删除失败')
+  }
 }
 
 onMounted(loadData)

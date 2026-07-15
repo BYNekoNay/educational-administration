@@ -114,7 +114,6 @@ public class FinanceServiceImpl implements FinanceService {
             beforeBalance = account.getRemainingLessons();
             account.setTotalLessons(account.getTotalLessons().add(record.getLessonCount()));
             account.setRemainingLessons(account.getRemainingLessons().add(record.getLessonCount()));
-            account.setVersion(account.getVersion() + 1);
             int rows = lessonAccountMapper.updateById(account);
             if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
         }
@@ -217,6 +216,10 @@ public class FinanceServiceImpl implements FinanceService {
     }
 
     private void processRefundApproval(RefundRecord record, BigDecimal refundAmount) {
+        // 0. 取报名对应的课程ID（绕过逻辑删除：报名被删时 course_id 仍有效，退费需据此定位课时账户）
+        Long courseId = enrollmentMapper.selectCourseIdById(record.getEnrollmentId());
+        if (courseId == null) throw new BusinessException(404, "报名记录不存在");
+
         // 1. 金额上限校验：该 enrollment 累计缴费 - 累计已退费
         BigDecimal totalPaid = paymentRecordMapper.sumByEnrollmentId(record.getEnrollmentId());
         BigDecimal totalRefunded = refundRecordMapper.sumApprovedByEnrollmentId(record.getEnrollmentId());
@@ -225,7 +228,8 @@ public class FinanceServiceImpl implements FinanceService {
         // 1.1 自动计算退费金额：remaining_lessons * (course.price / course.total_lessons)
         if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             LessonAccount account = lessonAccountMapper.selectOne(new LambdaQueryWrapper<LessonAccount>()
-                    .eq(LessonAccount::getStudentId, record.getStudentId()));
+                    .eq(LessonAccount::getStudentId, record.getStudentId())
+                    .eq(LessonAccount::getCourseId, courseId));
             if (account != null) {
                 Course course = courseMapper.selectById(account.getCourseId());
                 if (course != null && course.getTotalLessons() != null && course.getTotalLessons() > 0
@@ -250,9 +254,10 @@ public class FinanceServiceImpl implements FinanceService {
                     String.format("退费金额(%.2f)超过可退上限(%.2f)，超出部分需人工核实", refundAmount, maxRefundable));
         }
 
-        // 2. 课时回退 — 乐观锁更新课时账户
+        // 2. 课时回退 — 乐观锁更新课时账户（MyBatis-Plus 自动处理 version+1）
         LessonAccount account = lessonAccountMapper.selectOne(new LambdaQueryWrapper<LessonAccount>()
-                .eq(LessonAccount::getStudentId, record.getStudentId()));
+                .eq(LessonAccount::getStudentId, record.getStudentId())
+                .eq(LessonAccount::getCourseId, courseId));
         if (account == null) {
             throw new BusinessException(404, "该学员无课时账户，无法退费");
         }
@@ -265,7 +270,6 @@ public class FinanceServiceImpl implements FinanceService {
         }
 
         account.setRemainingLessons(before.subtract(refundLessonCount));
-        account.setVersion(account.getVersion() + 1);
         int rows = lessonAccountMapper.updateById(account);
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
 

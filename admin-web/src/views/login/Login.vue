@@ -82,14 +82,14 @@ async function handleLogin() {
   loading.value = true
   try {
     const res = await authApi.login(form)
-    const { token, userId, username, realName, roleCode } = res.data
+    const { token, userId, username, realName, roleCode, permissions = [] } = res.data
 
     if (!ADMIN_ROLES.has(roleCode)) {
       ElMessage.warning('该账号为教师或家长角色，请使用移动端（艺培通）登录')
       return
     }
 
-    authStore.setLogin(token, { userId, username, realName, roleCode })
+    authStore.setLogin(token, { userId, username, realName, roleCode }, permissions)
     ElMessage.success('登录成功')
     router.push('/admin/dashboard')
   } catch (e: any) {

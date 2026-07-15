@@ -7,7 +7,11 @@ export const studentApi = {
   create: (data: any) => request.post('/edu/students', data),
   update: (id: number, data: any) => request.put(`/edu/students/${id}`, data),
   delete: (id: number) => request.delete(`/edu/students/${id}`),
+  parentOptions: () => request.get('/edu/students/parent-options'),
   bindParent: (data: any) => request.post('/edu/students/bind-parent', data),
+  listParents: (id: number) => request.get(`/edu/students/${id}/parents`),
+  unbindParent: (id: number, parentUserId: number) =>
+    request.delete(`/edu/students/${id}/parents/${parentUserId}`),
   transfer: (id: number, targetClassId: number) =>
     request.post(`/edu/students/${id}/transfer`, null, { params: { targetClassId } }),
   withdraw: (id: number) => request.post(`/edu/students/${id}/withdraw`),

@@ -3,6 +3,8 @@ package com.pzhu.eduadmin;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.salary.entity.SalaryRule;
 import com.pzhu.eduadmin.modules.salary.entity.TeacherSalary;
+import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
+import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.salary.mapper.*;
 import com.pzhu.eduadmin.modules.salary.service.SalaryServiceImpl;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
@@ -34,6 +36,7 @@ class SalaryServiceMockTest {
     @Mock private SalaryAdjustmentMapper adjustMapper;
     @Mock private ScheduleLessonMapper lessonMapper;
     @Mock private AttendanceMapper attendanceMapper;
+    @Mock private ClassGroupMapper classGroupMapper;
     @Mock private com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper operationLogMapper;
 
     @InjectMocks
@@ -50,7 +53,7 @@ class SalaryServiceMockTest {
     void shouldThrowWhenNoRule() {
         when(lessonMapper.selectList(any())).thenReturn(java.util.List.of());
         when(attendanceMapper.selectList(any())).thenReturn(java.util.List.of());
-        when(ruleMapper.selectOne(any())).thenReturn(null);
+        when(ruleMapper.selectList(any())).thenReturn(java.util.List.of());
 
         assertThatThrownBy(() ->
                 salaryService.calculateSalary("2026-07", 1L, BigDecimal.ZERO))
@@ -70,7 +73,7 @@ class SalaryServiceMockTest {
 
         when(lessonMapper.selectList(any())).thenReturn(java.util.List.of());
         when(attendanceMapper.selectList(any())).thenReturn(java.util.List.of());
-        when(ruleMapper.selectOne(any())).thenReturn(rule);
+        when(ruleMapper.selectList(any())).thenReturn(java.util.List.of(rule));
         when(salaryMapper.selectOne(any())).thenReturn(existing);
 
         assertThatThrownBy(() ->

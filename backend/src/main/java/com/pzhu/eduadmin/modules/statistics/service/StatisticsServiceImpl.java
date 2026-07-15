@@ -60,6 +60,12 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public Organization updateOrganization(Organization organization) {
+        // 前端旧版可能不传 id，机构信息表只有一行，默认取首行兜底
+        if (organization.getId() == null) {
+            Organization existing = organizationMapper.selectOne(new LambdaQueryWrapper<Organization>().last("LIMIT 1"));
+            if (existing != null) organization.setId(existing.getId());
+        }
+
         organizationMapper.updateById(organization);
 
         // 操作日志

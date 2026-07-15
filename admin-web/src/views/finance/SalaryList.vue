@@ -118,6 +118,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { salaryApi } from '@/api/finance'
 import { teacherApi, courseApi } from '@/api/edu'
+import { showError } from '@/utils/error'
 
 const activeTab = ref('rules')
 

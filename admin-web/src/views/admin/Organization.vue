@@ -4,13 +4,13 @@
     <el-card style="max-width: 600px">
       <el-form label-width="100px" v-loading="loading">
         <el-form-item label="机构名称">
-          <el-input v-model="form.name" placeholder="请输入机构名称" />
+          <el-input v-model="form.orgName" placeholder="请输入机构名称" />
         </el-form-item>
         <el-form-item label="校区">
           <el-input v-model="form.campus" placeholder="请输入校区" />
         </el-form-item>
         <el-form-item label="联系电话">
-          <el-input v-model="form.phone" placeholder="请输入联系电话" />
+          <el-input v-model="form.contactPhone" placeholder="请输入联系电话" />
         </el-form-item>
         <el-form-item label="地址">
           <el-input v-model="form.address" placeholder="请输入地址" />
@@ -31,9 +31,10 @@ import { organizationApi } from '@/api/auth'
 const loading = ref(false)
 const saving = ref(false)
 const form = reactive({
-  name: '',
+  id: undefined as number | undefined,
+  orgName: '',
   campus: '',
-  phone: '',
+  contactPhone: '',
   address: '',
 })
 
@@ -43,9 +44,10 @@ async function loadData() {
     const res = await organizationApi.get()
     const data = res.data
     if (data) {
-      form.name = data.name || ''
+      form.id = data.id
+      form.orgName = data.orgName || ''
       form.campus = data.campus || ''
-      form.phone = data.phone || ''
+      form.contactPhone = data.contactPhone || ''
       form.address = data.address || ''
     }
   } catch (e: any) {
@@ -58,7 +60,13 @@ async function loadData() {
 async function handleSave() {
   saving.value = true
   try {
-    await organizationApi.update({ ...form })
+    await organizationApi.update({
+      id: form.id,
+      orgName: form.orgName,
+      campus: form.campus,
+      contactPhone: form.contactPhone,
+      address: form.address,
+    })
     ElMessage.success('保存成功')
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '保存失败')

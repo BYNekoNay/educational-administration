@@ -73,10 +73,34 @@
     </el-dialog>
 
     <!-- 绑定家长弹窗 -->
-    <el-dialog title="绑定家长" v-model="bindVisible" width="450px">
+    <el-dialog title="绑定家长" v-model="bindVisible" width="480px">
       <el-form :model="bindForm" label-width="80px">
         <el-form-item label="学员">{{ currentStudent?.name }}</el-form-item>
-        <el-form-item label="家长">
+
+        <!-- 已绑定家长列表 -->
+        <el-form-item label="已绑定">
+          <div v-loading="parentsLoading" style="width:100%">
+            <div v-if="boundParents.length === 0" style="color:#909399;font-size:13px">
+              暂无绑定家长
+            </div>
+            <div
+              v-for="p in boundParents"
+              :key="p.parentUserId"
+              style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:6px;background:#f5f7fa;border-radius:4px"
+            >
+              <span>
+                {{ p.realName }}
+                <el-tag v-if="p.relation" size="small" style="margin-left:6px">{{ p.relation }}</el-tag>
+                <span style="color:#909399;font-size:12px;margin-left:6px">{{ p.username }}</span>
+              </span>
+              <el-button size="small" type="danger" link @click="handleUnbind(p)">删除</el-button>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-divider style="margin:8px 0" />
+
+        <el-form-item label="新增家长">
           <el-select v-model="bindForm.parentUserId" filterable placeholder="搜索选择家长用户" style="width:100%" @focus="loadUserOptions">
             <el-option v-for="u in userOptions" :key="u.id" :label="u.realName + ' (' + u.username + ')'" :value="u.id" />
           </el-select>
@@ -84,7 +108,7 @@
         <el-form-item label="关系"><el-input v-model="bindForm.relation" placeholder="如 父亲/母亲" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="bindVisible = false">取消</el-button>
+        <el-button @click="bindVisible = false">关闭</el-button>
         <el-button type="primary" @click="handleBind" :loading="binding">确认绑定</el-button>
       </template>
     </el-dialog>
@@ -112,7 +136,6 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { showError } from '@/utils/error'
 import { studentApi, classApi } from '@/api/edu'
-import { userApi } from '@/api/auth'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -133,13 +156,15 @@ const bindForm = reactive({ parentUserId: null as number | null, relation: '父�
 const transferTargetClassId = ref<number | null>(null)
 const transferClassList = ref<any[]>([])
 const userOptions = ref<any[]>([])
+const boundParents = ref<any[]>([])
+const parentsLoading = ref(false)
 
 async function loadUserOptions() {
   if (userOptions.value.length > 0) return
   try {
-    const res = await userApi.list({ pageNum: 1, pageSize: 200 })
-    userOptions.value = res.data?.records || []
-  } catch { /* ignore */ }
+    const res = await studentApi.parentOptions()
+    userOptions.value = res.data || []
+  } catch (e) { showError(e, '加载家长列表失败') }
 }
 
 async function loadData() {
@@ -194,11 +219,23 @@ function openBindDialog(row: any) {
   currentStudent.value = row
   bindForm.parentUserId = null
   bindForm.relation = '父亲'
+  boundParents.value = []
   bindVisible.value = true
+  loadBoundParents()
+}
+
+async function loadBoundParents() {
+  if (!currentStudent.value) return
+  parentsLoading.value = true
+  try {
+    const res = await studentApi.listParents(currentStudent.value.id)
+    boundParents.value = res.data || []
+  } catch (e) { showError(e, '加载已绑定家长失败') }
+  finally { parentsLoading.value = false }
 }
 
 async function handleBind() {
-  if (!bindForm.parentUserId) { ElMessage.warning('请输入家长用户ID'); return }
+  if (!bindForm.parentUserId) { ElMessage.warning('请选择家长'); return }
   binding.value = true
   try {
     await studentApi.bindParent({
@@ -207,8 +244,24 @@ async function handleBind() {
       relation: bindForm.relation
     })
     ElMessage.success('家长绑定成功')
-    bindVisible.value = false
-  } finally { binding.value = false }
+    bindForm.parentUserId = null
+    bindForm.relation = '父亲'
+    await loadBoundParents()
+    loadData()
+  } catch (e) { showError(e, '绑定失败') } finally { binding.value = false }
+}
+
+async function handleUnbind(p: any) {
+  await ElMessageBox.confirm(`确定解除与家长"${p.realName}"的绑定？`, '解绑确认', { type: 'warning' })
+  try {
+    await studentApi.unbindParent(currentStudent.value.id, p.parentUserId)
+    ElMessage.success('已解绑')
+    await loadBoundParents()
+    loadData()
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    showError(e, '解绑失败')
+  }
 }
 
 async function openTransferDialog(row: any) {

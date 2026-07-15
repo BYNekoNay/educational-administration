@@ -7,7 +7,9 @@ import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
+import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.Course;
+import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.salary.entity.SalaryAdjustment;
 import com.pzhu.eduadmin.modules.salary.entity.SalaryRule;
@@ -32,6 +34,8 @@ import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashSet;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -46,6 +50,7 @@ public class SalaryServiceImpl implements SalaryService {
     private final OperationLogMapper operationLogMapper;
     private final UserMapper userMapper;
     private final CourseMapper courseMapper;
+    private final ClassGroupMapper classGroupMapper;
 
     private static final Map<String, SFunction<SalaryRule, ?>> RULE_SORT_MAP = Map.of("id", SalaryRule::getId);
     private static final Map<String, SFunction<TeacherSalary, ?>> SALARY_SORT_MAP = Map.of(
@@ -155,34 +160,64 @@ public class SalaryServiceImpl implements SalaryService {
                 .stream()
                 .collect(Collectors.groupingBy(Attendance::getLessonId, Collectors.counting()));
 
-        // 3. 统计主讲课时：课次 teacherId 匹配 + 存在考勤记录
+        // 5. 读取该教师全部薪资规则（按 教师+课程 区分），构建 courseId -> 规则 映射
+        List<SalaryRule> rules = salaryRuleMapper.selectList(
+                new LambdaQueryWrapper<SalaryRule>().eq(SalaryRule::getTeacherId, teacherId));
+        if (rules == null || rules.isEmpty()) {
+            throw new BusinessException(400, "该教师未配置薪资规则，请先设置课时单价");
+        }
+        SalaryRule defaultRule = rules.get(0);
+        Map<Long, SalaryRule> courseRuleMap = rules.stream()
+                .collect(Collectors.toMap(SalaryRule::getCourseId, r -> r, (a, b) -> a));
+
+        // 解析 课次 -> 班级 -> 课程 的映射，以便按课程取对应课时单价
+        Set<Long> classIds = new HashSet<>();
+        mainLessons.forEach(l -> classIds.add(l.getClassId()));
+        allCompletedLessons.forEach(l -> classIds.add(l.getClassId()));
+        Map<Long, Long> classCourseMap;
+        if (!classIds.isEmpty()) {
+            classCourseMap = classGroupMapper.selectList(
+                            new LambdaQueryWrapper<ClassGroup>().in(ClassGroup::getId, classIds))
+                    .stream()
+                    .collect(Collectors.toMap(ClassGroup::getId, ClassGroup::getCourseId, (a, b) -> a));
+        } else {
+            classCourseMap = Map.of();
+        }
+
+        // 解析某课次应采用的薪资规则：按班级所属课程匹配，无匹配则兜底用首条规则
+        Function<Long, SalaryRule> resolveRule = classId -> {
+            Long courseId = classCourseMap.get(classId);
+            SalaryRule r = courseId != null ? courseRuleMap.get(courseId) : null;
+            return r != null ? r : defaultRule;
+        };
+
+        // 3. 统计主讲课时并按下课单价累加
         BigDecimal mainLessonCount = BigDecimal.ZERO;
+        BigDecimal baseAmount = BigDecimal.ZERO;
         for (ScheduleLesson lesson : mainLessons) {
             if (lessonAttendanceMap.containsKey(lesson.getId())) {
                 mainLessonCount = mainLessonCount.add(BigDecimal.ONE);
+                SalaryRule r = resolveRule.apply(lesson.getClassId());
+                baseAmount = baseAmount.add(r.getLessonUnitPrice());
             }
         }
 
-        // 4. 统计代课课时：课次 teacherId 不匹配 + 存在考勤记录
+        // 4. 统计代课课时并按下课单价×代课系数累加
         BigDecimal substituteCount = BigDecimal.ZERO;
+        BigDecimal substituteAmount = BigDecimal.ZERO;
         for (ScheduleLesson lesson : allCompletedLessons) {
             if (!lesson.getTeacherId().equals(teacherId) && lessonAttendanceMap.containsKey(lesson.getId())) {
                 substituteCount = substituteCount.add(BigDecimal.ONE);
+                SalaryRule r = resolveRule.apply(lesson.getClassId());
+                BigDecimal unitPrice = r.getLessonUnitPrice();
+                BigDecimal rate = r.getSubstituteRate() != null ? r.getSubstituteRate() : BigDecimal.ONE;
+                substituteAmount = substituteAmount.add(unitPrice.multiply(rate));
             }
         }
 
-        // 5. 读取薪资规则
-        SalaryRule rule = salaryRuleMapper.selectOne(new LambdaQueryWrapper<SalaryRule>()
-                .eq(SalaryRule::getTeacherId, teacherId));
-        if (rule == null) {
-            throw new BusinessException(400, "该教师未配置薪资规则，请先设置课时单价");
-        }
-        BigDecimal unitPrice = rule.getLessonUnitPrice();
-        BigDecimal substituteRate = rule.getSubstituteRate() != null ? rule.getSubstituteRate() : BigDecimal.ONE;
-
         // 6. 计算金额
-        BigDecimal baseAmount = mainLessonCount.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal substituteAmount = substituteCount.multiply(unitPrice).multiply(substituteRate).setScale(2, RoundingMode.HALF_UP);
+        baseAmount = baseAmount.setScale(2, RoundingMode.HALF_UP);
+        substituteAmount = substituteAmount.setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalAmount = baseAmount.add(substituteAmount).add(bonusAmount).setScale(2, RoundingMode.HALF_UP);
 
         // 7. 检查是否已存在薪资单

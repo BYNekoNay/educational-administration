@@ -146,7 +146,8 @@ async function handleCreateRefund() {
 function handleAudit(row: any, status: number) {
   if (status === 3) {
     ElMessageBox.confirm('确认拒绝该申请？', '拒绝确认', { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' })
-      .then(() => doAudit(row.id, 3, 0)).catch(() => {})
+      .then(() => doAudit(row.id, 3, 0))
+      .catch((e: any) => { if (e !== 'cancel' && e !== 'close') showError(e, '操作失败') })
   } else {
     auditRow.value = row; auditAmount.value = row.amount || 0; auditVisible.value = true
   }
@@ -154,7 +155,14 @@ function handleAudit(row: any, status: number) {
 
 async function confirmAudit() {
   auditing.value = true
-  try { await doAudit(auditRow.value.id, 2, auditAmount.value); auditVisible.value = false } finally { auditing.value = false }
+  try {
+    await doAudit(auditRow.value.id, 2, auditAmount.value)
+    auditVisible.value = false
+  } catch (e: any) {
+    showError(e, '审核失败')
+  } finally {
+    auditing.value = false
+  }
 }
 
 async function doAudit(id: number, status: number, refundAmount: number) {

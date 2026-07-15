@@ -17,6 +17,7 @@ import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.modules.student.dto.ParentBindingVO;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
@@ -141,8 +142,19 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
+    public List<User> listParentOptions() {
+        List<User> parents = userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getRoleCode, "PARENT")
+                        .eq(User::getStatus, 1)
+                        .orderByAsc(User::getRealName));
+        parents.forEach(u -> u.setPassword(null));
+        return parents;
+    }
+
+    @Override
     public boolean bindParent(ParentStudent parentStudent) {
-        // 防重复绑定
+        // 防重复绑定（仅统计有效关系，已逻辑删除的历史行不算重复）
         Long count = parentStudentMapper.selectCount(
                 new LambdaQueryWrapper<ParentStudent>()
                         .eq(ParentStudent::getParentUserId, parentStudent.getParentUserId())
@@ -150,7 +162,58 @@ public class StudentServiceImpl implements StudentService {
         if (count > 0) {
             throw new BusinessException(409, "该家长已绑定此学员，请勿重复绑定");
         }
+        // 由于唯一键 uk_parent_student(parent_user_id, student_id) 对已软删行仍生效，
+        // 若历史上曾绑定又被逻辑删除，直接 insert 会触发唯一键冲突。
+        // 因此先物理清除该组合的所有历史行（含软删），再插入新行，保证可重复绑定/解绑。
+        if (parentStudentMapper.countIncludingDeleted(parentStudent.getStudentId(), parentStudent.getParentUserId()) > 0) {
+            parentStudentMapper.physicalDelete(parentStudent.getStudentId(), parentStudent.getParentUserId());
+        }
+        logOperation("学员管理", "绑定家长(studentId=" + parentStudent.getStudentId()
+                + ", parentUserId=" + parentStudent.getParentUserId() + ")");
         return parentStudentMapper.insert(parentStudent) > 0;
+    }
+
+    @Override
+    public List<ParentBindingVO> listBoundParents(Long studentId) {
+        List<ParentStudent> bindings = parentStudentMapper.selectList(
+                new LambdaQueryWrapper<ParentStudent>()
+                        .eq(ParentStudent::getStudentId, studentId)
+                        .orderByAsc(ParentStudent::getId));
+        if (bindings.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<Long> parentUserIds = bindings.stream()
+                .map(ParentStudent::getParentUserId).collect(Collectors.toSet());
+        Map<Long, User> userMap = userMapper.selectList(
+                        new LambdaQueryWrapper<User>().in(User::getId, parentUserIds))
+                .stream().collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+        List<ParentBindingVO> result = new ArrayList<>();
+        for (ParentStudent b : bindings) {
+            ParentBindingVO vo = new ParentBindingVO();
+            vo.setId(b.getId());
+            vo.setParentUserId(b.getParentUserId());
+            vo.setRelation(b.getRelation());
+            User u = userMap.get(b.getParentUserId());
+            if (u != null) {
+                vo.setRealName(u.getRealName());
+                vo.setUsername(u.getUsername());
+                vo.setPhone(u.getPhone());
+            } else {
+                vo.setRealName("用户" + b.getParentUserId());
+            }
+            result.add(vo);
+        }
+        return result;
+    }
+
+    @Override
+    public boolean unbindParent(Long studentId, Long parentUserId) {
+        int rows = parentStudentMapper.physicalDelete(studentId, parentUserId);
+        if (rows == 0) {
+            throw new BusinessException(404, "未找到该家长的绑定关系");
+        }
+        logOperation("学员管理", "解绑家长(studentId=" + studentId + ", parentUserId=" + parentUserId + ")");
+        return true;
     }
 
     @Override

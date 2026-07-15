@@ -2,15 +2,13 @@
   <view class="page">
     <!-- Top gradient header zone -->
     <view class="header-zone">
-      <!-- Custom status bar spacer -->
       <view class="status-bar" :style="{ height: statusBarHeight + 'px' }" />
 
-      <!-- Top navigation bar -->
       <view class="nav-bar">
-        <text class="nav-title">登录</text>
+        <text class="nav-back" @click="goBack">‹</text>
+        <text class="nav-title">家长注册</text>
       </view>
 
-      <!-- Brand area — lives inside the gradient -->
       <view class="brand-area">
         <view class="brand-logo">
           <view class="logo-inner">
@@ -24,7 +22,6 @@
 
     <!-- Warm cream body zone -->
     <view class="body-zone">
-      <!-- Login form card -->
       <view class="form-card">
         <view class="input-wrap">
           <view class="input-box">
@@ -32,12 +29,11 @@
             <input
               class="input-field"
               v-model="username"
-              placeholder="请输入用户名"
+              placeholder="用于登录的用户名"
               placeholder-class="ph"
             />
           </view>
         </view>
-
         <view class="divider" />
 
         <view class="input-wrap">
@@ -47,37 +43,65 @@
               class="input-field"
               v-model="password"
               type="password"
-              placeholder="请输入密码"
+              placeholder="6-32 位登录密码"
+              placeholder-class="ph"
+            />
+          </view>
+        </view>
+        <view class="divider" />
+
+        <view class="input-wrap">
+          <view class="input-box">
+            <text class="input-label">确认</text>
+            <input
+              class="input-field"
+              v-model="confirmPassword"
+              type="password"
+              placeholder="再次输入密码"
+              placeholder-class="ph"
+            />
+          </view>
+        </view>
+        <view class="divider" />
+
+        <view class="input-wrap">
+          <view class="input-box">
+            <text class="input-label">姓名</text>
+            <input
+              class="input-field"
+              v-model="realName"
+              placeholder="家长真实姓名"
+              placeholder-class="ph"
+            />
+          </view>
+        </view>
+        <view class="divider" />
+
+        <view class="input-wrap">
+          <view class="input-box">
+            <text class="input-label">手机</text>
+            <input
+              class="input-field"
+              v-model="phone"
+              type="number"
+              placeholder="11 位手机号"
               placeholder-class="ph"
             />
           </view>
         </view>
 
         <button
-          class="btn-login"
+          class="btn-register"
           :class="{ loading: loading }"
           :disabled="loading"
-          @click="handleLogin"
+          @click="handleRegister"
         >
-          {{ loading ? '登录中...' : '登 录' }}
+          {{ loading ? '注册中...' : '注 册' }}
         </button>
+
+        <view class="tip">注册即创建「学员家长」账号，可直接登录使用</view>
       </view>
 
-      <!-- Demo account hint -->
-      <view class="hint-area">
-        <text class="hint-label">演示账号：</text>
-        <text class="hint-value">parent1 / teacher1</text>
-        <text class="hint-label">密码：</text>
-        <text class="hint-value">123456</text>
-      </view>
-
-      <!-- Register entry -->
-      <view class="register-entry">
-        <text class="register-text">还没有账号？</text>
-        <text class="register-link" @click="goRegister">立即注册</text>
-      </view>
-
-      <!-- Bottom branding -->
       <view class="footer">
         <text class="footer-text">艺培通 EduAdmin</text>
       </view>
@@ -93,40 +117,61 @@ const statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0
 
 const username = ref('')
 const password = ref('')
+const confirmPassword = ref('')
+const realName = ref('')
+const phone = ref('')
 const loading = ref(false)
 
-function goRegister() {
-  uni.navigateTo({ url: '/pages/register/register' })
+function goBack() {
+  uni.navigateBack()
 }
 
-async function handleLogin() {
-  if (!username.value || !password.value) {
-    uni.showToast({ title: '请输入用户名和密码', icon: 'none' })
+async function handleRegister() {
+  if (!username.value || !password.value || !confirmPassword.value || !realName.value) {
+    uni.showToast({ title: '请填写账号、密码与姓名', icon: 'none' })
     return
   }
+  if (password.value !== confirmPassword.value) {
+    uni.showToast({ title: '两次输入的密码不一致', icon: 'none' })
+    return
+  }
+  if (password.value.length < 6) {
+    uni.showToast({ title: '密码至少 6 位', icon: 'none' })
+    return
+  }
+  if (phone.value && !/^1[3-9]\d{9}$/.test(phone.value)) {
+    uni.showToast({ title: '手机号格式不正确', icon: 'none' })
+    return
+  }
+
   loading.value = true
   try {
     const res = await api({
-      url: '/api/auth/login',
+      url: '/api/auth/register',
       method: 'POST',
-      data: { username: username.value, password: password.value }
+      data: {
+        username: username.value,
+        password: password.value,
+        realName: realName.value,
+        phone: phone.value || undefined
+      }
     })
+
     const { token, roleCode } = res.data
     uni.setStorageSync('token', token)
     uni.setStorageSync('userInfo', res.data)
 
-    // 家长登录后加载学员列表
+    // 家长注册后加载学员列表（与管理端登录逻辑一致）
     if (roleCode === 'PARENT') {
       await loadParentStudents()
     }
 
-    if (roleCode === 'PARENT' || roleCode === 'TEACHER') {
+    uni.showToast({ title: '注册成功', icon: 'success' })
+    setTimeout(() => {
       uni.switchTab({ url: '/pages/home/index' })
-    } else {
-      uni.showToast({ title: '请使用家长或教师账号登录移动端', icon: 'none' })
-    }
+    }, 600)
   } catch (e) {
-    uni.showToast({ title: (e && e.errMsg) || '网络错误', icon: 'none' })
+    uni.showToast({ title: (e && e.errMsg) || '注册失败', icon: 'none' })
   } finally {
     loading.value = false
   }
@@ -144,7 +189,6 @@ async function loadParentStudents() {
 </script>
 
 <style scoped>
-/* ── Page ── */
 .page {
   min-height: 100vh;
   background: #FAF8F5;
@@ -161,34 +205,36 @@ async function loadParentStudents() {
   flex-direction: column;
   align-items: center;
 }
-
-/* ── Status bar ── */
 .status-bar {
   width: 100%;
   background: transparent;
 }
-
-/* ── Nav bar ── */
 .nav-bar {
   width: 100%;
   height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   background: transparent;
+}
+.nav-back {
+  position: absolute;
+  left: 24rpx;
+  font-size: 52rpx;
+  color: #FFFFFF;
+  line-height: 1;
 }
 .nav-title {
   font-size: 34rpx;
   font-weight: 600;
   color: #FFFFFF;
 }
-
-/* ── Brand area ── */
 .brand-area {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 60rpx 0 80rpx;
+  padding: 40rpx 0 80rpx;
 }
 .brand-logo {
   width: 140rpx;
@@ -233,8 +279,6 @@ async function loadParentStudents() {
   flex-direction: column;
   margin-top: -40rpx;
 }
-
-/* ── Form card ── */
 .form-card {
   margin: 0 40rpx;
   background: #FFFFFF;
@@ -242,7 +286,6 @@ async function loadParentStudents() {
   padding: 0 44rpx 44rpx;
   box-shadow: 0 8rpx 32rpx rgba(45, 42, 38, 0.10);
 }
-
 .input-wrap {
   padding: 0;
 }
@@ -270,15 +313,12 @@ async function loadParentStudents() {
 .ph {
   color: #C4B8AE;
 }
-
 .divider {
   height: 1rpx;
   background: #EDE8E3;
   margin: 0;
 }
-
-/* ── Login button ── */
-.btn-login {
+.btn-register {
   width: 100%;
   height: 88rpx;
   line-height: 88rpx;
@@ -292,37 +332,21 @@ async function loadParentStudents() {
   letter-spacing: 8rpx;
   box-shadow: 0 4rpx 16rpx rgba(14, 116, 144, 0.25);
 }
-.btn-login::after {
+.btn-register::after {
   border: none;
 }
-.btn-login:active {
+.btn-register:active {
   opacity: 0.88;
 }
-.btn-login.loading {
+.btn-register.loading {
   opacity: 0.6;
 }
-
-/* ── Hint area ── */
-.hint-area {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  padding: 48rpx 40rpx 0;
-  gap: 4rpx;
-}
-.hint-label {
+.tip {
+  margin-top: 24rpx;
+  text-align: center;
   font-size: 24rpx;
   color: #A89E94;
 }
-.hint-value {
-  font-size: 24rpx;
-  color: #6B5F54;
-  margin-right: 16rpx;
-}
-
-/* ── Footer ── */
 .footer {
   flex: 1;
   display: flex;
@@ -334,24 +358,5 @@ async function loadParentStudents() {
   font-size: 20rpx;
   color: #C4B8AE;
   letter-spacing: 2rpx;
-}
-
-/* ── Register entry ── */
-.register-entry {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  margin-top: 32rpx;
-  gap: 8rpx;
-}
-.register-text {
-  font-size: 26rpx;
-  color: #A89E94;
-}
-.register-link {
-  font-size: 26rpx;
-  color: #0E7490;
-  font-weight: 600;
 }
 </style>

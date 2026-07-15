@@ -67,14 +67,14 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function setLogin(tokenValue: string, info: UserInfo) {
+  function setLogin(tokenValue: string, info: UserInfo, userPermissions: string[] = []) {
     token.value = tokenValue
     userInfo.value = info
     roleCode.value = info.roleCode
+    permissions.value = new Set(userPermissions)
     localStorage.setItem('token', tokenValue)
     localStorage.setItem('userInfo', JSON.stringify(info))
-    // 登录后异步拉取权限，不阻塞导航
-    fetchPermissions()
+    localStorage.setItem('permissions', JSON.stringify(userPermissions))
   }
 
   function logout() {

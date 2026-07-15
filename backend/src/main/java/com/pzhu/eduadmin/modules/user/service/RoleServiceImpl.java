@@ -136,9 +136,8 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public void updateRolePermissions(String roleCode, List<String> permissionCodes) {
-        // 先删除旧权限
-        rolePermissionMapper.delete(new LambdaQueryWrapper<RolePermission>()
-                .eq(RolePermission::getRoleCode, roleCode));
+        // 先物理删除旧权限（绕过 @TableLogic，避免逻辑删除行持续占用唯一键导致重建时 409）
+        rolePermissionMapper.realDeleteByRoleCode(roleCode);
         // 再批量插入新权限
         for (String code : permissionCodes) {
             RolePermission rp = new RolePermission();

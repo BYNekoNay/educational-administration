@@ -58,6 +58,7 @@ class FinanceServiceMockTest {
         when(refundMapper.selectById(1L)).thenReturn(record);
         when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2400"));
         when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
+        when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(1L);
 
         assertThatThrownBy(() ->
                 financeService.auditRefund(1L, 2, 4L, new BigDecimal("99999")))

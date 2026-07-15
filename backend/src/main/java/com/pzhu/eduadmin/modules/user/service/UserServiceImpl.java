@@ -12,6 +12,7 @@ import com.pzhu.eduadmin.modules.user.dto.UpdateUserRequest;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.security.LoginUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -108,7 +109,8 @@ public class UserServiceImpl implements UserService {
 
     private void logOperation(String module, String operation) {
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        LoginUser operator = CurrentUserHolder.get();
+        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
         log.setIp("0.0.0.0");
