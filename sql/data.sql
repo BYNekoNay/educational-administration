@@ -86,12 +86,12 @@ INSERT INTO `user` (id, username, password, real_name, phone, role_code, status)
 (14, 'finance2', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '财务小周',      '13800000014', 'FINANCE', 1),
 (15, 'finance3', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '财务小吴',      '13800000015', 'FINANCE', 1),
 -- 授课教师 (6人)
-(4, 'teacher1', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '张老师(美术)',   '13800000004', 'TEACHER', 1),
-(5, 'teacher2', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '李老师(钢琴)',   '13800000005', 'TEACHER', 1),
-(6, 'teacher3', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '王老师(舞蹈)',   '13800000006', 'TEACHER', 1),
-(16, 'teacher4', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '周老师(书法)',   '13800000016', 'TEACHER', 1),
-(17, 'teacher5', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '孙老师(声乐)',   '13800000017', 'TEACHER', 1),
-(18, 'teacher6', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '郑老师(主持)',   '13800000018', 'TEACHER', 1),
+(4, 'teacher1', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '张老师',   '13800000004', 'TEACHER', 1),
+(5, 'teacher2', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '李老师',   '13800000005', 'TEACHER', 1),
+(6, 'teacher3', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '王老师',   '13800000006', 'TEACHER', 1),
+(16, 'teacher4', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '周老师',   '13800000016', 'TEACHER', 1),
+(17, 'teacher5', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '孙老师',   '13800000017', 'TEACHER', 1),
+(18, 'teacher6', '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '郑老师',   '13800000018', 'TEACHER', 1),
 -- 学员家长 (7人)
 (7, 'parent1',  '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '刘家长',         '13900000001', 'PARENT', 1),
 (8, 'parent2',  '$2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu', '陈家长',         '13900000002', 'PARENT', 1),
@@ -523,6 +523,23 @@ INSERT INTO `lesson_flow` (account_id, student_id, lesson_id, source_type, sourc
 INSERT INTO `lesson_flow` (account_id, student_id, lesson_id, source_type, source_id, change_amount, change_type, before_balance, after_balance, remark) VALUES
 (15, 4, 11, 3, 11, -1, 2, 24, 23, '考勤扣减-素描K班第1次(加报)'),
 (15, 4, 26, 3, 26, -1, 2, 23, 22, '考勤扣减-素描K班第2次(加报)');
+
+-- ------------------------------------------------------------
+-- 16.5. 教师可授课程（teacher_course，与 salary_rule 独立）
+-- ------------------------------------------------------------
+INSERT INTO teacher_course (user_id, course_id) VALUES
+-- 张老师(4) - 美术类
+(4, 1), (4, 5), (4, 11),
+-- 李老师(5) - 钢琴类
+(5, 2), (5, 6),
+-- 王老师(6) - 舞蹈类
+(6, 3), (6, 7),
+-- 周老师(16) - 书法类
+(16, 4), (16, 8),
+-- 孙老师(17) - 声乐类
+(17, 9), (17, 12),
+-- 郑老师(18) - 主持/朗诵/声乐
+(18, 10), (18, 12), (18, 9);
 
 -- ------------------------------------------------------------
 -- 17. 薪资规则（18条，6位教师×3门课程）

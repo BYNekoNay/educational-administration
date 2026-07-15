@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -168,9 +169,20 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
     /** 填充请假记录的关联名称 */
     private void populateNames(List<LeaveRequest> list) {
         if (list == null || list.isEmpty()) return;
-        Set<Long> studentIds = list.stream().map(LeaveRequest::getStudentId).collect(Collectors.toSet());
-        Map<Long, String> studentNames = studentMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
+        Set<Long> studentIds = list.stream().map(LeaveRequest::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        // 历史请假可能引用已软删学员，绕过 @TableLogic 取名
+        Map<Long, String> studentNames;
+        if (studentIds.isEmpty()) {
+            studentNames = Collections.emptyMap();
+        } else {
+            String idList = studentIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(idList);
+            studentNames = raw.stream()
+                    .collect(Collectors.toMap(
+                            m -> ((Number) m.get("id")).longValue(),
+                            m -> (String) m.get("name"),
+                            (a, b) -> a));
+        }
         for (LeaveRequest lr : list) {
             lr.setStudentName(studentNames.getOrDefault(lr.getStudentId(), ""));
         }

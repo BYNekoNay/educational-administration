@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -74,12 +75,10 @@ public class FinanceServiceImpl implements FinanceService {
 
     private void populatePaymentNames(List<PaymentRecord> list) {
         if (list.isEmpty()) return;
-        Set<Long> studentIds = list.stream().map(PaymentRecord::getStudentId).collect(Collectors.toSet());
+        Set<Long> studentIds = list.stream().map(PaymentRecord::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Set<Long> courseIds = list.stream().map(PaymentRecord::getCourseId).collect(Collectors.toSet());
-        Map<Long, String> studentNames = studentMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
-        Map<Long, String> courseNames = courseMapper.selectBatchIds(courseIds).stream()
-                .collect(Collectors.toMap(Course::getId, Course::getName));
+        Map<Long, String> studentNames = loadStudentNamesIncludeDeleted(studentIds);
+        Map<Long, String> courseNames = loadCourseNamesIncludeDeleted(courseIds);
         for (PaymentRecord p : list) {
             p.setStudentName(studentNames.getOrDefault(p.getStudentId(), ""));
             p.setCourseName(courseNames.getOrDefault(p.getCourseId(), ""));
@@ -164,10 +163,9 @@ public class FinanceServiceImpl implements FinanceService {
 
     private void populateRefundNames(List<RefundRecord> list) {
         if (list.isEmpty()) return;
-        Set<Long> studentIds = list.stream().map(RefundRecord::getStudentId).collect(Collectors.toSet());
-        Set<Long> applicantIds = list.stream().map(RefundRecord::getApplicantId).collect(Collectors.toSet());
-        Map<Long, String> studentNames = studentMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
+        Set<Long> studentIds = list.stream().map(RefundRecord::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> applicantIds = list.stream().map(RefundRecord::getApplicantId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> studentNames = loadStudentNamesIncludeDeleted(studentIds);
         Map<Long, String> userNames = userMapper.selectBatchIds(applicantIds).stream()
                 .collect(Collectors.toMap(User::getId, User::getRealName));
         for (RefundRecord r : list) {
@@ -231,7 +229,7 @@ public class FinanceServiceImpl implements FinanceService {
                     .eq(LessonAccount::getStudentId, record.getStudentId())
                     .eq(LessonAccount::getCourseId, courseId));
             if (account != null) {
-                Course course = courseMapper.selectById(account.getCourseId());
+                Course course = courseMapper.selectByIdIncludeDeleted(account.getCourseId());
                 if (course != null && course.getTotalLessons() != null && course.getTotalLessons() > 0
                         && course.getPrice() != null) {
                     BigDecimal pricePerLesson = course.getPrice()
@@ -306,12 +304,10 @@ public class FinanceServiceImpl implements FinanceService {
 
     private void populateAccountNames(List<LessonAccount> list) {
         if (list.isEmpty()) return;
-        Set<Long> studentIds = list.stream().map(LessonAccount::getStudentId).collect(Collectors.toSet());
+        Set<Long> studentIds = list.stream().map(LessonAccount::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Set<Long> courseIds = list.stream().map(LessonAccount::getCourseId).collect(Collectors.toSet());
-        Map<Long, String> studentNames = studentMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
-        Map<Long, String> courseNames = courseMapper.selectBatchIds(courseIds).stream()
-                .collect(Collectors.toMap(Course::getId, Course::getName));
+        Map<Long, String> studentNames = loadStudentNamesIncludeDeleted(studentIds);
+        Map<Long, String> courseNames = loadCourseNamesIncludeDeleted(courseIds);
         for (LessonAccount a : list) {
             a.setStudentName(studentNames.getOrDefault(a.getStudentId(), ""));
             a.setCourseName(courseNames.getOrDefault(a.getCourseId(), ""));
@@ -342,12 +338,41 @@ public class FinanceServiceImpl implements FinanceService {
 
     private void populateFlowNames(List<LessonFlow> list) {
         if (list.isEmpty()) return;
-        Set<Long> studentIds = list.stream().map(LessonFlow::getStudentId).collect(Collectors.toSet());
-        Map<Long, String> studentNames = studentMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
+        Set<Long> studentIds = list.stream().map(LessonFlow::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (studentIds.isEmpty()) return;
+        Map<Long, String> studentNames = loadStudentNamesIncludeDeleted(studentIds);
         for (LessonFlow f : list) {
             f.setStudentName(studentNames.getOrDefault(f.getStudentId(), ""));
         }
+    }
+
+    /**
+     * 加载学员姓名映射（绕过 @TableLogic，包含已逻辑删除的学员）。
+     *
+     * <p>用于历史流水/退费/收费/课时账户等可能引用已删学员的页面。
+     * 历史记录必须保留当时姓名，不能因学员被软删而消失。</p>
+     */
+    private Map<Long, String> loadStudentNamesIncludeDeleted(Set<Long> studentIds) {
+        if (studentIds == null || studentIds.isEmpty()) return Collections.emptyMap();
+        String idList = studentIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(idList);
+        return raw.stream()
+                .collect(Collectors.toMap(
+                        m -> ((Number) m.get("id")).longValue(),
+                        m -> (String) m.get("name"),
+                        (a, b) -> a));
+    }
+
+    /** 绕过 @TableLogic 加载课程名映射（含已软删课程） */
+    private Map<Long, String> loadCourseNamesIncludeDeleted(Set<Long> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) return Collections.emptyMap();
+        String idList = courseIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        List<Map<String, Object>> raw = courseMapper.selectNamesByIdsIncludeDeleted(idList);
+        return raw.stream()
+                .collect(Collectors.toMap(
+                        m -> ((Number) m.get("id")).longValue(),
+                        m -> (String) m.get("name"),
+                        (a, b) -> a));
     }
 
     @Override

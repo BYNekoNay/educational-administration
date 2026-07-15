@@ -1,9 +1,11 @@
 package com.pzhu.eduadmin.modules.user.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.pzhu.eduadmin.modules.course.entity.Course;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @TableName("user")
@@ -34,4 +36,14 @@ public class User {
 
     @TableLogic
     private Integer isDeleted;
+
+    // ---- 关联数据（不持久化） ----
+
+    /** 教学特长课程ID列表（仅 TEACHER 角色使用） */
+    @TableField(exist = false)
+    private List<Long> specialtyCourseIds;
+
+    /** 教学特长课程对象列表（仅 TEACHER 角色使用） */
+    @TableField(exist = false)
+    private List<Course> specialties;
 }

@@ -33,7 +33,13 @@
           <el-form :model="ruleForm" label-width="90px">
             <el-form-item label="教师">
               <el-select v-model="ruleForm.teacherId" placeholder="请选择教师" filterable style="width:100%">
-                <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id" />
+                <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id">
+                  <span>{{ t.realName }}</span>
+                  <el-tag v-for="sp in (t.specialties || [])" :key="sp.id"
+                          size="small" type="info" style="margin-left:4px;font-size:10px">
+                    {{ sp.name }}
+                  </el-tag>
+                </el-option>
               </el-select>
             </el-form-item>
             <el-form-item label="课程">
@@ -54,7 +60,13 @@
       <el-tab-pane label="薪资列表" name="salaries">
         <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center">
           <el-select v-model="calcTeacherId" placeholder="选择教师" filterable style="width: 140px">
-            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id" />
+            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id">
+              <span>{{ t.realName }}</span>
+              <el-tag v-for="sp in (t.specialties || [])" :key="sp.id"
+                      size="small" type="info" style="margin-left:4px;font-size:10px">
+                {{ sp.name }}
+              </el-tag>
+            </el-option>
           </el-select>
           <el-input v-model="calcMonth" placeholder="月份(YYYY-MM)" style="width: 140px" />
           <el-input-number v-model="calcBonus" :min="0" :precision="2" placeholder="奖金" style="width: 100px" />
@@ -144,10 +156,10 @@ async function loadOptions() {
 
 async function loadRules() {
   rulesLoading.value = true
-  const res = await salaryApi.rules({ pageNum: rulesPage.value, pageSize: rulesPageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+  const res = await salaryApi.rules({ pageNum: rulesPage.value, pageSize: rulesPageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   rules.value = res.data.records; rulesTotal.value = res.data.total; rulesLoading.value = false
 }
-function handleSearch() { rulesPage.value = 1; salariesPage.value = 1; activeTab.value === 'rules' ? loadRules() : loadSalaries() }
+function handleSearch() { rulesPage.value = 1; salariesPage.value = 1; loadRules(); loadSalaries() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; rulesPage.value = 1; salariesPage.value = 1; activeTab.value === 'rules' ? loadRules() : loadSalaries() }
 function handleSortChange({ prop, order }: any, tab: string) {
   sortField.value = order ? prop : ''
@@ -185,7 +197,7 @@ function statusTag(s: number) { const map: Record<number, string> = { 1: 'primar
 
 async function loadSalaries() {
   salariesLoading.value = true
-  const res = await salaryApi.list({ pageNum: salariesPage.value, pageSize: salariesPageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+  const res = await salaryApi.list({ pageNum: salariesPage.value, pageSize: salariesPageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   salaries.value = res.data.records; salariesTotal.value = res.data.total; salariesLoading.value = false
 }
 

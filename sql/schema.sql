@@ -363,6 +363,19 @@ CREATE TABLE `refund_record` (
   INDEX idx_enrollment_id (enrollment_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退费记录';
 
+DROP TABLE IF EXISTS `teacher_course`;
+CREATE TABLE `teacher_course` (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL COMMENT '教师用户ID',
+  course_id BIGINT NOT NULL COMMENT '可授课程ID',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  is_deleted TINYINT NOT NULL DEFAULT 0,
+  UNIQUE KEY uk_user_course (user_id, course_id),
+  INDEX idx_user_id (user_id),
+  INDEX idx_course_id (course_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='教师可授课程关联表';
+
 DROP TABLE IF EXISTS `salary_rule`;
 CREATE TABLE `salary_rule` (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

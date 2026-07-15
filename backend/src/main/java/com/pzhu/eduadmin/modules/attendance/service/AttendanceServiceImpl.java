@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -64,17 +65,34 @@ public class AttendanceServiceImpl implements AttendanceService {
     /** 填充考勤记录的关联名称 */
     private void populateAttendanceNames(List<Attendance> list) {
         if (list.isEmpty()) return;
-        Set<Long> studentIds = list.stream().map(Attendance::getStudentId).collect(Collectors.toSet());
+        Set<Long> studentIds = list.stream().map(Attendance::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Set<Long> lessonIds = list.stream().map(Attendance::getLessonId).collect(Collectors.toSet());
 
-        Map<Long, String> studentNames = studentMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
+        // 历史考勤可能引用已软删学员，绕过 @TableLogic 取名
+        Map<Long, String> studentNames = loadStudentNamesIncludeDeleted(studentIds);
 
-        // 获取课次信息：课次 -> 班级 -> 班级名称 + 日期 + 时间
-        List<ScheduleLesson> lessons = scheduleLessonMapper.selectBatchIds(lessonIds);
+        // 获取课次信息：绕过 @TableLogic（课次删后仍需显示日期+班级）
+        List<ScheduleLesson> lessons;
+        if (lessonIds.isEmpty()) {
+            lessons = Collections.emptyList();
+        } else {
+            String lessonIdList = lessonIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            lessons = scheduleLessonMapper.selectByIdsIncludeDeleted(lessonIdList);
+        }
         Set<Long> classIds = lessons.stream().map(ScheduleLesson::getClassId).collect(Collectors.toSet());
-        Map<Long, String> classNames = classGroupMapper.selectBatchIds(classIds).stream()
-                .collect(Collectors.toMap(ClassGroup::getId, ClassGroup::getClassName));
+        // 绕过 @TableLogic 取班级名（班级删后仍需显示）
+        Map<Long, String> classNames;
+        if (classIds.isEmpty()) {
+            classNames = Collections.emptyMap();
+        } else {
+            String classIdList = classIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            List<Map<String, Object>> rawClass = classGroupMapper.selectClassNamesByIdsIncludeDeleted(classIdList);
+            classNames = rawClass.stream()
+                    .collect(Collectors.toMap(
+                            m -> ((Number) m.get("id")).longValue(),
+                            m -> (String) m.get("class_name"),
+                            (a, b) -> a));
+        }
 
         Map<Long, ScheduleLesson> lessonMap = lessons.stream()
                 .collect(Collectors.toMap(ScheduleLesson::getId, sl -> sl));
@@ -89,6 +107,18 @@ public class AttendanceServiceImpl implements AttendanceService {
                 a.setLessonInfo("");
             }
         }
+    }
+
+    /** 绕过 @TableLogic 加载学员姓名（包含已软删学员） */
+    private Map<Long, String> loadStudentNamesIncludeDeleted(Set<Long> studentIds) {
+        if (studentIds == null || studentIds.isEmpty()) return Collections.emptyMap();
+        String idList = studentIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(idList);
+        return raw.stream()
+                .collect(Collectors.toMap(
+                        m -> ((Number) m.get("id")).longValue(),
+                        m -> (String) m.get("name"),
+                        (a, b) -> a));
     }
 
     @Override

@@ -3,6 +3,8 @@ package com.pzhu.eduadmin.modules.user.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class CreateUserRequest {
 
@@ -19,4 +21,7 @@ public class CreateUserRequest {
 
     @NotBlank(message = "角色不能为空")
     private String roleCode;
+
+    /** 教学特长课程ID列表（仅当 roleCode=TEACHER 时有效） */
+    private List<Long> specialtyCourseIds;
 }

@@ -116,7 +116,7 @@ public class FinanceController {
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<SalaryRule>> listSalaryRules(PageQuery query) {
         return Result.success(PageResult.of(salaryService.pageSalaryRules((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getSortField(), query.getSortOrder())));
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping("/salary-rules")

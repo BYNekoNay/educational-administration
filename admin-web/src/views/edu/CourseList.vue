@@ -40,7 +40,25 @@
     <el-dialog :title="isEdit ? '编辑课程' : '新增课程'" v-model="dialogVisible" width="500px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="课程名称"><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="分类"><el-input v-model="form.category" /></el-form-item>
+        <el-form-item label="分类">
+          <el-select
+            v-model="form.category"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="输入关键字搜索已有分类，不匹配则直接新增"
+            style="width:100%"
+            :no-data-text="''"
+          >
+            <el-option
+              v-for="c in categoryOptions"
+              :key="c"
+              :label="c"
+              :value="c"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="总课时"><el-input-number v-model="form.totalLessons" :min="1" /></el-form-item>
         <el-form-item label="时长(分钟)"><el-input-number v-model="form.lessonDuration" :min="1" /></el-form-item>
         <el-form-item label="价格"><el-input-number v-model="form.price" :min="0" :precision="2" /></el-form-item>
@@ -71,6 +89,8 @@ const pageSize = ref(10)
 const total = ref(0)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
+// 已有的课程分类（去重），用于"分类"下拉的搜索+新增
+const categoryOptions = ref<string[]>([])
 const form = reactive<any>({ name: '', category: '', totalLessons: 1, lessonDuration: 45, price: 0, status: 1 })
 
 async function loadData() {
@@ -93,7 +113,20 @@ function openDialog(row: any) {
   isEdit.value = !!row
   if (row) Object.assign(form, row)
   else Object.assign(form, { name: '', category: '', totalLessons: 1, lessonDuration: 45, price: 0, status: 1 })
+  loadCategoryOptions()
   dialogVisible.value = true
+}
+
+/** 拉取全量课程，提取去重的分类列表 */
+async function loadCategoryOptions() {
+  try {
+    const res = await courseApi.list({ pageNum: 1, pageSize: 1000 })
+    const set = new Set<string>()
+    ;(res.data?.records || []).forEach((c: any) => {
+      if (c.category) set.add(c.category)
+    })
+    categoryOptions.value = Array.from(set).sort()
+  } catch (e) { /* ignore */ }
 }
 
 async function handleSave() {

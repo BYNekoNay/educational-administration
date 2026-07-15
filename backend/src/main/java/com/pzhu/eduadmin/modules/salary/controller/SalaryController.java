@@ -28,7 +28,7 @@ public class SalaryController {
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<SalaryRule>> listRules(PageQuery query) {
         return Result.success(PageResult.of(salaryService.pageSalaryRules((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getSortField(), query.getSortOrder())));
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping("/rules")
@@ -56,7 +56,7 @@ public class SalaryController {
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<TeacherSalary>> listSalaries(PageQuery query) {
         return Result.success(PageResult.of(salaryService.pageTeacherSalaries((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getSortField(), query.getSortOrder())));
+                query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping({"/calculate", ""})

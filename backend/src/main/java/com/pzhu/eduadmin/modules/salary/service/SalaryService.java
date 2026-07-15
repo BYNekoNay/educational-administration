@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 public interface SalaryService {
 
     // 薪资规则
-    Page<SalaryRule> pageSalaryRules(int pageNum, int pageSize, String sortField, String sortOrder);
+    Page<SalaryRule> pageSalaryRules(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     SalaryRule createSalaryRule(SalaryRule rule);
 
@@ -19,7 +19,7 @@ public interface SalaryService {
     void deleteSalaryRule(Long id);
 
     // 薪资核算与管理
-    Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String sortField, String sortOrder);
+    Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
 
     TeacherSalary calculateSalary(String salaryMonth, Long teacherId, BigDecimal bonusAmount);
 

@@ -51,7 +51,13 @@
         </el-form-item>
         <el-form-item label="教师">
           <el-select v-model="form.teacherId" placeholder="请选择教师" filterable style="width:100%">
-            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id" />
+            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id">
+              <span>{{ t.realName }}</span>
+              <el-tag v-for="sp in (t.specialties || [])" :key="sp.id"
+                      size="small" type="info" style="margin-left:4px;font-size:10px">
+                {{ sp.name }}
+              </el-tag>
+            </el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="教室">

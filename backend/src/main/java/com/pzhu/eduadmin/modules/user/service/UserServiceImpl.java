@@ -5,20 +5,26 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
+import com.pzhu.eduadmin.modules.course.entity.Course;
+import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.UpdateUserRequest;
+import com.pzhu.eduadmin.modules.user.entity.TeacherCourse;
 import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.TeacherCourseMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
 import lombok.RequiredArgsConstructor;
-import org.springframework.util.StringUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +32,8 @@ public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
     private final OperationLogMapper operationLogMapper;
+    private final TeacherCourseMapper teacherCourseMapper;
+    private final CourseMapper courseMapper;
 
     private static final Map<String, SFunction<User, ?>> USER_SORT_MAP = Map.of(
             "id", User::getId,
@@ -39,7 +47,14 @@ public class UserServiceImpl implements UserService {
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
         QueryHelper.applyKeyword(wrapper, keyword, User::getUsername, User::getRealName, User::getPhone);
         QueryHelper.applySort(wrapper, sortField, sortOrder, USER_SORT_MAP, () -> wrapper.orderByDesc(User::getCreateTime));
-        return userMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        Page<User> page = userMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        // 为教师填充教学特长
+        page.getRecords().forEach(user -> {
+            if ("TEACHER".equals(user.getRoleCode())) {
+                fillUserSpecialties(user);
+            }
+        });
+        return page;
     }
 
     @Override
@@ -48,6 +63,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public User createUser(CreateUserRequest request) {
         if (userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, request.getUsername())) != null) {
@@ -62,6 +78,12 @@ public class UserServiceImpl implements UserService {
         user.setStatus(1);
         userMapper.insert(user);
 
+        // 若角色为教师，保存教学特长
+        if ("TEACHER".equals(request.getRoleCode())) {
+            saveSpecialties(user.getId(), request.getSpecialtyCourseIds());
+            fillUserSpecialties(user);
+        }
+
         logOperation("用户管理", "新增用户(username=" + user.getUsername() + ")");
 
         user.setPassword(null);
@@ -69,6 +91,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public User updateUser(Long id, UpdateUserRequest request) {
         User user = userMapper.selectById(id);
         if (user == null) {
@@ -79,6 +102,12 @@ public class UserServiceImpl implements UserService {
         if (request.getPhone() != null) user.setPhone(request.getPhone());
         if (request.getRoleCode() != null) user.setRoleCode(request.getRoleCode());
         userMapper.updateById(user);
+
+        // 若角色为教师，处理教学特长（全量替换）
+        if ("TEACHER".equals(user.getRoleCode()) && request.getSpecialtyCourseIds() != null) {
+            saveSpecialties(id, request.getSpecialtyCourseIds());
+        }
+        fillUserSpecialties(user);
 
         logOperation("用户管理", "编辑用户(id=" + id + ")");
 
@@ -115,5 +144,73 @@ public class UserServiceImpl implements UserService {
         log.setOperation(operation);
         log.setIp("0.0.0.0");
         operationLogMapper.insert(log);
+    }
+
+    // ---- 教师教学特长管理 ----
+
+    /** 保存教师特长课程（全量替换：先清后插） */
+    private void saveSpecialties(Long userId, List<Long> courseIds) {
+        teacherCourseMapper.delete(
+                new LambdaQueryWrapper<TeacherCourse>().eq(TeacherCourse::getUserId, userId));
+        if (courseIds != null && !courseIds.isEmpty()) {
+            for (Long cid : courseIds) {
+                TeacherCourse tc = new TeacherCourse();
+                tc.setUserId(userId);
+                tc.setCourseId(cid);
+                teacherCourseMapper.insert(tc);
+            }
+        }
+    }
+
+    /** 填充单个教师的 specialties 字段 */
+    private void fillUserSpecialties(User user) {
+        if (!"TEACHER".equals(user.getRoleCode())) return;
+        List<Long> courseIds = teacherCourseMapper.selectList(
+                        new LambdaQueryWrapper<TeacherCourse>().eq(TeacherCourse::getUserId, user.getId()))
+                .stream().map(TeacherCourse::getCourseId).collect(Collectors.toList());
+        user.setSpecialtyCourseIds(courseIds);
+        if (!courseIds.isEmpty()) {
+            List<Course> courses = courseMapper.selectBatchIds(courseIds);
+            user.setSpecialties(courses);
+        } else {
+            user.setSpecialties(Collections.emptyList());
+        }
+    }
+
+    @Override
+    public List<Long> getSpecialtyCourseIds(Long teacherId) {
+        return teacherCourseMapper.selectList(
+                        new LambdaQueryWrapper<TeacherCourse>().eq(TeacherCourse::getUserId, teacherId))
+                .stream().map(TeacherCourse::getCourseId).collect(Collectors.toList());
+    }
+
+    @Override
+    public void fillTeachersSpecialties(List<User> teachers) {
+        if (teachers == null || teachers.isEmpty()) return;
+        Set<Long> userIds = teachers.stream().map(User::getId).collect(Collectors.toSet());
+
+        // 批量加载所有 teacher_course 关联
+        List<TeacherCourse> allMappings = teacherCourseMapper.selectList(
+                new LambdaQueryWrapper<TeacherCourse>().in(TeacherCourse::getUserId, userIds));
+
+        Map<Long, List<Long>> teacherCourseMap = allMappings.stream()
+                .collect(Collectors.groupingBy(TeacherCourse::getUserId,
+                        Collectors.mapping(TeacherCourse::getCourseId, Collectors.toList())));
+
+        // 加载所有引用的课程
+        Set<Long> allCourseIds = allMappings.stream().map(TeacherCourse::getCourseId).collect(Collectors.toSet());
+        Map<Long, Course> courseMap;
+        if (!allCourseIds.isEmpty()) {
+            courseMap = courseMapper.selectBatchIds(allCourseIds).stream()
+                    .collect(Collectors.toMap(Course::getId, c -> c, (a, b) -> a));
+        } else {
+            courseMap = Collections.emptyMap();
+        }
+
+        for (User teacher : teachers) {
+            List<Long> courseIds = teacherCourseMap.getOrDefault(teacher.getId(), Collections.emptyList());
+            teacher.setSpecialtyCourseIds(courseIds);
+            teacher.setSpecialties(courseIds.stream().map(courseMap::get).filter(Objects::nonNull).collect(Collectors.toList()));
+        }
     }
 }

@@ -24,6 +24,17 @@
       <el-table-column prop="id" label="ID" width="70" sortable="custom" />
       <el-table-column prop="username" label="用户名" min-width="120" sortable="custom" />
       <el-table-column prop="realName" label="姓名" min-width="100" sortable="custom" />
+      <el-table-column label="教学特长" min-width="160">
+        <template #default="{ row }">
+          <template v-if="row.roleCode === 'TEACHER' && row.specialties && row.specialties.length">
+            <el-tag v-for="sp in row.specialties" :key="sp.id"
+                    size="small" type="info" style="margin-right:4px;margin-bottom:2px">
+              {{ sp.name }}
+            </el-tag>
+          </template>
+          <span v-else style="color:#909399">-</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="phone" label="手机号" min-width="120">
         <template #default="{ row }">{{ row.phone || '-' }}</template>
       </el-table-column>
@@ -151,6 +162,23 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="form.roleCode === 'TEACHER'" label="可授课程">
+          <el-select
+            v-model="form.specialtyCourseIds"
+            multiple
+            filterable
+            placeholder="请选择可授课程（可多选）"
+            style="width: 100%"
+            :loading="courseLoading"
+          >
+            <el-option
+              v-for="c in courseOptions"
+              :key="c.id"
+              :label="c.name"
+              :value="c.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -167,6 +195,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { userApi } from '@/api/auth'
+import { courseApi } from '@/api/edu'
 import { showError } from '@/utils/error'
 
 // ====== 角色映射 ======
@@ -267,7 +296,22 @@ const form = reactive({
   realName: '',
   phone: '',
   roleCode: '',
+  specialtyCourseIds: [] as number[],
 })
+
+// 课程选项（角色为教师时使用）
+const courseOptions = ref<any[]>([])
+const courseLoading = ref(false)
+
+async function loadCourseOptions() {
+  if (courseOptions.value.length > 0) return
+  courseLoading.value = true
+  try {
+    const res = await courseApi.list({ pageSize: 200 })
+    courseOptions.value = res.data?.records || []
+  } catch { /* ignore */ }
+  finally { courseLoading.value = false }
+}
 
 const formRules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -282,6 +326,7 @@ function resetForm() {
   form.realName = ''
   form.phone = ''
   form.roleCode = ''
+  form.specialtyCourseIds = []
   editUserId.value = null
   formRef.value?.clearValidate()
 }
@@ -289,6 +334,7 @@ function resetForm() {
 function openCreateDialog() {
   dialogMode.value = 'create'
   resetForm()
+  loadCourseOptions()
   dialogVisible.value = true
 }
 
@@ -300,6 +346,8 @@ function openEditDialog(row: any) {
   form.realName = row.realName || ''
   form.phone = row.phone || ''
   form.roleCode = row.roleCode
+  form.specialtyCourseIds = row.specialtyCourseIds || []
+  loadCourseOptions()
   dialogVisible.value = true
 }
 
@@ -316,6 +364,7 @@ async function handleSubmit() {
         realName: form.realName,
         phone: form.phone || undefined,
         roleCode: form.roleCode,
+        specialtyCourseIds: form.roleCode === 'TEACHER' ? form.specialtyCourseIds : undefined,
       })
       ElMessage.success('新增成功')
     } else {
@@ -324,6 +373,7 @@ async function handleSubmit() {
         realName: form.realName,
         phone: form.phone || undefined,
         roleCode: form.roleCode,
+        specialtyCourseIds: form.roleCode === 'TEACHER' ? form.specialtyCourseIds : undefined,
       })
       ElMessage.success('修改成功')
     }

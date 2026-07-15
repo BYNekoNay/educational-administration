@@ -26,11 +26,13 @@ import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -59,12 +61,20 @@ public class SalaryServiceImpl implements SalaryService {
     );
 
     @Override
-    public Page<SalaryRule> pageSalaryRules(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<SalaryRule> pageSalaryRules(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
         LambdaQueryWrapper<SalaryRule> wrapper = new LambdaQueryWrapper<>();
+        applyTeacherKeywordFilter(wrapper, keyword);
         QueryHelper.applySort(wrapper, sortField, sortOrder, RULE_SORT_MAP, () -> wrapper.orderByDesc(SalaryRule::getId));
         Page<SalaryRule> page = salaryRuleMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateSalaryRuleNames(page.getRecords());
         return page;
+    }
+
+    private void applyTeacherKeywordFilter(LambdaQueryWrapper<SalaryRule> wrapper, String keyword) {
+        Set<Long> teacherIds = findTeacherIdsByName(keyword);
+        if (teacherIds != null) {
+            wrapper.in(SalaryRule::getTeacherId, teacherIds);
+        }
     }
 
     private void populateSalaryRuleNames(List<SalaryRule> list) {
@@ -103,12 +113,28 @@ public class SalaryServiceImpl implements SalaryService {
     }
 
     @Override
-    public Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
         LambdaQueryWrapper<TeacherSalary> wrapper = new LambdaQueryWrapper<>();
+        Set<Long> teacherIds = findTeacherIdsByName(keyword);
+        if (teacherIds != null) {
+            wrapper.in(TeacherSalary::getTeacherId, teacherIds);
+        }
         QueryHelper.applySort(wrapper, sortField, sortOrder, SALARY_SORT_MAP, () -> wrapper.orderByDesc(TeacherSalary::getSalaryMonth));
         Page<TeacherSalary> page = teacherSalaryMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateTeacherSalaryNames(page.getRecords());
         return page;
+    }
+
+    /**
+     * 按教师姓名模糊匹配用户表，返回匹配的教师 userId 集合。
+     * 返回 null 表示未传 keyword（不加过滤）；返回空集合则不应有匹配记录。
+     */
+    private Set<Long> findTeacherIdsByName(String keyword) {
+        if (!StringUtils.hasText(keyword)) return null;
+        List<User> matched = userMapper.selectList(
+                new LambdaQueryWrapper<User>().like(User::getRealName, keyword));
+        if (matched.isEmpty()) return Collections.emptySet();
+        return matched.stream().map(User::getId).collect(Collectors.toSet());
     }
 
     private void populateTeacherSalaryNames(List<TeacherSalary> list) {

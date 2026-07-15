@@ -10,6 +10,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.service.ScheduleService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
+import com.pzhu.eduadmin.modules.user.service.UserService;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
 import com.pzhu.eduadmin.security.RequireRole;
@@ -28,6 +29,7 @@ public class ScheduleController {
 
     private final ScheduleService scheduleService;
     private final UserMapper userMapper;
+    private final UserService userService;
 
     // ========== 教师下拉列表 ==========
 
@@ -40,6 +42,8 @@ public class ScheduleController {
                         .eq(User::getStatus, 1));
         // 清除密码字段
         teachers.forEach(t -> t.setPassword(null));
+        // 填充教学特长
+        userService.fillTeachersSpecialties(teachers);
         return Result.success(teachers);
     }
 

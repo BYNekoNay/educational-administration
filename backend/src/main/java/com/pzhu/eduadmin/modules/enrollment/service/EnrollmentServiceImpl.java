@@ -25,6 +25,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,21 +63,53 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private void populateNames(List<Enrollment> list) {
         if (list.isEmpty()) return;
         // 收集所有需要查询的 ID
-        Set<Long> studentIds = list.stream().map(Enrollment::getStudentId).collect(Collectors.toSet());
+        Set<Long> studentIds = list.stream().map(Enrollment::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Set<Long> parentIds = list.stream().map(Enrollment::getParentUserId).collect(Collectors.toSet());
         Set<Long> courseIds = list.stream().map(Enrollment::getCourseId).collect(Collectors.toSet());
         Set<Long> classIds = list.stream().map(Enrollment::getClassId).filter(id -> id != null).collect(Collectors.toSet());
         Set<Long> auditorIds = list.stream().map(Enrollment::getAuditorId).filter(id -> id != null).collect(Collectors.toSet());
 
-        Map<Long, String> studentNames = studentMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
+        // 历史报名可能引用已软删学员，绕过 @TableLogic 取名
+        Map<Long, String> studentNames;
+        if (studentIds.isEmpty()) {
+            studentNames = Collections.emptyMap();
+        } else {
+            String idList = studentIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(idList);
+            studentNames = raw.stream()
+                    .collect(Collectors.toMap(
+                            m -> ((Number) m.get("id")).longValue(),
+                            m -> (String) m.get("name"),
+                            (a, b) -> a));
+        }
         Map<Long, String> userNames = userMapper.selectBatchIds(
                 java.util.stream.Stream.concat(parentIds.stream(), auditorIds.stream()).collect(Collectors.toSet()))
                 .stream().collect(Collectors.toMap(User::getId, User::getRealName));
-        Map<Long, String> courseNames = courseMapper.selectBatchIds(courseIds).stream()
-                .collect(Collectors.toMap(Course::getId, Course::getName));
-        Map<Long, String> classNames = classGroupMapper.selectBatchIds(classIds).stream()
-                .collect(Collectors.toMap(ClassGroup::getId, ClassGroup::getClassName));
+        // 历史报名可能引用已软删课程/班级，绕过 @TableLogic 取名
+        Map<Long, String> courseNames;
+        if (courseIds.isEmpty()) {
+            courseNames = Collections.emptyMap();
+        } else {
+            String courseIdList = courseIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            List<Map<String, Object>> rawCourse = courseMapper.selectNamesByIdsIncludeDeleted(courseIdList);
+            courseNames = rawCourse.stream()
+                    .collect(Collectors.toMap(
+                            m -> ((Number) m.get("id")).longValue(),
+                            m -> (String) m.get("name"),
+                            (a, b) -> a));
+        }
+        Map<Long, String> classNames;
+        if (classIds.isEmpty()) {
+            classNames = Collections.emptyMap();
+        } else {
+            String classIdList = classIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            List<Map<String, Object>> rawClass = classGroupMapper.selectClassNamesByIdsIncludeDeleted(classIdList);
+            classNames = rawClass.stream()
+                    .collect(Collectors.toMap(
+                            m -> ((Number) m.get("id")).longValue(),
+                            m -> (String) m.get("class_name"),
+                            (a, b) -> a));
+        }
 
         for (Enrollment e : list) {
             e.setStudentName(studentNames.getOrDefault(e.getStudentId(), ""));

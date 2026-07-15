@@ -50,7 +50,13 @@
         </el-form-item>
         <el-form-item label="教师">
           <el-select v-model="form.teacherId" style="width:100%">
-            <el-option v-for="t in teachers" :key="t.id" :label="t.realName || t.username" :value="t.id" />
+            <el-option v-for="t in teachers" :key="t.id" :label="t.realName || t.username" :value="t.id">
+              <span>{{ t.realName || t.username }}</span>
+              <el-tag v-for="sp in (t.specialties || [])" :key="sp.id"
+                      size="small" type="info" style="margin-left:4px;font-size:10px">
+                {{ sp.name }}
+              </el-tag>
+            </el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="最大人数"><el-input-number v-model="form.maxStudentCount" :min="1" /></el-form-item>
@@ -68,10 +74,33 @@
     </el-dialog>
 
     <!-- 加入学员弹窗 -->
-    <el-dialog title="加入学员" v-model="addStudentVisible" width="400px">
+    <el-dialog title="加入学员" v-model="addStudentVisible" width="460px" @closed="addForm.studentId = null; studentOptions.value = []">
       <el-form :model="addForm" label-width="80px">
         <el-form-item label="班级">{{ currentClass?.className }}</el-form-item>
-        <el-form-item label="学员ID"><el-input-number v-model="addForm.studentId" :min="1" /></el-form-item>
+        <el-form-item label="选择学员">
+          <el-select
+            v-model="addForm.studentId"
+            filterable
+            remote
+            :remote-method="searchStudents"
+            :loading="studentSearchLoading"
+            placeholder="输入姓名/电话/家长搜索"
+            style="width:100%"
+            clearable
+          >
+            <el-option
+              v-for="s in studentOptions"
+              :key="s.id"
+              :label="`${s.name}（ID:${s.id} · ${s.school || '无学校'}）`"
+              :value="s.id"
+            >
+              <span style="float:left">{{ s.name }}</span>
+              <span style="float:right; color:#999; font-size:12px">
+                {{ s.contactPhone || s.parentName || `ID:${s.id}` }}
+              </span>
+            </el-option>
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="addStudentVisible = false">取消</el-button>
@@ -104,11 +133,18 @@
     </el-dialog>
 
     <!-- 转班弹窗 -->
-    <el-dialog title="选择目标班级" v-model="transferVisible" width="400px">
-      <el-select v-model="targetClassId" placeholder="请选择目标班级" style="width:100%">
-        <el-option v-for="c in allClasses" :key="c.id" :label="c.className" :value="c.id"
-          :disabled="c.id === currentClass?.id" />
-      </el-select>
+    <el-dialog :title="`转班 — 学员：${transferringStudentName || ''}`" v-model="transferVisible" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="当前班级">{{ currentClass?.className }}</el-form-item>
+        <el-form-item label="目标班级">
+          <el-select v-model="targetClassId" placeholder="请选择目标班级" style="width:100%" filterable>
+            <el-option v-for="c in allClasses" :key="c.id"
+              :label="`${c.className}（${c.courseName || '无课程'} · 教师:${c.teacherName || '未指定'}）`"
+              :value="c.id"
+              :disabled="c.id === currentClass?.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
       <template #footer>
         <el-button @click="transferVisible = false">取消</el-button>
         <el-button type="primary" @click="confirmTransfer" :loading="transferring">确认转班</el-button>
@@ -145,8 +181,12 @@ const courses = ref<any[]>([])
 const teachers = ref<any[]>([])
 const targetClassId = ref<number | null>(null)
 const transferringStudentId = ref<number | null>(null)
+const transferringStudentName = ref<string>('')
 const form = reactive<any>({ className: '', courseId: null, teacherId: null, maxStudentCount: 15, startDate: '', status: 1 })
 const addForm = reactive({ studentId: null as number | null })
+const studentOptions = ref<any[]>([])
+const studentSearchLoading = ref(false)
+let studentSearchTimer: number | null = null
 
 async function loadData() {
   loading.value = true
@@ -210,14 +250,35 @@ async function handleDelete(row: any) {
   } catch (e) { showError(e, '删除失败') }
 }
 
-function openAddStudent(row: any) {
+async function openAddStudent(row: any) {
   currentClass.value = row
   addForm.studentId = null
+  studentOptions.value = []
   addStudentVisible.value = true
+  // 默认加载前 50 名在读学员作为初始下拉选项
+  await searchStudents('')
+}
+
+function searchStudents(keyword: string) {
+  // 远程搜索防抖
+  if (studentSearchTimer) window.clearTimeout(studentSearchTimer)
+  studentSearchTimer = window.setTimeout(async () => {
+    studentSearchLoading.value = true
+    try {
+      const res = await studentApi.list({ pageNum: 1, pageSize: 50, keyword: keyword || undefined })
+      // 仅展示在读学员
+      studentOptions.value = (res.data?.records || []).filter((s: any) => s.status === 1)
+    } catch (e) {
+      showError(e, '搜索学员失败')
+      studentOptions.value = []
+    } finally {
+      studentSearchLoading.value = false
+    }
+  }, 300)
 }
 
 async function handleAddStudent() {
-  if (!addForm.studentId) { ElMessage.warning('请输入学员ID'); return }
+  if (!addForm.studentId) { ElMessage.warning('请先选择学员'); return }
   adding.value = true
   try {
     await classApi.addStudent(currentClass.value.id, {
@@ -250,6 +311,7 @@ async function handleWithdrawStudent(row: any) {
 
 async function handleTransferStudent(row: any) {
   transferringStudentId.value = row.studentId
+  transferringStudentName.value = row.studentName || `学员${row.studentId}`
   targetClassId.value = null
   transferVisible.value = true
   // 加载可选班级列表
