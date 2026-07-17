@@ -47,7 +47,11 @@
 
       <!-- Highlighted payment notice for 待缴费 -->
       <view v-if="e.status === 2" class="payment-notice">
-        <text class="payment-notice-text">请联系机构完成缴费</text>
+        <text v-if="!e.amount" class="payment-notice-text">价格待定</text>
+        <text v-else class="payment-notice-text">需缴费 ¥{{ e.amount }}</text>
+        <button class="btn-pay" :disabled="payingId === e.id || !e.amount" @click="handlePay(e)">
+          {{ payingId === e.id ? '处理中...' : '立即模拟缴费' }}
+        </button>
       </view>
 
       <!-- Audit remark -->
@@ -68,6 +72,7 @@ const list = ref([])
 const activeTab = ref(0)
 const tabs = ['全部', '待审核', '待缴费', '已完成', '已拒绝']
 const statusMap = { 1: '待审核', 2: '待缴费', 3: '已完成', 4: '已拒绝', 5: '已失效' }
+const payingId = ref(null)
 
 const statusColors = {
   1: { bg: '#FFFBEB', color: '#F59E0B' },
@@ -96,8 +101,42 @@ async function fetchData() {
   try {
     const res = await api({ url: '/api/parent/enrollments?pageNum=1&pageSize=100' })
     list.value = res.data?.records || res.data || []
+    // 取每个待缴费课程的价格（如果后端有返回则无需再查）
+    await ensureAmounts()
   } catch {
     uni.showToast({ title: '加载失败', icon: 'none' })
+  }
+}
+
+/** 报名记录不带 amount，这里按需查课程价补全 */
+async function ensureAmounts() {
+  const ids = [...new Set(list.value.filter(e => e.status === 2).map(e => e.courseId).filter(Boolean))]
+  for (const id of ids) {
+    try {
+      const r = await api({ url: `/api/parent/courses` })
+      const arr = r.data || []
+      const c = arr.find(x => x.id === id)
+      if (c) {
+        list.value.forEach(e => { if (e.courseId === id) e.amount = c.price })
+      }
+    } catch { /* skip */ }
+  }
+}
+
+async function handlePay(enrollment) {
+  payingId.value = enrollment.id
+  try {
+    await api({
+      url: '/api/parent/payments',
+      method: 'POST',
+      data: { enrollmentId: enrollment.id },
+    })
+    uni.showToast({ title: '缴费成功', icon: 'success' })
+    await fetchData()
+  } catch (e) {
+    uni.showToast({ title: e?.message || '缴费失败', icon: 'none' })
+  } finally {
+    payingId.value = null
   }
 }
 
@@ -158,10 +197,27 @@ onMounted(fetchData)
 }
 
 .payment-notice-text {
+  display: block;
   font-size: 26rpx;
   font-weight: 600;
   color: #0E7490;
   letter-spacing: 2rpx;
+  margin-bottom: 16rpx;
+}
+
+.btn-pay {
+  background: #0E7490;
+  color: #FFF;
+  font-size: 28rpx;
+  font-weight: 600;
+  border-radius: 40rpx;
+  padding: 16rpx 0;
+  border: none;
+  line-height: 1.4;
+}
+.btn-pay[disabled] {
+  background: #A0C4D0;
+  color: #FFF;
 }
 
 .audit-remark {

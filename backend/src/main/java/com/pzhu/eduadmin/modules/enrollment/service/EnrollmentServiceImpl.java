@@ -7,11 +7,17 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
+import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
 import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
+import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
+import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
+import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
+import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
+import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.modules.student.entity.Student;
@@ -23,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -43,6 +50,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private final UserMapper userMapper;
     private final CourseMapper courseMapper;
     private final ClassGroupMapper classGroupMapper;
+    private final ClassStudentMapper classStudentMapper;
+    private final PaymentRecordMapper paymentRecordMapper;
+    private final RefundRecordMapper refundRecordMapper;
 
     private static final Map<String, SFunction<Enrollment, ?>> ENROLLMENT_SORT_MAP = Map.of(
             "id", Enrollment::getId,
@@ -64,8 +74,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (list.isEmpty()) return;
         // 收集所有需要查询的 ID
         Set<Long> studentIds = list.stream().map(Enrollment::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
-        Set<Long> parentIds = list.stream().map(Enrollment::getParentUserId).collect(Collectors.toSet());
-        Set<Long> courseIds = list.stream().map(Enrollment::getCourseId).collect(Collectors.toSet());
+        Set<Long> parentIds = list.stream().map(Enrollment::getParentUserId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> courseIds = list.stream().map(Enrollment::getCourseId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Set<Long> classIds = list.stream().map(Enrollment::getClassId).filter(id -> id != null).collect(Collectors.toSet());
         Set<Long> auditorIds = list.stream().map(Enrollment::getAuditorId).filter(id -> id != null).collect(Collectors.toSet());
 
@@ -74,8 +84,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (studentIds.isEmpty()) {
             studentNames = Collections.emptyMap();
         } else {
-            String idList = studentIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-            List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(idList);
+            List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(studentIds);
             studentNames = raw.stream()
                     .collect(Collectors.toMap(
                             m -> ((Number) m.get("id")).longValue(),
@@ -84,14 +93,13 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         }
         Map<Long, String> userNames = userMapper.selectBatchIds(
                 java.util.stream.Stream.concat(parentIds.stream(), auditorIds.stream()).collect(Collectors.toSet()))
-                .stream().collect(Collectors.toMap(User::getId, User::getRealName));
+                .stream().collect(Collectors.toMap(User::getId, u -> u.getRealName() != null && !u.getRealName().isBlank() ? u.getRealName() : u.getUsername(), (a, b) -> a));
         // 历史报名可能引用已软删课程/班级，绕过 @TableLogic 取名
         Map<Long, String> courseNames;
         if (courseIds.isEmpty()) {
             courseNames = Collections.emptyMap();
         } else {
-            String courseIdList = courseIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-            List<Map<String, Object>> rawCourse = courseMapper.selectNamesByIdsIncludeDeleted(courseIdList);
+            List<Map<String, Object>> rawCourse = courseMapper.selectNamesByIdsIncludeDeleted(courseIds);
             courseNames = rawCourse.stream()
                     .collect(Collectors.toMap(
                             m -> ((Number) m.get("id")).longValue(),
@@ -102,8 +110,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (classIds.isEmpty()) {
             classNames = Collections.emptyMap();
         } else {
-            String classIdList = classIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-            List<Map<String, Object>> rawClass = classGroupMapper.selectClassNamesByIdsIncludeDeleted(classIdList);
+            List<Map<String, Object>> rawClass = classGroupMapper.selectClassNamesByIdsIncludeDeleted(classIds);
             classNames = rawClass.stream()
                     .collect(Collectors.toMap(
                             m -> ((Number) m.get("id")).longValue(),
@@ -127,6 +134,26 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
     @Override
     public Enrollment create(Enrollment enrollment) {
+        if (enrollment.getStudentId() == null) throw new BusinessException(400, "学员ID不能为空");
+        if (enrollment.getCourseId() == null) throw new BusinessException(400, "课程ID不能为空");
+
+        // 校验学员是否存在
+        if (studentMapper.selectById(enrollment.getStudentId()) == null) {
+            throw new BusinessException(404, "学员不存在");
+        }
+        // 校验课程是否存在
+        if (courseMapper.selectById(enrollment.getCourseId()) == null) {
+            throw new BusinessException(404, "课程不存在");
+        }
+
+        Long existCount = enrollmentMapper.selectCount(new LambdaQueryWrapper<Enrollment>()
+                .eq(Enrollment::getStudentId, enrollment.getStudentId())
+                .eq(Enrollment::getCourseId, enrollment.getCourseId())
+                .notIn(Enrollment::getStatus, List.of(4, 5)));  // 排除终态（已拒绝、已失效），其余均不可重复报名
+        if (existCount > 0) {
+            throw new BusinessException(409, "该学员已有此课程的报名记录（含待审核），不可重复报名");
+        }
+
         enrollmentMapper.insert(enrollment);
         return enrollment;
     }
@@ -139,8 +166,29 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
     @Override
     public boolean delete(Long id) {
-        logOperation("报名管理", "删除报名记录(id=" + id + ")");
-        return enrollmentMapper.deleteById(id) > 0;
+        // Issue #14: 检查是否有关联的财务记录
+        Long paymentCount = paymentRecordMapper.selectCount(
+                new LambdaQueryWrapper<PaymentRecord>().eq(PaymentRecord::getEnrollmentId, id));
+        if (paymentCount > 0) {
+            throw new BusinessException(409, "该报名已有缴费记录，无法删除");
+        }
+        Long refundCount = refundRecordMapper.selectCount(
+                new LambdaQueryWrapper<RefundRecord>().eq(RefundRecord::getEnrollmentId, id));
+        if (refundCount > 0) {
+            throw new BusinessException(409, "该报名已有退费记录，无法删除");
+        }
+        Enrollment enrollment = enrollmentMapper.selectById(id);
+        boolean deleted = enrollmentMapper.deleteById(id) > 0;
+        if (deleted && enrollment != null && enrollment.getClassId() != null) {
+            // 清理关联的 ClassStudent 记录
+            classStudentMapper.delete(new LambdaQueryWrapper<ClassStudent>()
+                    .eq(ClassStudent::getClassId, enrollment.getClassId())
+                    .eq(ClassStudent::getStudentId, enrollment.getStudentId()));
+        }
+        if (deleted) {
+            logOperation("报名管理", "删除报名记录(id=" + id + ")");
+        }
+        return deleted;
     }
 
     @Override
@@ -154,6 +202,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Enrollment audit(Long id, Integer status, Long auditorId, String remark) {
         Enrollment enrollment = enrollmentMapper.selectById(id);
         if (enrollment == null) {
@@ -162,14 +211,29 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (enrollment.getStatus() != 1) {
             throw new BusinessException(409, "非待审核状态的报名不可审核");
         }
+        if (status != 2 && status != 4) {
+            throw new BusinessException(400, "无效的审核状态，仅支持 2-通过 或 4-驳回");
+        }
+        // CAS 原子更新：防止并发审核
+        LambdaUpdateWrapper<Enrollment> updateWrapper = new LambdaUpdateWrapper<Enrollment>()
+                .eq(Enrollment::getId, id)
+                .eq(Enrollment::getStatus, 1)
+                .set(Enrollment::getStatus, status)
+                .set(Enrollment::getAuditorId, auditorId)
+                .set(Enrollment::getAuditRemark, remark);
+        if (status == 2) {
+            updateWrapper.set(Enrollment::getHoldExpireTime, LocalDateTime.now().plusHours(24));
+        }
+        int updated = enrollmentMapper.update(null, updateWrapper);
+        if (updated == 0) {
+            throw new BusinessException(409, "报名状态已变更，请刷新后重试");
+        }
         enrollment.setStatus(status);
         enrollment.setAuditorId(auditorId);
         enrollment.setAuditRemark(remark);
-        // 审核通过：进入待缴费并设置留位截止时间（24小时）
         if (status == 2) {
             enrollment.setHoldExpireTime(LocalDateTime.now().plusHours(24));
         }
-        enrollmentMapper.updateById(enrollment);
 
         // 操作日志
         logOperation("报名管理", status == 2 ? "审核通过报名(id=" + id + ")" : "驳回报名(id=" + id + ")");
@@ -179,10 +243,11 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
     private void logOperation(String module, String operation) {
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 

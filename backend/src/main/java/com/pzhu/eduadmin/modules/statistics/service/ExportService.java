@@ -28,6 +28,8 @@ public class ExportService {
     private final TeacherSalaryMapper teacherSalaryMapper;
 
     public void exportPayments(HttpServletResponse response, String startDate, String endDate) throws IOException {
+        validateDateFormat(startDate, "startDate");
+        validateDateFormat(endDate, "endDate");
         List<PaymentRecord> records = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>()
                         .ge(startDate != null, PaymentRecord::getPayTime, startDate != null ? startDate + " 00:00:00" : null)
@@ -64,6 +66,8 @@ public class ExportService {
     }
 
     public void exportLessonFlows(HttpServletResponse response, String startDate, String endDate) throws IOException {
+        validateDateFormat(startDate, "startDate");
+        validateDateFormat(endDate, "endDate");
         List<LessonFlow> records = lessonFlowMapper.selectList(
                 new LambdaQueryWrapper<LessonFlow>()
                         .ge(startDate != null, LessonFlow::getCreateTime, startDate != null ? startDate + " 00:00:00" : null)
@@ -98,6 +102,13 @@ public class ExportService {
     }
 
     public void exportSalaries(HttpServletResponse response, String month) throws IOException {
+        if (month != null && !month.isBlank()) {
+            try {
+                java.time.YearMonth.parse(month, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new com.pzhu.eduadmin.common.BusinessException(400, "month 日期格式不正确，应为 yyyy-MM");
+            }
+        }
         List<TeacherSalary> records = teacherSalaryMapper.selectList(
                 new LambdaQueryWrapper<TeacherSalary>()
                         .eq(month != null, TeacherSalary::getSalaryMonth, month)
@@ -144,5 +155,15 @@ public class ExportService {
         font.setBold(true);
         style.setFont(font);
         return style;
+    }
+
+    /** L4: 校验日期字符串格式是否为 yyyy-MM-dd */
+    private void validateDateFormat(String dateStr, String paramName) {
+        if (dateStr == null || dateStr.isBlank()) return;
+        try {
+            java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, paramName + " 日期格式不正确，应为 yyyy-MM-dd");
+        }
     }
 }

@@ -29,6 +29,9 @@ public class ScheduleConflictServiceImpl implements ScheduleConflictService {
     @Override
     public List<String> checkConflict(ScheduleLesson lesson) {
         List<String> conflicts = new ArrayList<>();
+        if (lesson.getStartTime() == null || lesson.getEndTime() == null || lesson.getLessonDate() == null) {
+            return conflicts; // 关键字段缺失，无法检测冲突
+        }
 
         // 查询同一天 status IN (1,2) 的所有课次
         List<ScheduleLesson> existingLessons = scheduleLessonMapper.selectList(

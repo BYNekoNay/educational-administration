@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.attendance.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
@@ -12,7 +13,9 @@ import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.modules.student.entity.Student;
+import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
+import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +36,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
 
     private final LeaveRequestMapper leaveRequestMapper;
     private final StudentMapper studentMapper;
+    private final ParentStudentMapper parentStudentMapper;
     private final AttendanceMapper attendanceMapper;
     private final ScheduleLessonMapper scheduleLessonMapper;
     private final ClassStudentMapper classStudentMapper;
@@ -55,6 +59,30 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
         Student student = studentMapper.selectById(studentId);
         if (student == null) {
             throw new BusinessException(404, "学员不存在");
+        }
+
+        // 校验日期不能是过去的
+        if (lessonDate.isBefore(LocalDate.now())) {
+            throw new BusinessException(400, "不可为过去的日期提交请假申请");
+        }
+
+        // Issue #30: 校验家长与学员的绑定关系
+        Long bindingCount = parentStudentMapper.selectCount(
+                new LambdaQueryWrapper<ParentStudent>()
+                        .eq(ParentStudent::getParentUserId, parentUserId)
+                        .eq(ParentStudent::getStudentId, studentId));
+        if (bindingCount == null || bindingCount == 0) {
+            throw new BusinessException(403, "您与该学员没有绑定关系，无法提交请假申请");
+        }
+
+        // 去重：同一学员同一天已有待审核/已通过的请假
+        Long existingCount = leaveRequestMapper.selectCount(
+                new LambdaQueryWrapper<LeaveRequest>()
+                        .eq(LeaveRequest::getStudentId, studentId)
+                        .eq(LeaveRequest::getLessonDate, lessonDate)
+                        .in(LeaveRequest::getStatus, 1, 2));
+        if (existingCount != null && existingCount > 0) {
+            throw new BusinessException(409, "该学员在同一天已有请假申请，请勿重复提交");
         }
 
         LeaveRequest lr = new LeaveRequest();
@@ -93,6 +121,9 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public LeaveRequest audit(Long id, Integer status, Long auditUserId, String remark) {
+        if (status != 2 && status != 3) {
+            throw new BusinessException(400, "审核状态只能为2(通过)或3(驳回)");
+        }
         LeaveRequest lr = leaveRequestMapper.selectById(id);
         if (lr == null) {
             throw new BusinessException(404, "请假记录不存在");
@@ -101,10 +132,21 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
             throw new BusinessException(409, "该请假申请已审核，不可重复操作");
         }
 
+        // CAS 原子更新防止并发审核
+        int updated = leaveRequestMapper.update(null,
+                new LambdaUpdateWrapper<LeaveRequest>()
+                        .eq(LeaveRequest::getId, id)
+                        .eq(LeaveRequest::getStatus, 1)
+                        .set(LeaveRequest::getStatus, status)
+                        .set(LeaveRequest::getAuditUserId, auditUserId)
+                        .set(LeaveRequest::getAuditRemark, remark));
+        if (updated == 0) {
+            throw new BusinessException(409, "该请假申请已被处理，请刷新后重试");
+        }
+        // 同步更新内存对象状态
         lr.setStatus(status);
         lr.setAuditUserId(auditUserId);
         lr.setAuditRemark(remark);
-        leaveRequestMapper.updateById(lr);
 
         // 审核通过时自动创建考勤记录（status=3 请假, deductLessons=0）
         if (status == 2) {
@@ -129,41 +171,45 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
 
         List<Long> classIds = enrollments.stream().map(ClassStudent::getClassId).toList();
 
-        // 查找请假日期匹配的课次
-        ScheduleLesson lesson = scheduleLessonMapper.selectOne(
+        // 查找请假日期匹配的所有课次（支持学员同一天在多个班级有课）
+        List<ScheduleLesson> lessons = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .in(ScheduleLesson::getClassId, classIds)
                         .eq(ScheduleLesson::getLessonDate, lr.getLessonDate())
-                        .last("LIMIT 1"));
+                        .in(ScheduleLesson::getStatus, 1, 2));
 
-        if (lesson == null) {
+        if (lessons.isEmpty()) {
             // 当天没有排课，仍然批准请假但不创建考勤记录
             return;
         }
 
-        // 检查是否已存在该学员在该课次的考勤记录
-        Attendance existing = attendanceMapper.selectOne(
-                new LambdaQueryWrapper<Attendance>()
-                        .eq(Attendance::getLessonId, lesson.getId())
-                        .eq(Attendance::getStudentId, lr.getStudentId()));
-        if (existing != null) {
-            // 已有考勤记录，不重复创建
-            return;
+        for (ScheduleLesson lesson : lessons) {
+            // 检查是否已存在该学员在该课次的考勤记录
+            Attendance existing = attendanceMapper.selectOne(
+                    new LambdaQueryWrapper<Attendance>()
+                            .eq(Attendance::getLessonId, lesson.getId())
+                            .eq(Attendance::getStudentId, lr.getStudentId()));
+            if (existing != null) {
+                // 已有考勤记录，不重复创建
+                continue;
+            }
+
+            // 创建请假考勤记录
+            Attendance attendance = new Attendance();
+            attendance.setStudentId(lr.getStudentId());
+            attendance.setLessonId(lesson.getId());
+            attendance.setStatus(3); // 3=请假
+            attendance.setDeductLessons(BigDecimal.ZERO);
+            attendance.setCheckTime(LocalDateTime.now());
+            attendance.setRemark("请假审批自动创建");
+            attendanceMapper.insert(attendance);
         }
 
-        // 创建请假考勤记录
-        Attendance attendance = new Attendance();
-        attendance.setStudentId(lr.getStudentId());
-        attendance.setLessonId(lesson.getId());
-        attendance.setStatus(3); // 3=请假
-        attendance.setDeductLessons(BigDecimal.ZERO);
-        attendance.setCheckTime(LocalDateTime.now());
-        attendance.setRemark("请假审批自动创建");
-        attendanceMapper.insert(attendance);
-
-        // 更新请假记录的 scheduleId
-        lr.setScheduleId(lesson.getId());
-        leaveRequestMapper.updateById(lr);
+        // 更新请假记录的 scheduleId（取第一个匹配课次）
+        if (!lessons.isEmpty()) {
+            lr.setScheduleId(lessons.get(0).getId());
+            leaveRequestMapper.updateById(lr);
+        }
     }
 
     /** 填充请假记录的关联名称 */
@@ -175,8 +221,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
         if (studentIds.isEmpty()) {
             studentNames = Collections.emptyMap();
         } else {
-            String idList = studentIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-            List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(idList);
+            List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(studentIds);
             studentNames = raw.stream()
                     .collect(Collectors.toMap(
                             m -> ((Number) m.get("id")).longValue(),

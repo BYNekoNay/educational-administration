@@ -25,12 +25,13 @@ public final class QueryHelper {
         if (keyword == null || keyword.isBlank() || columns == null || columns.length == 0) {
             return;
         }
+        String escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
         wrapper.and(w -> {
             for (int i = 0; i < columns.length; i++) {
                 if (i == 0) {
-                    w.like(columns[i], keyword);
+                    w.like(columns[i], escaped);
                 } else {
-                    w.or().like(columns[i], keyword);
+                    w.or().like(columns[i], escaped);
                 }
             }
         });

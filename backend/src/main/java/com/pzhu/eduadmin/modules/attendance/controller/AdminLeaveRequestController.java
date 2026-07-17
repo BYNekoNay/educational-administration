@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.attendance.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -30,6 +31,9 @@ public class AdminLeaveRequestController {
     public Result<LeaveRequest> audit(@PathVariable Long id,
                                       @RequestParam Integer status,
                                       @RequestParam(required = false) String remark) {
+        if (status != 2 && status != 3) {
+            throw new BusinessException(400, "审核状态仅支持 2-通过 或 3-驳回");
+        }
         LoginUser loginUser = CurrentUserHolder.get();
         return Result.success(leaveRequestService.audit(id, status, loginUser.getUserId(), remark));
     }

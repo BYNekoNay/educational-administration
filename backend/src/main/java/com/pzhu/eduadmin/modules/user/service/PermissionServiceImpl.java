@@ -49,10 +49,10 @@ public class PermissionServiceImpl implements PermissionService {
         permissionMapper.insert(permission);
 
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("权限管理");
         log.setOperation("新增菜单权限：" + permission.getPermissionCode() + " → " + permission.getPath());
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
 
         return permission;
@@ -73,17 +73,17 @@ public class PermissionServiceImpl implements PermissionService {
         permissionMapper.updateById(permission);
 
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("权限管理");
         log.setOperation("编辑菜单权限：" + permission.getPermissionCode() + " → " + permission.getPath());
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
 
         return permission;
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         Permission permission = getById(id);
         // 级联删除角色-权限关联
@@ -93,10 +93,10 @@ public class PermissionServiceImpl implements PermissionService {
         permissionMapper.deleteById(id);
 
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("权限管理");
         log.setOperation("删除菜单权限：" + permission.getPermissionCode());
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 }

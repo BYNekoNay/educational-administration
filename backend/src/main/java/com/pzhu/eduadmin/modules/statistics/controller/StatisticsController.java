@@ -27,6 +27,7 @@ public class StatisticsController {
     }
 
     @GetMapping("/organization")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
     public Result<Organization> getOrganization() {
         return Result.success(statisticsService.getOrganization());
     }
@@ -52,37 +53,43 @@ public class StatisticsController {
     }
 
     @GetMapping("/dashboard")
-    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
     public Result<Map<String, Object>> dashboard() {
         return Result.success(statisticsService.getDashboard());
     }
 
     @GetMapping("/statistics/enrollments")
-    @RequireRole({"SUPER_ADMIN"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @SuppressWarnings("unchecked")
     public Result<Map<String, Object>> enrollmentStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> cards = (Map<String, Object>) dashboard.get("cards");
+        if (cards == null) return Result.fail(500, "统计数据获取失败");
         return Result.success(Map.of("activeStudents", cards.get("activeStudents")));
     }
 
     @GetMapping("/statistics/attendance-rate")
-    @RequireRole({"SUPER_ADMIN"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @SuppressWarnings("unchecked")
     public Result<Map<String, Object>> attendanceRateStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> cards = (Map<String, Object>) dashboard.get("cards");
+        if (cards == null) return Result.fail(500, "统计数据获取失败");
         return Result.success(Map.of("attendanceRate", cards.get("attendanceRate")));
     }
 
     @GetMapping("/statistics/lesson-consumption")
-    @RequireRole({"SUPER_ADMIN"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @SuppressWarnings("unchecked")
     public Result<Map<String, Object>> lessonConsumptionStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> charts = (Map<String, Object>) dashboard.get("charts");
+        if (charts == null) return Result.fail(500, "统计数据获取失败");
         return Result.success(Map.of("lessonTrend", charts.get("lessonTrend")));
     }
 
     @GetMapping("/statistics/revenue")
-    @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
     public Result<Map<String, Object>> revenueStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> charts = (Map<String, Object>) dashboard.get("charts");
@@ -90,13 +97,13 @@ public class StatisticsController {
     }
 
     @GetMapping("/statistics/teacher-workload")
-    @RequireRole({"SUPER_ADMIN"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
     public Result<Object> teacherWorkload(@RequestParam(defaultValue = "") String month) {
         return Result.success(statisticsService.getTeacherWorkload(month));
     }
 
     @GetMapping("/statistics/student-loss")
-    @RequireRole({"SUPER_ADMIN"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
     public Result<Object> studentLoss() {
         return Result.success(statisticsService.getStudentLossTrend());
     }

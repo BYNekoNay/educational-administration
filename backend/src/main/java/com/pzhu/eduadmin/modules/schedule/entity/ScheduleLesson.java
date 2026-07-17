@@ -48,4 +48,15 @@ public class ScheduleLesson {
 
     @TableField(exist = false)
     private String classroomName;
+
+    @TableField(exist = false)
+    private String courseName;
+
+    /** 请假状态（null=无请假, 1=请假中, 2=已通过） */
+    @TableField(exist = false)
+    private Integer leaveStatus;
+
+    /** 课程ID（从 class_group.course_id 回查，前端按此分组） */
+    @TableField(exist = false)
+    private Long courseId;
 }

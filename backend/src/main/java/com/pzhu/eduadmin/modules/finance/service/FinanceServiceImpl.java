@@ -32,6 +32,7 @@ import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -88,13 +89,23 @@ public class FinanceServiceImpl implements FinanceService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PaymentRecord createPayment(PaymentRecord record) {
-        paymentRecordMapper.insert(record);
+        if (record.getLessonCount() == null) throw new BusinessException(400, "课时数不能为空");
+        if (record.getLessonCount().compareTo(BigDecimal.ZERO) <= 0) throw new BusinessException(400, "课时数必须为正数");
+        if (record.getAmount() == null) throw new BusinessException(400, "缴费金额不能为空");
+        if (record.getAmount().compareTo(BigDecimal.ZERO) < 0) throw new BusinessException(400, "缴费金额不能为负数");
 
+        // 先校验报名状态，再写入缴费记录（Issue #6: 先校验后写入）
         Enrollment enrollment = enrollmentMapper.selectById(record.getEnrollmentId());
         if (enrollment == null) throw new BusinessException(404, "报名记录不存在");
-        if (enrollment.getStatus() != 2 && enrollment.getStatus() != 1) {
-            throw new BusinessException(409, "当前报名状态不可缴费");
+        if (enrollment.getStatus() != 2 && enrollment.getStatus() != 3) {
+            throw new BusinessException(409, "仅审核通过或已缴费的报名可缴费（续费），当前报名状态不可缴费");
         }
+
+        // 强制从报名记录获取 studentId/courseId，防止前端传入错误值
+        record.setStudentId(enrollment.getStudentId());
+        record.setCourseId(enrollment.getCourseId());
+
+        paymentRecordMapper.insert(record);
 
         LessonAccount account = lessonAccountMapper.selectOne(new LambdaQueryWrapper<LessonAccount>()
                 .eq(LessonAccount::getStudentId, record.getStudentId())
@@ -129,21 +140,40 @@ public class FinanceServiceImpl implements FinanceService {
         flow.setRemark(record.getRemark());
         lessonFlowMapper.insert(flow);
 
+        // CAS 更新报名状态，防止与 audit 并发冲突
+        enrollmentMapper.update(null,
+                new LambdaUpdateWrapper<Enrollment>()
+                        .eq(Enrollment::getId, enrollment.getId())
+                        .eq(Enrollment::getStatus, enrollment.getStatus())
+                        .set(Enrollment::getStatus, 3));
         enrollment.setStatus(3);
-        enrollmentMapper.updateById(enrollment);
 
         if (enrollment.getClassId() != null) {
             ClassGroup classGroup = classGroupMapper.selectById(enrollment.getClassId());
+            if (classGroup == null) throw new BusinessException(404, "所属班级不存在或已删除");
             long currentCount = classStudentMapper.selectCount(
-                    new LambdaQueryWrapper<ClassStudent>().eq(ClassStudent::getClassId, enrollment.getClassId()));
-            if (currentCount >= classGroup.getMaxStudentCount()) {
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getClassId, enrollment.getClassId())
+                            .eq(ClassStudent::getStatus, 1));
+            int maxCount = classGroup.getMaxStudentCount() != null ? classGroup.getMaxStudentCount() : 0;
+            if (maxCount > 0 && currentCount >= maxCount) {
                 throw new BusinessException(409, "班级已满，无法入班");
             }
-            ClassStudent cs = new ClassStudent();
-            cs.setClassId(enrollment.getClassId());
-            cs.setStudentId(record.getStudentId());
-            cs.setStatus(1);
-            classStudentMapper.insert(cs);
+            // 检查是否存在退费后的记录（status=3），若有则恢复为活跃状态
+            ClassStudent refundedRecord = classStudentMapper.selectOne(new LambdaQueryWrapper<ClassStudent>()
+                    .eq(ClassStudent::getClassId, enrollment.getClassId())
+                    .eq(ClassStudent::getStudentId, record.getStudentId())
+                    .eq(ClassStudent::getStatus, 3));
+            if (refundedRecord != null) {
+                refundedRecord.setStatus(1);
+                classStudentMapper.updateById(refundedRecord);
+            } else {
+                ClassStudent cs = new ClassStudent();
+                cs.setClassId(enrollment.getClassId());
+                cs.setStudentId(record.getStudentId());
+                cs.setStatus(1);
+                classStudentMapper.insert(cs);
+            }
         }
 
         // 操作日志
@@ -167,7 +197,9 @@ public class FinanceServiceImpl implements FinanceService {
         Set<Long> applicantIds = list.stream().map(RefundRecord::getApplicantId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, String> studentNames = loadStudentNamesIncludeDeleted(studentIds);
         Map<Long, String> userNames = userMapper.selectBatchIds(applicantIds).stream()
-                .collect(Collectors.toMap(User::getId, User::getRealName));
+                .collect(Collectors.toMap(User::getId,
+                        u -> u.getRealName() != null && !u.getRealName().isBlank() ? u.getRealName() : u.getUsername(),
+                        (a, b) -> a));
         for (RefundRecord r : list) {
             r.setStudentName(studentNames.getOrDefault(r.getStudentId(), ""));
             r.setApplicantName(userNames.getOrDefault(r.getApplicantId(), ""));
@@ -175,7 +207,31 @@ public class FinanceServiceImpl implements FinanceService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public RefundRecord createRefund(RefundRecord record) {
+        // Issue #2: 完整业务校验
+        if (record.getEnrollmentId() == null) throw new BusinessException(400, "报名ID不能为空");
+        if (record.getStudentId() == null) throw new BusinessException(400, "学员ID不能为空");
+
+        Enrollment enrollment = enrollmentMapper.selectById(record.getEnrollmentId());
+        if (enrollment == null) throw new BusinessException(404, "报名记录不存在");
+        if (enrollment.getStatus() != 3) {
+            throw new BusinessException(409, "仅已缴费的报名可申请退费");
+        }
+
+        // 校验是否已有待审核的退费申请
+        Long pendingCount = refundRecordMapper.selectCount(
+                new LambdaQueryWrapper<RefundRecord>()
+                        .eq(RefundRecord::getEnrollmentId, record.getEnrollmentId())
+                        .eq(RefundRecord::getStatus, 1));
+        if (pendingCount > 0) {
+            throw new BusinessException(409, "该报名已有待审核的退费申请，请勿重复提交");
+        }
+
+        if (record.getLessonCount() != null && record.getLessonCount().compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException(400, "退费课时数不能为负数");
+        }
+
         record.setStatus(1);
         refundRecordMapper.insert(record);
         return record;
@@ -188,24 +244,35 @@ public class FinanceServiceImpl implements FinanceService {
     public RefundRecord auditRefund(Long id, Integer status, Long auditorId, BigDecimal refundAmount) {
         RefundRecord record = refundRecordMapper.selectById(id);
         if (record == null) throw new BusinessException(404, "退费记录不存在");
-        if (record.getStatus() != 1) {
-            throw new BusinessException(409, "仅可审核待审核状态的退费申请");
-        }
 
         // 同人隔离检测
-        if (record.getApplicantId().equals(auditorId)) {
+        if (Objects.equals(record.getApplicantId(), auditorId)) {
             throw new BusinessException(409, "审核人与申请人不可为同一人，请转交其他财务人员复核");
+        }
+
+        // Issue #5: 原子更新防止并发重复审核
+        int updated = refundRecordMapper.update(null,
+                new LambdaUpdateWrapper<RefundRecord>()
+                        .eq(RefundRecord::getId, id)
+                        .eq(RefundRecord::getStatus, 1)
+                        .set(RefundRecord::getStatus, status)
+                        .set(RefundRecord::getAuditorId, auditorId));
+        if (updated == 0) {
+            throw new BusinessException(409, "该退费申请已被处理，请刷新后重试");
         }
 
         if (status == 2) {
             // 审核通过 — 完整事务链路
             processRefundApproval(record, refundAmount);
+            // 仅在审核通过时更新退费金额
+            if (refundAmount != null && refundAmount.compareTo(BigDecimal.ZERO) > 0) {
+                record.setAmount(refundAmount);
+                refundRecordMapper.update(null,
+                        new LambdaUpdateWrapper<RefundRecord>()
+                                .eq(RefundRecord::getId, id)
+                                .set(RefundRecord::getAmount, refundAmount));
+            }
         }
-
-        record.setStatus(status);
-        record.setAuditorId(auditorId);
-        if (refundAmount != null) record.setAmount(refundAmount);
-        refundRecordMapper.updateById(record);
 
         // 操作日志
         logOperation("财务管理", status == 2 ? "审核通过退费(id=" + id + ")" : "驳回退费(id=" + id + ")");
@@ -223,27 +290,31 @@ public class FinanceServiceImpl implements FinanceService {
         BigDecimal totalRefunded = refundRecordMapper.sumApprovedByEnrollmentId(record.getEnrollmentId());
         BigDecimal maxRefundable = totalPaid.subtract(totalRefunded);
 
-        // 1.1 自动计算退费金额：remaining_lessons * (course.price / course.total_lessons)
-        if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            LessonAccount account = lessonAccountMapper.selectOne(new LambdaQueryWrapper<LessonAccount>()
-                    .eq(LessonAccount::getStudentId, record.getStudentId())
-                    .eq(LessonAccount::getCourseId, courseId));
-            if (account != null) {
-                Course course = courseMapper.selectByIdIncludeDeleted(account.getCourseId());
-                if (course != null && course.getTotalLessons() != null && course.getTotalLessons() > 0
-                        && course.getPrice() != null) {
-                    BigDecimal pricePerLesson = course.getPrice()
-                            .divide(BigDecimal.valueOf(course.getTotalLessons()), 4, java.math.RoundingMode.HALF_UP);
-                    refundAmount = account.getRemainingLessons().multiply(pricePerLesson)
-                            .setScale(2, java.math.RoundingMode.HALF_UP);
-                    record.setAmount(refundAmount);
-                }
-            }
+        // 获取课时账户
+        LessonAccount account = lessonAccountMapper.selectOne(new LambdaQueryWrapper<LessonAccount>()
+                .eq(LessonAccount::getStudentId, record.getStudentId())
+                .eq(LessonAccount::getCourseId, courseId));
+        if (account == null) {
+            throw new BusinessException(404, "该学员无课时账户，无法退费");
         }
 
-        if (refundAmount == null) {
-            refundAmount = BigDecimal.ZERO;
+        // Issue #3: 基于实际缴费单价计算退费金额（替代课程原价）
+        BigDecimal pricePerLesson = BigDecimal.ZERO;
+        if (account.getTotalLessons() != null && account.getTotalLessons().compareTo(BigDecimal.ZERO) > 0
+                && totalPaid.compareTo(BigDecimal.ZERO) > 0) {
+            pricePerLesson = totalPaid.divide(account.getTotalLessons(), 4, java.math.RoundingMode.HALF_UP);
         }
+
+        if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            if (pricePerLesson.compareTo(BigDecimal.ZERO) > 0) {
+                refundAmount = account.getRemainingLessons().multiply(pricePerLesson)
+                        .setScale(2, java.math.RoundingMode.HALF_UP);
+            } else {
+                refundAmount = BigDecimal.ZERO;
+            }
+            record.setAmount(refundAmount);
+        }
+
         if (refundAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException(400, "退费金额不能为负数");
         }
@@ -252,22 +323,29 @@ public class FinanceServiceImpl implements FinanceService {
                     String.format("退费金额(%.2f)超过可退上限(%.2f)，超出部分需人工核实", refundAmount, maxRefundable));
         }
 
-        // 2. 课时回退 — 乐观锁更新课时账户（MyBatis-Plus 自动处理 version+1）
-        LessonAccount account = lessonAccountMapper.selectOne(new LambdaQueryWrapper<LessonAccount>()
-                .eq(LessonAccount::getStudentId, record.getStudentId())
-                .eq(LessonAccount::getCourseId, courseId));
-        if (account == null) {
-            throw new BusinessException(404, "该学员无课时账户，无法退费");
+        // Issue #4: lessonCount 为 null 时根据退费金额反算课时数
+        BigDecimal refundLessonCount;
+        if (record.getLessonCount() != null && record.getLessonCount().compareTo(BigDecimal.ZERO) > 0) {
+            refundLessonCount = record.getLessonCount();
+        } else if (pricePerLesson.compareTo(BigDecimal.ZERO) > 0 && refundAmount.compareTo(BigDecimal.ZERO) > 0) {
+            refundLessonCount = refundAmount.divide(pricePerLesson, 2, java.math.RoundingMode.CEILING);
+            // 不超过剩余课时
+            if (refundLessonCount.compareTo(account.getRemainingLessons()) > 0) {
+                refundLessonCount = account.getRemainingLessons();
+            }
+        } else if (refundAmount.compareTo(BigDecimal.ZERO) > 0) {
+            throw new BusinessException(400, "无法自动计算退费课时数，请手动填写 lessonCount");
+        } else {
+            refundLessonCount = BigDecimal.ZERO;
         }
 
-        BigDecimal refundLessonCount = record.getLessonCount() != null
-                ? record.getLessonCount() : BigDecimal.ZERO;
         BigDecimal before = account.getRemainingLessons();
         if (before.compareTo(refundLessonCount) < 0) {
             throw new BusinessException(409, "剩余课时不足，无法完成退费课时回退");
         }
 
         account.setRemainingLessons(before.subtract(refundLessonCount));
+        account.setTotalLessons(account.getTotalLessons().subtract(refundLessonCount)); // 同步扣减 totalLessons
         int rows = lessonAccountMapper.updateById(account);
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
 
@@ -284,11 +362,28 @@ public class FinanceServiceImpl implements FinanceService {
         flow.setRemark("退费审核通过，回退课时");
         lessonFlowMapper.insert(flow);
 
-        // 4. 联动将学员退班（从所有班级退出）
-        classStudentMapper.update(null,
-                new LambdaUpdateWrapper<ClassStudent>()
-                        .eq(ClassStudent::getStudentId, record.getStudentId())
-                        .set(ClassStudent::getStatus, 3));
+        // 4. 全额退费时将报名状态更新为已退费(6)，防止重复退费
+        if (account.getRemainingLessons().compareTo(BigDecimal.ZERO) <= 0) {
+            enrollmentMapper.update(null,
+                    new LambdaUpdateWrapper<Enrollment>()
+                            .eq(Enrollment::getId, record.getEnrollmentId())
+                            .set(Enrollment::getStatus, 6));
+            Set<Long> courseClassIds = classGroupMapper.selectList(
+                    new LambdaQueryWrapper<ClassGroup>()
+                            .eq(ClassGroup::getCourseId, courseId))
+                    .stream()
+                    .map(ClassGroup::getId)
+                    .collect(Collectors.toSet());
+
+            if (!courseClassIds.isEmpty()) {
+                classStudentMapper.update(null,
+                        new LambdaUpdateWrapper<ClassStudent>()
+                                .eq(ClassStudent::getStudentId, record.getStudentId())
+                                .in(ClassStudent::getClassId, courseClassIds)
+                                .eq(ClassStudent::getStatus, 1) // 仅影响活跃状态的报名记录
+                                .set(ClassStudent::getStatus, 3));
+            }
+        }
     }
 
     // ==================== 课时账户 ====================
@@ -354,8 +449,7 @@ public class FinanceServiceImpl implements FinanceService {
      */
     private Map<Long, String> loadStudentNamesIncludeDeleted(Set<Long> studentIds) {
         if (studentIds == null || studentIds.isEmpty()) return Collections.emptyMap();
-        String idList = studentIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-        List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(idList);
+        List<Map<String, Object>> raw = studentMapper.selectNamesByIdsIncludeDeleted(studentIds);
         return raw.stream()
                 .collect(Collectors.toMap(
                         m -> ((Number) m.get("id")).longValue(),
@@ -366,8 +460,7 @@ public class FinanceServiceImpl implements FinanceService {
     /** 绕过 @TableLogic 加载课程名映射（含已软删课程） */
     private Map<Long, String> loadCourseNamesIncludeDeleted(Set<Long> courseIds) {
         if (courseIds == null || courseIds.isEmpty()) return Collections.emptyMap();
-        String idList = courseIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-        List<Map<String, Object>> raw = courseMapper.selectNamesByIdsIncludeDeleted(idList);
+        List<Map<String, Object>> raw = courseMapper.selectNamesByIdsIncludeDeleted(courseIds);
         return raw.stream()
                 .collect(Collectors.toMap(
                         m -> ((Number) m.get("id")).longValue(),
@@ -387,18 +480,20 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     public List<LessonFlow> getFlowsByStudentId(Long studentId, int limit) {
-        return lessonFlowMapper.selectList(
+        Page<LessonFlow> page = lessonFlowMapper.selectPage(
+                new Page<>(1, limit),
                 new LambdaQueryWrapper<LessonFlow>().eq(LessonFlow::getStudentId, studentId)
-                        .orderByDesc(LessonFlow::getCreateTime)
-                        .last("LIMIT " + limit));
+                        .orderByDesc(LessonFlow::getCreateTime));
+        return page.getRecords();
     }
 
     private void logOperation(String module, String operation) {
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 }

@@ -11,6 +11,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.security.RequireRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,6 +20,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/parent")
 @RequiredArgsConstructor
+@RequireRole("PARENT")
 public class ParentAttendanceController {
 
     private final AttendanceService attendanceService;

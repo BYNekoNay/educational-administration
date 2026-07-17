@@ -20,6 +20,7 @@ public class Enrollment {
 
     private Long classId;
 
+    /** 1=待审核, 2=待缴费, 3=已完成, 4=已拒绝, 5=已失效(超时), 6=已退费 */
     private Integer status;
 
     private Long auditorId;

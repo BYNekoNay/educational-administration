@@ -6,17 +6,22 @@
 
 | 文件 | 说明 |
 |---|---|
-| `schema.sql` | 建库、建表脚本，包含全部核心业务表（用户权限、学员课程、排课教室、考勤课时、财务薪资、考级通知统计等） |
-| `data.sql` | 初始化数据：五类角色账号、机构配置、课程/教室/班级、学员与家长绑定、报名与课时账户、一条已消耗课时的考勤演示、薪资规则、公告等 |
+| `reset.sql` | **完整一键脚本**：DROP 旧库 → 建表 → 填充全量演示数据，单文件直灌 |
+| `schema.sql` | 建表脚本（参考，已合入 reset.sql） |
+| `data.sql` | 初始化数据（参考，已合入 reset.sql） |
+| `reset-all.ps1` | Windows PowerShell 快捷方式（效果与直灌 reset.sql 相同） |
 
 ## 使用方式
 
+### 推荐（一行命令）
 ```bash
-mysql -u root -p < sql/schema.sql
-mysql -u root -p < sql/data.sql
+mysql -uroot -p123456 < sql/reset.sql
 ```
 
-或在 MySQL 客户端中依次执行以上两个文件（`schema.sql` 必须先于 `data.sql`）。
+PowerShell 也可以用：
+```powershell
+Get-Content sql\reset.sql | mysql -uroot -p123456
+```
 
 ## 初始化账号（密码均为 `123456`，已按 BCrypt 加密存储）
 
@@ -28,10 +33,12 @@ mysql -u root -p < sql/data.sql
 | 授课教师 | teacher1 / teacher2 / teacher3 | 分别对应美术/钢琴/舞蹈班主讲教师 |
 | 学员家长 | parent1 / parent2 / parent3 | 分别绑定学员刘小小/陈朵朵/赵一鸣 |
 
-## 与文档的对应关系
+## 与代码的一致性
 
-- 表结构字段、索引、约束与 `docs/10-数据库规范.md` §3、§4 一致；
-- `enrollment`/`lesson_account`/`payment_record`/`lesson_flow` 之间的关联和留位时限、乐观锁字段均已落地；
-- 排课演示数据中特意保留了可用于触发"教师/教室双重冲突"的时间段，便于在管理后台验证 `ScheduleConflictService`（见 `docs/12-核心算法设计文档.md` §2）。
+- `schema.sql` 的 `user.version` 列与 `User.java` 实体字段保持一致（v0.9 新增，避免 `Unknown column 'version'` 错误）
+- 关联表（`role_permission`、`teacher_course` 等）虽然 SQL 中有 `is_deleted` 列，但代码层已改用物理删除，规避 @TableLogic 与唯一键冲突
+- 表结构字段、索引、约束与 `docs/10-数据库规范.md` 保持一致
 
-后续如新增表或修改字段，请同步更新 `docs/10-数据库规范.md` 与本目录脚本，避免文档与实现脱节（参见 `docs/00-文档说明.md` §5 后续更新流程）。
+## 更新记录
+
+- 2026-07-17：`user` 表新增 `version` 列；旧 `reset.sql`（全量副本）替换为引导脚本 + `reset-all.ps1` 一键工具

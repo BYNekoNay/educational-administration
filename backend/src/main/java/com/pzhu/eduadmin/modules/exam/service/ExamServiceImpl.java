@@ -3,6 +3,7 @@ package com.pzhu.eduadmin.modules.exam.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.exam.entity.ExamLevel;
 import com.pzhu.eduadmin.modules.exam.entity.ExamSignup;
@@ -54,6 +55,9 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public ExamLevel createExamLevel(ExamLevel examLevel) {
+        if (examLevel.getName() == null || examLevel.getName().isBlank()) {
+            throw new BusinessException(400, "考级项目名称不能为空");
+        }
         examLevelMapper.insert(examLevel);
         return examLevel;
     }
@@ -66,6 +70,11 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public void deleteExamLevel(Long id) {
+        Long signupCount = examSignupMapper.selectCount(new LambdaQueryWrapper<ExamSignup>()
+                .eq(ExamSignup::getExamId, id));
+        if (signupCount > 0) {
+            throw new BusinessException(409, "该考级项目下已有报名记录，无法删除");
+        }
         examLevelMapper.deleteById(id);
     }
 
@@ -114,6 +123,20 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public ExamSignup createExamSignup(ExamSignup signup) {
+        if (signup.getStudentId() == null) throw new BusinessException(400, "学员ID不能为空");
+        if (signup.getExamId() == null) throw new BusinessException(400, "考级项目ID不能为空");
+        if (examLevelMapper.selectById(signup.getExamId()) == null) {
+            throw new BusinessException(404, "考级项目不存在");
+        }
+        if (studentMapper.selectById(signup.getStudentId()) == null) {
+            throw new BusinessException(404, "学员不存在");
+        }
+        Long existCount = examSignupMapper.selectCount(new LambdaQueryWrapper<ExamSignup>()
+                .eq(ExamSignup::getExamId, signup.getExamId())
+                .eq(ExamSignup::getStudentId, signup.getStudentId()));
+        if (existCount > 0) {
+            throw new BusinessException(409, "该学员已报名此考级项目");
+        }
         examSignupMapper.insert(signup);
         return signup;
     }

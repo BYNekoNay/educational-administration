@@ -14,6 +14,7 @@ import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.RequireRole;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,7 +43,7 @@ public class FinanceController {
 
     @PostMapping("/payments")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
-    public Result<PaymentRecord> createPayment(@RequestBody PaymentRecord record) {
+    public Result<PaymentRecord> createPayment(@Valid @RequestBody PaymentRecord record) {
         record.setOperatorId(CurrentUserHolder.get().getUserId());
         record.setOperatorRole("FINANCE");
         if (record.getPayTime() == null) {
@@ -60,7 +61,7 @@ public class FinanceController {
 
     @PostMapping("/refunds")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
-    public Result<RefundRecord> createRefund(@RequestBody RefundRecord record) {
+    public Result<RefundRecord> createRefund(@Valid @RequestBody RefundRecord record) {
         record.setApplicantId(CurrentUserHolder.get().getUserId());
         record.setApplicantRole("FINANCE");
         record.setStatus(1);
@@ -70,9 +71,24 @@ public class FinanceController {
     @PutMapping("/refunds/{id}/audit")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<RefundRecord> auditRefund(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        Integer status = (Integer) body.get("status");
-        BigDecimal refundAmount = body.get("refundAmount") != null
-                ? new BigDecimal(body.get("refundAmount").toString()) : BigDecimal.ZERO;
+        Object statusObj = body.get("status");
+        if (statusObj == null) throw new BusinessException(400, "审核状态不能为空");
+        Integer status;
+        try {
+            status = statusObj instanceof Integer ? (Integer) statusObj : Integer.parseInt(statusObj.toString());
+        } catch (NumberFormatException e) {
+            throw new BusinessException(400, "审核状态格式不正确");
+        }
+        if (status != 2 && status != 3) {
+            throw new BusinessException(400, "审核状态仅支持 2-通过 或 3-驳回");
+        }
+        BigDecimal refundAmount;
+        try {
+            Object ra = body.get("refundAmount");
+            refundAmount = ra != null ? new BigDecimal(ra.toString()) : BigDecimal.ZERO;
+        } catch (NumberFormatException e) {
+            throw new BusinessException(400, "退费金额格式不正确");
+        }
         return Result.success(financeService.auditRefund(id, status,
                 CurrentUserHolder.get().getUserId(), refundAmount));
     }
@@ -101,7 +117,7 @@ public class FinanceController {
 
     @PostMapping("/renewals")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
-    public Result<PaymentRecord> createRenewal(@RequestBody PaymentRecord record) {
+    public Result<PaymentRecord> createRenewal(@Valid @RequestBody PaymentRecord record) {
         record.setOperatorId(CurrentUserHolder.get().getUserId());
         record.setOperatorRole("FINANCE");
         if (record.getPayTime() == null) {
@@ -121,7 +137,7 @@ public class FinanceController {
 
     @PostMapping("/salary-rules")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
-    public Result<SalaryRule> createSalaryRule(@RequestBody SalaryRule rule) {
+    public Result<SalaryRule> createSalaryRule(@Valid @RequestBody SalaryRule rule) {
         return Result.success(salaryService.createSalaryRule(rule));
     }
 
@@ -129,15 +145,18 @@ public class FinanceController {
 
     @GetMapping("/statistics/revenue")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    @SuppressWarnings("unchecked")
     public Result<Map<String, Object>> revenueStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> charts = (Map<String, Object>) dashboard.get("charts");
+        if (charts == null) return Result.fail(500, "统计数据获取失败");
         return Result.success(Map.of("revenueTrend", charts.get("revenueTrend")));
     }
 
     // ---- 家长端课时查询（共享 finance 路径） ----
 
     @GetMapping("/parent/students/{studentId}/lesson-account")
+    @RequireRole("PARENT")
     public Result<List<LessonAccount>> childAccountsByStudentId(@PathVariable Long studentId) {
         Long parentUserId = CurrentUserHolder.get().getUserId();
         checkParentBinding(parentUserId, studentId);
@@ -145,6 +164,7 @@ public class FinanceController {
     }
 
     @GetMapping("/parent/students/{studentId}/lesson-flows")
+    @RequireRole("PARENT")
     public Result<List<LessonFlow>> childFlowsByStudentId(@PathVariable Long studentId) {
         Long parentUserId = CurrentUserHolder.get().getUserId();
         checkParentBinding(parentUserId, studentId);

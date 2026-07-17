@@ -39,7 +39,7 @@ public class CourseController {
     }
 
     @PutMapping("/courses/{id}")
-    public Result<Course> updateCourse(@PathVariable Long id, @RequestBody Course course) {
+    public Result<Course> updateCourse(@PathVariable Long id, @Valid @RequestBody Course course) {
         course.setId(id);
         return Result.success(courseService.updateCourse(course));
     }
@@ -95,7 +95,7 @@ public class CourseController {
 
     @DeleteMapping("/classes/{id}/students/{studentId}")
     public Result<Void> removeStudentFromClass(@PathVariable Long id, @PathVariable Long studentId) {
-        courseService.removeStudentFromClass(studentId);
+        courseService.removeStudentFromClass(id, studentId);
         return Result.success();
     }
 }

@@ -16,7 +16,7 @@ public abstract class BaseSpringTest {
     protected JwtUtil jwtUtil;
 
     protected String buildToken(Long userId, String username, String roleCode) {
-        return "Bearer " + jwtUtil.generateToken(userId, username, roleCode);
+        return "Bearer " + jwtUtil.generateToken(userId, username, roleCode, 0);
     }
 
     protected String adminToken() { return buildToken(1L, "admin", "SUPER_ADMIN"); }

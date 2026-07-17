@@ -20,6 +20,7 @@ public class ScheduleAdjustRequest {
 
     private LocalDateTime expectTime;
 
+    /** 1=待审核, 2=已通过, 3=已驳回 */
     private Integer status;
 
     private Long auditorId;

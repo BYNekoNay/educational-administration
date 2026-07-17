@@ -24,6 +24,7 @@ public class AdminAttendanceController {
     }
 
     @GetMapping("/attendances/{id}")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Attendance> get(@PathVariable Long id) {
         return Result.success(attendanceService.getById(id));
     }

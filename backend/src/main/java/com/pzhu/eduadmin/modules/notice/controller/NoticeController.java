@@ -19,14 +19,20 @@ public class NoticeController {
     // ---- 规范路径：/api/admin/notices ----
 
     @GetMapping("/api/admin/notices")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<PageResult<Notice>> list(PageQuery query) {
         return Result.success(PageResult.of(noticeService.page((int) query.getPageNum(), (int) query.getPageSize(),
                 query.getKeyword(), query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/api/admin/notices/{id}")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Notice> get(@PathVariable Long id) {
-        return Result.success(noticeService.getById(id));
+        Notice notice = noticeService.getById(id);
+        if (notice == null) {
+            return Result.fail(404, "公告不存在");
+        }
+        return Result.success(notice);
     }
 
     @PostMapping("/api/admin/notices")
@@ -37,7 +43,7 @@ public class NoticeController {
 
     @PutMapping("/api/admin/notices/{id}")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<Notice> update(@PathVariable Long id, @RequestBody Notice notice) {
+    public Result<Notice> update(@PathVariable Long id, @Valid @RequestBody Notice notice) {
         notice.setId(id);
         return Result.success(noticeService.update(notice));
     }
@@ -53,12 +59,14 @@ public class NoticeController {
 
     @Deprecated
     @GetMapping("/api/notices")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<PageResult<Notice>> listLegacy(PageQuery query) {
         return list(query);
     }
 
     @Deprecated
     @GetMapping("/api/notices/{id}")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Notice> getLegacy(@PathVariable Long id) {
         return get(id);
     }
@@ -73,7 +81,7 @@ public class NoticeController {
     @Deprecated
     @PutMapping("/api/notices/{id}")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<Notice> updateLegacy(@PathVariable Long id, @RequestBody Notice notice) {
+    public Result<Notice> updateLegacy(@PathVariable Long id, @Valid @RequestBody Notice notice) {
         return update(id, notice);
     }
 

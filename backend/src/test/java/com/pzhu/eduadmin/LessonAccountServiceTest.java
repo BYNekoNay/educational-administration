@@ -54,6 +54,8 @@ class LessonAccountServiceTest {
     @BeforeEach
     void setUp() {
         CurrentUserHolder.set(new LoginUser(2L, "teacher1", "TEACHER"));
+        // Mock enrollment check: student is enrolled in the class (status=1)
+        lenient().when(classStudentMapper.selectCount(any())).thenReturn(1L);
     }
 
     @AfterEach

@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +23,6 @@ public interface StudentMapper extends BaseMapper<Student> {
      *
      * <p>返回结果：[{id:1, name:"刘小小"}, {id:2, name:"陈朵朵"}, ...]（含已软删学员）</p>
      */
-    @Select("SELECT id, name FROM student WHERE id IN (${ids})")
-    List<Map<String, Object>> selectNamesByIdsIncludeDeleted(@Param("ids") String ids);
+    @Select("<script>SELECT id, name FROM student WHERE id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
+    List<Map<String, Object>> selectNamesByIdsIncludeDeleted(@Param("ids") Collection<Long> ids);
 }

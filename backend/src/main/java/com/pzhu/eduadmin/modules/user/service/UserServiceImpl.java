@@ -54,6 +54,7 @@ public class UserServiceImpl implements UserService {
                 fillUserSpecialties(user);
             }
         });
+        page.getRecords().forEach(u -> u.setPassword(null));
         return page;
     }
 
@@ -63,7 +64,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public User createUser(CreateUserRequest request) {
         if (userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, request.getUsername())) != null) {
@@ -91,21 +92,34 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public User updateUser(Long id, UpdateUserRequest request) {
         User user = userMapper.selectById(id);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
+        boolean roleChanged = false;
         if (request.getUsername() != null) user.setUsername(request.getUsername());
         if (request.getRealName() != null) user.setRealName(request.getRealName());
         if (request.getPhone() != null) user.setPhone(request.getPhone());
-        if (request.getRoleCode() != null) user.setRoleCode(request.getRoleCode());
+        if (request.getRoleCode() != null && !request.getRoleCode().equals(user.getRoleCode())) {
+            user.setRoleCode(request.getRoleCode());
+            roleChanged = true;
+        }
+        // 角色变更时递增 version 使旧 Token 失效
+        if (roleChanged) {
+            user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
+        }
         userMapper.updateById(user);
 
-        // 若角色为教师，处理教学特长（全量替换）
-        if ("TEACHER".equals(user.getRoleCode()) && request.getSpecialtyCourseIds() != null) {
-            saveSpecialties(id, request.getSpecialtyCourseIds());
+        // 处理角色变更时的教学特长
+        if ("TEACHER".equals(user.getRoleCode())) {
+            if (request.getSpecialtyCourseIds() != null) {
+                saveSpecialties(id, request.getSpecialtyCourseIds());
+            }
+        } else {
+            // 角色不再是教师时，清理旧的特长关联
+            teacherCourseMapper.realDeleteByUserId(id);
         }
         fillUserSpecialties(user);
 
@@ -117,9 +131,13 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void updateUserStatus(Long id, Integer status) {
-        User user = new User();
-        user.setId(id);
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
         user.setStatus(status);
+        // 递增 version 使旧 Token 失效（禁用/启用时）
+        user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
         userMapper.updateById(user);
 
         logOperation("用户管理", status == 1 ? "启用用户(id=" + id + ")" : "禁用用户(id=" + id + ")");
@@ -127,11 +145,18 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void resetPassword(Long id, String newPassword) {
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new BusinessException(400, "新密码不能为空");
+        }
+        if (newPassword.length() < 6) {
+            throw new BusinessException(400, "新密码长度不能少于6位");
+        }
         User user = userMapper.selectById(id);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
         user.setPassword(new BCryptPasswordEncoder().encode(newPassword));
+        user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
         userMapper.updateById(user);
         logOperation("用户管理", "重置密码(id=" + id + ", username=" + user.getUsername() + ")");
     }
@@ -142,16 +167,15 @@ public class UserServiceImpl implements UserService {
         log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 
     // ---- 教师教学特长管理 ----
 
-    /** 保存教师特长课程（全量替换：先清后插） */
+    /** 保存教师特长课程（全量替换：先物理清后插，避免 @TableLogic 唯一键冲突） */
     private void saveSpecialties(Long userId, List<Long> courseIds) {
-        teacherCourseMapper.delete(
-                new LambdaQueryWrapper<TeacherCourse>().eq(TeacherCourse::getUserId, userId));
+        teacherCourseMapper.realDeleteByUserId(userId);
         if (courseIds != null && !courseIds.isEmpty()) {
             for (Long cid : courseIds) {
                 TeacherCourse tc = new TeacherCourse();

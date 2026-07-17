@@ -48,7 +48,7 @@ public class MenuServiceImpl implements MenuService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Menu create(Menu menu) {
         // 若有权限码，校验在 permission 表中存在
         if (menu.getPermissionCode() != null && !menu.getPermissionCode().isBlank()) {
@@ -65,17 +65,17 @@ public class MenuServiceImpl implements MenuService {
         menuMapper.insert(menu);
 
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("菜单管理");
         log.setOperation("新增菜单：" + menu.getMenuName());
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
 
         return menu;
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Menu update(Menu menu) {
         Menu existing = getById(menu.getId());
         if (menu.getPermissionCode() != null && !menu.getPermissionCode().isBlank()
@@ -90,17 +90,17 @@ public class MenuServiceImpl implements MenuService {
         menuMapper.updateById(menu);
 
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("菜单管理");
         log.setOperation("编辑菜单：" + menu.getMenuName());
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
 
         return getById(menu.getId());
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         Menu menu = getById(id);
         // 递归删除所有子节点
@@ -109,10 +109,10 @@ public class MenuServiceImpl implements MenuService {
         menuMapper.deleteById(id);
 
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("菜单管理");
         log.setOperation("删除菜单：" + menu.getMenuName() + "（含子节点）");
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 

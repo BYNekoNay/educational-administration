@@ -31,6 +31,9 @@ public interface AttendanceService {
     /** 教师查询课次列表 */
     Page<ScheduleLesson> pageTeacherLessons(Long teacherId, int pageNum, int pageSize);
 
+    /** 校验教师角色：当前课次是否属于当前登录教师（行级数据隔离） */
+    void checkTeacherLessonOwnership(Long lessonId);
+
     /** 家长查询学员课表（根据 studentId 查询其班级课次） */
     List<ScheduleLesson> getStudentSchedules(Long studentId);
 }

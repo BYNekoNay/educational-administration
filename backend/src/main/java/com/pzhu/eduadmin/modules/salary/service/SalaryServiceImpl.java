@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.salary.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
@@ -26,10 +27,12 @@ import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.Collections;
@@ -82,9 +85,11 @@ public class SalaryServiceImpl implements SalaryService {
         Set<Long> teacherIds = list.stream().map(SalaryRule::getTeacherId).collect(Collectors.toSet());
         Set<Long> courseIds = list.stream().map(SalaryRule::getCourseId).collect(Collectors.toSet());
         Map<Long, String> teacherNames = userMapper.selectBatchIds(teacherIds).stream()
-                .collect(Collectors.toMap(User::getId, User::getRealName));
+                .collect(Collectors.toMap(User::getId,
+                        u -> u.getRealName() != null && !u.getRealName().isBlank() ? u.getRealName() : u.getUsername(),
+                        (a, b) -> a));
         Map<Long, String> courseNames = courseMapper.selectBatchIds(courseIds).stream()
-                .collect(Collectors.toMap(Course::getId, Course::getName));
+                .collect(Collectors.toMap(Course::getId, Course::getName, (a, b) -> a));
         for (SalaryRule r : list) {
             r.setTeacherName(teacherNames.getOrDefault(r.getTeacherId(), ""));
             r.setCourseName(courseNames.getOrDefault(r.getCourseId(), ""));
@@ -97,12 +102,27 @@ public class SalaryServiceImpl implements SalaryService {
             throw new BusinessException(400, "课时单价必须大于0");
         }
         if (rule.getSubstituteRate() == null) rule.setSubstituteRate(BigDecimal.ONE);
+        // Issue #19: 检查教师+课程唯一性
+        Long existCount = salaryRuleMapper.selectCount(
+                new LambdaQueryWrapper<SalaryRule>()
+                        .eq(SalaryRule::getTeacherId, rule.getTeacherId())
+                        .eq(SalaryRule::getCourseId, rule.getCourseId()));
+        if (existCount > 0) {
+            throw new BusinessException(409, "该教师在此课程已有薪资规则，不可重复创建");
+        }
         salaryRuleMapper.insert(rule);
         return rule;
     }
 
     @Override
     public SalaryRule updateSalaryRule(SalaryRule rule) {
+        SalaryRule existing = salaryRuleMapper.selectById(rule.getId());
+        if (existing == null) {
+            throw new BusinessException(404, "薪资规则不存在");
+        }
+        if (rule.getLessonUnitPrice() != null && rule.getLessonUnitPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(400, "课时单价必须大于0");
+        }
         salaryRuleMapper.updateById(rule);
         return salaryRuleMapper.selectById(rule.getId());
     }
@@ -141,7 +161,9 @@ public class SalaryServiceImpl implements SalaryService {
         if (list.isEmpty()) return;
         Set<Long> teacherIds = list.stream().map(TeacherSalary::getTeacherId).collect(Collectors.toSet());
         Map<Long, String> teacherNames = userMapper.selectBatchIds(teacherIds).stream()
-                .collect(Collectors.toMap(User::getId, User::getRealName));
+                .collect(Collectors.toMap(User::getId,
+                        u -> u.getRealName() != null && !u.getRealName().isBlank() ? u.getRealName() : u.getUsername(),
+                        (a, b) -> a));
         for (TeacherSalary s : list) {
             s.setTeacherName(teacherNames.getOrDefault(s.getTeacherId(), ""));
         }
@@ -150,45 +172,59 @@ public class SalaryServiceImpl implements SalaryService {
     // ==================== 薪资自动核算 ====================
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public TeacherSalary calculateSalary(String salaryMonth, Long teacherId, BigDecimal bonusAmount) {
         if (bonusAmount == null) bonusAmount = BigDecimal.ZERO;
 
         YearMonth ym = YearMonth.parse(salaryMonth);
         LocalDateTime calcSnapshot = LocalDateTime.now();
-        LocalDateTime monthEnd = ym.atEndOfMonth().atTime(23, 59, 59);
 
-        // 1. 查询该教师当月所有已完成课次（status=2 已完成）
-        // 同时也要查代课课次（该课次 teacherId 不是该教师，但教师实际上了这堂课）
+        // 核算月份日期范围
+        LocalDate monthStart = ym.atDay(1);
+        LocalDate monthEnd = ym.atEndOfMonth();
+
+        // 1. 查询该教师当月所有已完成课次（status=2 已完成），排除代课课次（代课单独核算）
         List<ScheduleLesson> mainLessons = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)
                         .eq(ScheduleLesson::getStatus, 2) // 已完成
-                        .le(ScheduleLesson::getCreateTime, calcSnapshot)
+                        .ge(ScheduleLesson::getLessonDate, monthStart)
+                        .le(ScheduleLesson::getLessonDate, monthEnd)
+                        .isNull(ScheduleLesson::getSourceLessonId) // 排除代课课次，避免双重计算
                         .orderByAsc(ScheduleLesson::getLessonDate));
 
-        // 2. 查询该教师的代课课次（通过考勤表找到非该教师但实际授课的课次）
-        // 代课场景：课次 teacherId ≠ salary teacherId，但存在考勤记录
-        // 简化方案：从已完成的非教师主讲课次中，查询是否存在考勤记录
-        List<ScheduleLesson> allCompletedLessons = scheduleLessonMapper.selectList(
+        // 2. 查询该教师当月所有代课课次（sourceLessonId 不为空表示是代课）
+        List<ScheduleLesson> substituteLessons = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>()
-                        .eq(ScheduleLesson::getStatus, 2)
-                        .le(ScheduleLesson::getCreateTime, calcSnapshot));
+                        .eq(ScheduleLesson::getTeacherId, teacherId)
+                        .eq(ScheduleLesson::getStatus, 2) // 已完成
+                        .ge(ScheduleLesson::getLessonDate, monthStart)
+                        .le(ScheduleLesson::getLessonDate, monthEnd)
+                        .isNotNull(ScheduleLesson::getSourceLessonId));
 
-        // 收集所有需要校验考勤的课次 ID
-        Set<Long> allLessonIds = allCompletedLessons.stream()
-                .map(ScheduleLesson::getId).collect(Collectors.toSet());
+        // 收集所有需要校验考勤的课次 ID（主讲 + 代课）
+        Set<Long> allLessonIds = new HashSet<>();
+        mainLessons.forEach(l -> allLessonIds.add(l.getId()));
+        substituteLessons.forEach(l -> allLessonIds.add(l.getId()));
 
         // 批量查询所有课次的考勤记录，构建 lessonId -> 是否存在考勤的映射
-        Map<Long, Long> lessonAttendanceMap = attendanceMapper.selectList(
-                        new LambdaQueryWrapper<Attendance>()
-                                .in(Attendance::getLessonId, allLessonIds)
-                                .eq(Attendance::getStatus, 1)) // 到课才计入
-                .stream()
-                .collect(Collectors.groupingBy(Attendance::getLessonId, Collectors.counting()));
+        Map<Long, Long> lessonAttendanceMap;
+        if (!allLessonIds.isEmpty()) {
+            lessonAttendanceMap = attendanceMapper.selectList(
+                            new LambdaQueryWrapper<Attendance>()
+                                    .in(Attendance::getLessonId, allLessonIds)
+                                    .in(Attendance::getStatus, 1, 2)) // 到课/迟到均算授课
+                    .stream()
+                    .collect(Collectors.groupingBy(Attendance::getLessonId, Collectors.counting()));
+        } else {
+            lessonAttendanceMap = Collections.emptyMap();
+        }
 
-        // 5. 读取该教师全部薪资规则（按 教师+课程 区分），构建 courseId -> 规则 映射
+        // 5. 读取该教师全部薪资规则，按创建时间排序，取第一条作为兜底
         List<SalaryRule> rules = salaryRuleMapper.selectList(
-                new LambdaQueryWrapper<SalaryRule>().eq(SalaryRule::getTeacherId, teacherId));
+                new LambdaQueryWrapper<SalaryRule>()
+                        .eq(SalaryRule::getTeacherId, teacherId)
+                        .orderByAsc(SalaryRule::getCreateTime));
         if (rules == null || rules.isEmpty()) {
             throw new BusinessException(400, "该教师未配置薪资规则，请先设置课时单价");
         }
@@ -199,7 +235,7 @@ public class SalaryServiceImpl implements SalaryService {
         // 解析 课次 -> 班级 -> 课程 的映射，以便按课程取对应课时单价
         Set<Long> classIds = new HashSet<>();
         mainLessons.forEach(l -> classIds.add(l.getClassId()));
-        allCompletedLessons.forEach(l -> classIds.add(l.getClassId()));
+        substituteLessons.forEach(l -> classIds.add(l.getClassId()));
         Map<Long, Long> classCourseMap;
         if (!classIds.isEmpty()) {
             classCourseMap = classGroupMapper.selectList(
@@ -231,8 +267,8 @@ public class SalaryServiceImpl implements SalaryService {
         // 4. 统计代课课时并按下课单价×代课系数累加
         BigDecimal substituteCount = BigDecimal.ZERO;
         BigDecimal substituteAmount = BigDecimal.ZERO;
-        for (ScheduleLesson lesson : allCompletedLessons) {
-            if (!lesson.getTeacherId().equals(teacherId) && lessonAttendanceMap.containsKey(lesson.getId())) {
+        for (ScheduleLesson lesson : substituteLessons) {
+            if (lessonAttendanceMap.containsKey(lesson.getId())) {
                 substituteCount = substituteCount.add(BigDecimal.ONE);
                 SalaryRule r = resolveRule.apply(lesson.getClassId());
                 BigDecimal unitPrice = r.getLessonUnitPrice();
@@ -251,13 +287,12 @@ public class SalaryServiceImpl implements SalaryService {
                 .eq(TeacherSalary::getTeacherId, teacherId)
                 .eq(TeacherSalary::getSalaryMonth, salaryMonth));
 
-        TeacherSalary salary = (existing != null) ? existing : new TeacherSalary();
         if (existing != null) {
             if (existing.getStatus() == 2) {
                 throw new BusinessException(409, "该月薪资已确认，不可覆盖。请先作废后再重新核算");
             }
-            salary = existing;
         }
+        TeacherSalary salary = (existing != null) ? existing : new TeacherSalary();
 
         salary.setTeacherId(teacherId);
         salary.setSalaryMonth(salaryMonth);
@@ -283,8 +318,17 @@ public class SalaryServiceImpl implements SalaryService {
         if (salary == null) throw new BusinessException(404, "薪资记录不存在");
         if (salary.getStatus() == 2) throw new BusinessException(409, "薪资已确认");
         if (salary.getStatus() == 4) throw new BusinessException(409, "已撤销的薪资不可确认，请重新核算");
+
+        // CAS 原子更新：防止并发确认
+        int updated = teacherSalaryMapper.update(null,
+                new LambdaUpdateWrapper<TeacherSalary>()
+                        .eq(TeacherSalary::getId, id)
+                        .eq(TeacherSalary::getStatus, salary.getStatus())
+                        .set(TeacherSalary::getStatus, 2));
+        if (updated == 0) {
+            throw new BusinessException(409, "薪资状态已变更，请刷新后重试");
+        }
         salary.setStatus(2);
-        teacherSalaryMapper.updateById(salary);
 
         // 操作日志
         logOperation("薪资管理", "确认薪资(teacherId=" + salary.getTeacherId() + ",月份=" + salary.getSalaryMonth() + ",id=" + id + ")");
@@ -297,8 +341,17 @@ public class SalaryServiceImpl implements SalaryService {
         TeacherSalary salary = teacherSalaryMapper.selectById(id);
         if (salary == null) throw new BusinessException(404, "薪资记录不存在");
         if (salary.getStatus() == 4) throw new BusinessException(409, "薪资已撤销");
+
+        // CAS 原子更新：防止并发作废
+        int updated = teacherSalaryMapper.update(null,
+                new LambdaUpdateWrapper<TeacherSalary>()
+                        .eq(TeacherSalary::getId, id)
+                        .eq(TeacherSalary::getStatus, salary.getStatus())
+                        .set(TeacherSalary::getStatus, 4));
+        if (updated == 0) {
+            throw new BusinessException(409, "薪资状态已变更，请刷新后重试");
+        }
         salary.setStatus(4);
-        teacherSalaryMapper.updateById(salary);
 
         // 操作日志
         logOperation("薪资管理", "撤销薪资(teacherId=" + salary.getTeacherId()
@@ -312,6 +365,9 @@ public class SalaryServiceImpl implements SalaryService {
         TeacherSalary salary = teacherSalaryMapper.selectById(salaryId);
         if (salary == null) throw new BusinessException(404, "薪资记录不存在");
         if (salary.getStatus() != 2) throw new BusinessException(409, "仅可对已确认的薪资进行调整");
+        if (adjustAmount == null || adjustAmount.compareTo(BigDecimal.ZERO) == 0) {
+            throw new BusinessException(400, "调整金额不能为空或为零");
+        }
 
         SalaryAdjustment adj = new SalaryAdjustment();
         adj.setTeacherSalaryId(salaryId);
@@ -329,10 +385,11 @@ public class SalaryServiceImpl implements SalaryService {
 
     private void logOperation(String module, String operation) {
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 }

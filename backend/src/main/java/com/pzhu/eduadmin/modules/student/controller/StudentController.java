@@ -74,8 +74,10 @@ public class StudentController {
     }
 
     @PostMapping("/{id}/transfer")
-    public Result<java.util.Map<String, Object>> transfer(@PathVariable Long id, @RequestParam Long targetClassId) {
-        return Result.success(studentService.transferStudent(id, targetClassId));
+    public Result<java.util.Map<String, Object>> transfer(@PathVariable Long id,
+                                                           @RequestParam Long targetClassId,
+                                                           @RequestParam(required = false) Long fromClassId) {
+        return Result.success(studentService.transferStudent(id, targetClassId, fromClassId));
     }
 
     @PostMapping("/{id}/withdraw")

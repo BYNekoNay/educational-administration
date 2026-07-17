@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.schedule.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -70,6 +71,9 @@ public class ScheduleController {
     @PostMapping("/schedules/batch")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Void> batchCreate(@RequestBody List<ScheduleLesson> lessons) {
+        if (lessons == null || lessons.isEmpty()) {
+            throw new BusinessException(400, "排课列表不能为空");
+        }
         scheduleService.batchCreate(lessons);
         return Result.success();
     }

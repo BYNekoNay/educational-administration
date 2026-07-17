@@ -34,5 +34,5 @@ public interface CourseService {
 
     boolean addStudentToClass(ClassStudent classStudent);
 
-    boolean removeStudentFromClass(Long id);
+    boolean removeStudentFromClass(Long classId, Long studentId);
 }

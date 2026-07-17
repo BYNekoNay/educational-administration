@@ -11,7 +11,9 @@ import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
+import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
+import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
@@ -46,6 +48,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final AttendanceMapper attendanceMapper;
     private final ScheduleLessonMapper scheduleLessonMapper;
     private final PaymentRecordMapper paymentRecordMapper;
+    private final RefundRecordMapper refundRecordMapper;
     private final ClassStudentMapper classStudentMapper;
 
     @Override
@@ -64,16 +67,23 @@ public class StatisticsServiceImpl implements StatisticsService {
         if (organization.getId() == null) {
             Organization existing = organizationMapper.selectOne(new LambdaQueryWrapper<Organization>().last("LIMIT 1"));
             if (existing != null) organization.setId(existing.getId());
+        } else {
+            // L3: 校验指定 ID 的机构记录是否存在
+            Organization existing = organizationMapper.selectById(organization.getId());
+            if (existing == null) {
+                throw new com.pzhu.eduadmin.common.BusinessException(404, "机构配置记录不存在");
+            }
         }
 
         organizationMapper.updateById(organization);
 
         // 操作日志
         OperationLog opLog = new OperationLog();
-        opLog.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+        opLog.setOperatorId(operator != null ? operator.getUserId() : 0L);
         opLog.setModule("系统配置");
         opLog.setOperation("更新机构配置(id=" + organization.getId() + ")");
-        opLog.setIp("0.0.0.0");
+        opLog.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(opLog);
 
         return organizationMapper.selectById(organization.getId());
@@ -145,10 +155,11 @@ public class StatisticsServiceImpl implements StatisticsService {
         BigDecimal monthlyRevenue = sumPaymentRevenue(monthStart, monthEnd);
         cards.put("monthlyRevenue", monthlyRevenue.setScale(2, RoundingMode.HALF_UP));
 
-        // 4. 到课率
-        long totalAttendance = attendanceMapper.selectCount(new LambdaQueryWrapper<>());
+        // 4. 到课率（Issue #23: 仅统计有效考勤状态 1=到场, 2=迟到, 3=请假）
+        long totalAttendance = attendanceMapper.selectCount(
+                new LambdaQueryWrapper<Attendance>().in(Attendance::getStatus, 1, 2, 3));
         long attendedCount = attendanceMapper.selectCount(
-                new LambdaQueryWrapper<Attendance>().eq(Attendance::getStatus, 1));
+                new LambdaQueryWrapper<Attendance>().in(Attendance::getStatus, 1, 2)); // 到场+迟到算到课
         BigDecimal attendanceRate = totalAttendance > 0
                 ? BigDecimal.valueOf(attendedCount).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(totalAttendance), 1, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
@@ -198,8 +209,14 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<ScheduleLesson> allLessons = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>().eq(ScheduleLesson::getStatus, 2));
         Set<Long> allLessonIds = allLessons.stream().map(ScheduleLesson::getId).collect(Collectors.toSet());
-        List<Attendance> allAttendances = attendanceMapper.selectList(
-                new LambdaQueryWrapper<Attendance>().in(Attendance::getLessonId, allLessonIds));
+        // S4: 空集合 IN 防护 — 无已完成课次时跳过考勤查询，避免全表扫描
+        List<Attendance> allAttendances;
+        if (allLessonIds.isEmpty()) {
+            allAttendances = Collections.emptyList();
+        } else {
+            allAttendances = attendanceMapper.selectList(
+                    new LambdaQueryWrapper<Attendance>().in(Attendance::getLessonId, allLessonIds));
+        }
         for (int i = 5; i >= 0; i--) {
             YearMonth ym = YearMonth.now().minusMonths(i);
             long lessonsInMonth = allLessons.stream().filter(l -> {
@@ -210,8 +227,8 @@ public class StatisticsServiceImpl implements StatisticsService {
                 LocalDate d = l.getLessonDate();
                 return d != null && YearMonth.from(d).equals(ym);
             }).map(ScheduleLesson::getId).collect(Collectors.toSet());
-            long attended = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() == 1).count();
-            long total = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId())).count();
+            long attended = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && (a.getStatus() == 1 || a.getStatus() == 2)).count();
+            long total = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && (a.getStatus() == 1 || a.getStatus() == 2 || a.getStatus() == 3)).count();
             BigDecimal rate = total > 0
                     ? BigDecimal.valueOf(attended).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(total), 1, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
@@ -229,10 +246,22 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<PaymentRecord> records = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>()
                         .ge(PaymentRecord::getPayTime, start.atStartOfDay())
-                        .le(PaymentRecord::getPayTime, end.atTime(23, 59, 59)));
-        return records.stream()
+                        .lt(PaymentRecord::getPayTime, end.plusDays(1).atStartOfDay()));
+        BigDecimal totalPayment = records.stream()
                 .map(r -> r.getAmount() != null ? r.getAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // 扣减同期已审核通过的退费金额
+        List<RefundRecord> refunds = refundRecordMapper.selectList(
+                new LambdaQueryWrapper<RefundRecord>()
+                        .eq(RefundRecord::getStatus, 2)
+                        .ge(RefundRecord::getCreateTime, start.atStartOfDay())
+                        .lt(RefundRecord::getCreateTime, end.plusDays(1).atStartOfDay()));
+        BigDecimal totalRefund = refunds.stream()
+                .map(r -> r.getAmount() != null ? r.getAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return totalPayment.subtract(totalRefund);
     }
 
     // ==================== 教师工作量统计 ====================
@@ -290,22 +319,31 @@ public class StatisticsServiceImpl implements StatisticsService {
             LocalDate monthStart = ym.atDay(1);
             LocalDate monthEnd = ym.atEndOfMonth();
 
-            // 月初在班人数（status = 1）
+            // M4 修复: 月初在班人数 = 月初之前入班且仍活跃的学员
             long beginCount = classStudentMapper.selectCount(
                     new LambdaQueryWrapper<ClassStudent>()
                             .eq(ClassStudent::getStatus, 1)
-                            .le(ClassStudent::getJoinTime, monthEnd.atTime(23, 59, 59)));
+                            .lt(ClassStudent::getJoinTime, monthStart.atStartOfDay()));
+
+            // 本月新入班人数
+            long newJoinCount = classStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getStatus, 1)
+                            .ge(ClassStudent::getJoinTime, monthStart.atStartOfDay())
+                            .lt(ClassStudent::getJoinTime, monthEnd.plusDays(1).atStartOfDay()));
 
             // 本月退班人数（status = 3 且 updateTime 在本月）
             long lossCount = classStudentMapper.selectCount(
                     new LambdaQueryWrapper<ClassStudent>()
                             .eq(ClassStudent::getStatus, 3)
                             .ge(ClassStudent::getUpdateTime, monthStart.atStartOfDay())
-                            .le(ClassStudent::getUpdateTime, monthEnd.atTime(23, 59, 59)));
+                            .lt(ClassStudent::getUpdateTime, monthEnd.plusDays(1).atStartOfDay()));
 
-            BigDecimal rate = beginCount > 0
+            // 分母 = 月初在班 + 本月新入班（本月曾处于在班状态的总人数）
+            long denominator = beginCount + newJoinCount;
+            BigDecimal rate = denominator > 0
                     ? BigDecimal.valueOf(lossCount).multiply(BigDecimal.valueOf(100))
-                            .divide(BigDecimal.valueOf(beginCount + lossCount), 1, RoundingMode.HALF_UP)
+                            .divide(BigDecimal.valueOf(denominator), 1, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
 
             Map<String, Object> item = new LinkedHashMap<>();

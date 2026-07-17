@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.config;
 
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.BlockAttackInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import org.springframework.context.annotation.Bean;
@@ -17,6 +18,8 @@ public class MybatisPlusConfig {
         interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
         // 乐观锁插件：自动在 UPDATE 语句追加 WHERE version = oldVersion，配合 @Version 注解实现 CAS 并发控制
         interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
+        // 防全表更新/删除插件：阻止无 WHERE 条件的 update/delete 操作
+        interceptor.addInnerInterceptor(new BlockAttackInnerInterceptor());
         return interceptor;
     }
 }

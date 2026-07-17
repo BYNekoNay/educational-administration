@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: eduadmin
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
   # 开发环境排除 Redis 自动配置（无需本地 Redis 服务）。
   # 如需启用 Redis 缓存（会话共享/JWT 黑名单/统计数据缓存）：
   # 1. 注释掉下方 autoconfigure.exclude 中的 Redis 相关两项
@@ -42,3 +47,7 @@ file:
 logging:
   level:
     com.pzhu.eduadmin: debug
+
+app:
+  cors:
+    allowed-origins: http://localhost:*,http://127.0.0.1:*

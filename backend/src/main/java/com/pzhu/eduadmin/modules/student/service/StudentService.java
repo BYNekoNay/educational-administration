@@ -42,7 +42,7 @@ public interface StudentService {
      * 学员转班：将学员从当前班级转移到目标班级，
      * 对应 docs/09-接口规范.md §5 POST /api/edu/students/{id}/transfer。
      */
-    Map<String, Object> transferStudent(Long studentId, Long targetClassId);
+    Map<String, Object> transferStudent(Long studentId, Long targetClassId, Long fromClassId);
 
     /**
      * 学员退班：将学员从班级中移除并生成退费申请，

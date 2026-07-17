@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.schedule.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
@@ -89,12 +90,20 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public ScheduleLesson createLesson(ScheduleLesson lesson) {
+        List<String> conflicts = scheduleConflictService.checkConflict(lesson);
+        if (!conflicts.isEmpty()) {
+            throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
+        }
         scheduleLessonMapper.insert(lesson);
         return lesson;
     }
 
     @Override
     public ScheduleLesson updateLesson(ScheduleLesson lesson) {
+        List<String> conflicts = scheduleConflictService.checkConflict(lesson);
+        if (!conflicts.isEmpty()) {
+            throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
+        }
         scheduleLessonMapper.updateById(lesson);
         return scheduleLessonMapper.selectById(lesson.getId());
     }
@@ -114,6 +123,25 @@ public class ScheduleServiceImpl implements ScheduleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void batchCreate(List<ScheduleLesson> lessons) {
+        // Check intra-batch conflicts (pairwise, before DB insertion)
+        for (int i = 0; i < lessons.size(); i++) {
+            for (int j = i + 1; j < lessons.size(); j++) {
+                ScheduleLesson a = lessons.get(i);
+                ScheduleLesson b = lessons.get(j);
+                if (hasTimeOverlap(a, b)) {
+                    if (a.getTeacherId() != null && a.getTeacherId().equals(b.getTeacherId())) {
+                        throw new BusinessException(409, "批次内排课冲突：教师 " + a.getTeacherId() + " 在同一时段有多节课");
+                    }
+                    if (a.getClassroomId() != null && a.getClassroomId().equals(b.getClassroomId())) {
+                        throw new BusinessException(409, "批次内排课冲突：教室在同一时段被占用");
+                    }
+                    if (a.getClassId() != null && a.getClassId().equals(b.getClassId())) {
+                        throw new BusinessException(409, "批次内排课冲突：班级在同一时段有多节课");
+                    }
+                }
+            }
+        }
+
         List<String> allConflicts = new ArrayList<>();
         for (ScheduleLesson lesson : lessons) {
             List<String> conflicts = scheduleConflictService.checkConflict(lesson);
@@ -200,14 +228,29 @@ public class ScheduleServiceImpl implements ScheduleService {
     public ScheduleAdjustRequest auditAdjustRequest(Long id, Integer status, Long auditorId, String remark) {
         ScheduleAdjustRequest request = scheduleAdjustRequestMapper.selectById(id);
         if (request == null) throw new BusinessException(404, "调课申请不存在");
+        if (request.getStatus() != null && request.getStatus() != 1) {
+            throw new BusinessException(409, "该调课申请已处理");
+        }
+        if (request.getExpectTime() == null) throw new BusinessException(400, "调课申请缺少期望时间");
+        // CAS 原子更新：防止并发审核
+        LambdaUpdateWrapper<ScheduleAdjustRequest> updateWrapper = new LambdaUpdateWrapper<ScheduleAdjustRequest>()
+                .eq(ScheduleAdjustRequest::getId, id)
+                .eq(ScheduleAdjustRequest::getStatus, 1)
+                .set(ScheduleAdjustRequest::getStatus, status)
+                .set(ScheduleAdjustRequest::getAuditorId, auditorId)
+                .set(ScheduleAdjustRequest::getAuditRemark, remark);
+        int updated = scheduleAdjustRequestMapper.update(null, updateWrapper);
+        if (updated == 0) {
+            throw new BusinessException(409, "该调课申请已被处理，请刷新后重试");
+        }
         request.setStatus(status);
         request.setAuditorId(auditorId);
         request.setAuditRemark(remark);
-        scheduleAdjustRequestMapper.updateById(request);
 
         // 审核通过：落地新课次
         if (status == 2) {
             ScheduleLesson oldLesson = scheduleLessonMapper.selectById(request.getLessonId());
+            if (oldLesson == null) throw new BusinessException(404, "原课次不存在或已删除，无法完成调课");
             oldLesson.setStatus(4); // 已调课
             scheduleLessonMapper.updateById(oldLesson);
 
@@ -234,12 +277,22 @@ public class ScheduleServiceImpl implements ScheduleService {
         return request;
     }
 
+    /** 判断两个课次是否在同一天且时间段有重叠（复用 ScheduleConflictServiceImpl 的重叠公式） */
+    private boolean hasTimeOverlap(ScheduleLesson a, ScheduleLesson b) {
+        if (a.getLessonDate() == null || b.getLessonDate() == null) return false;
+        if (!a.getLessonDate().equals(b.getLessonDate())) return false;
+        if (a.getStartTime() == null || a.getEndTime() == null) return false;
+        if (b.getStartTime() == null || b.getEndTime() == null) return false;
+        return a.getStartTime().isBefore(b.getEndTime()) && a.getEndTime().isAfter(b.getStartTime());
+    }
+
     private void logOperation(String module, String operation) {
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 }

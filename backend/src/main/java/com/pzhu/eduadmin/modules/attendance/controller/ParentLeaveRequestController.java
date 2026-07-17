@@ -8,8 +8,12 @@ import com.pzhu.eduadmin.modules.attendance.service.LeaveRequestService;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.security.RequireRole;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -18,6 +22,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/parent")
 @RequiredArgsConstructor
+@RequireRole("PARENT")
+@Validated
 public class ParentLeaveRequestController {
 
     private final LeaveRequestService leaveRequestService;
@@ -26,7 +32,7 @@ public class ParentLeaveRequestController {
     @PostMapping("/leave-requests")
     public Result<LeaveRequest> submit(@RequestParam Long studentId,
                                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate lessonDate,
-                                       @RequestParam String reason) {
+                                       @RequestParam @NotBlank(message = "请假原因不能为空") @Size(max = 500, message = "请假原因不能超过500字") String reason) {
         Long parentUserId = CurrentUserHolder.get().getUserId();
         checkParentBinding(parentUserId, studentId);
         return Result.success(leaveRequestService.submitLeaveRequest(parentUserId, studentId, lessonDate, reason));

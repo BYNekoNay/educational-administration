@@ -15,4 +15,11 @@ public class PageQuery implements Serializable {
     private String keyword;
     private String sortField;
     private String sortOrder;
+
+    /**
+     * Clamp pageSize to a maximum of 200 to prevent excessive database load.
+     */
+    public int getPageSize() {
+        return Math.min(pageSize, 200);
+    }
 }

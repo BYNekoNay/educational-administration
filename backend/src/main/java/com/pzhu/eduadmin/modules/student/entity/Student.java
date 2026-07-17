@@ -23,6 +23,7 @@ public class Student {
 
     private String contactPhone;
 
+    /** 1=正常, 4=已退班 */
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

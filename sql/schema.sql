@@ -26,7 +26,8 @@ CREATE TABLE `user` (
   last_login_time DATETIME,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  is_deleted TINYINT NOT NULL DEFAULT 0
+  is_deleted TINYINT NOT NULL DEFAULT 0,
+  version INT NOT NULL DEFAULT 0 COMMENT 'Token 版本号，禁用/角色变更时递增'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户账号';
 
 DROP TABLE IF EXISTS `role`;
@@ -253,6 +254,24 @@ CREATE TABLE `attendance` (
   is_deleted TINYINT NOT NULL DEFAULT 0,
   UNIQUE KEY uk_lesson_student (lesson_id, student_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤';
+
+DROP TABLE IF EXISTS `leave_request`;
+CREATE TABLE `leave_request` (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  student_id BIGINT NOT NULL,
+  parent_user_id BIGINT NOT NULL,
+  lesson_date DATE NOT NULL,
+  schedule_id BIGINT COMMENT '关联课次ID（选填）',
+  reason VARCHAR(255),
+  status TINYINT NOT NULL DEFAULT 1 COMMENT '1-待审核，2-已通过，3-已拒绝',
+  audit_user_id BIGINT,
+  audit_remark VARCHAR(255),
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_student_id (student_id),
+  INDEX idx_parent_user_id (parent_user_id),
+  INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请';
 
 DROP TABLE IF EXISTS `homework`;
 CREATE TABLE `homework` (

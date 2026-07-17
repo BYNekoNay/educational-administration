@@ -22,7 +22,7 @@
           <text class="switcher-avatar-text-sm">{{ (s.name || '学').charAt(0) }}</text>
         </view>
         <view class="switcher-item-info">
-          <text class="switcher-item-name">{{ s.name || '学员' }}</text>
+          <text class="switcher-item-name">{{ s.name || '未命名' }}</text>
           <text class="switcher-item-id">ID: {{ s.id || s.studentId }}</text>
         </view>
         <view v-if="(s.id || s.studentId) === currentId" class="switcher-check">
@@ -48,7 +48,8 @@ const currentStudent = computed(() => {
 })
 
 const currentName = computed(() => {
-  return currentStudent.value?.name || '学员'
+  if (students.value.length === 0) return '暂未添加孩子'
+  return currentStudent.value?.name || '请选择孩子'
 })
 
 function toggle() {

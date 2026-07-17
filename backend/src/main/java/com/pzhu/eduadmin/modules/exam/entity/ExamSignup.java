@@ -21,6 +21,7 @@ public class ExamSignup {
 
     private String certificateNo;
 
+    /** 1=已报名, 2=已通过, 3=未通过 */
     private Integer status;
 
     /** 考级项目名称（不持久化） */

@@ -48,6 +48,7 @@ public class StudentServiceImpl implements StudentService {
     private final RefundRecordMapper refundRecordMapper;
     private final EnrollmentMapper enrollmentMapper;
     private final OperationLogMapper operationLogMapper;
+    private final com.pzhu.eduadmin.modules.exam.mapper.ExamSignupMapper examSignupMapper;
 
     private static final Map<String, SFunction<Student, ?>> STUDENT_SORT_MAP = Map.of(
             "id", Student::getId,
@@ -81,7 +82,9 @@ public class StudentServiceImpl implements StudentService {
             return Collections.emptySet();
         }
         List<User> parents = userMapper.selectList(
-                new LambdaQueryWrapper<User>().like(User::getRealName, keyword));
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getRoleCode, "PARENT")
+                        .like(User::getRealName, keyword));
         if (parents.isEmpty()) {
             return Collections.emptySet();
         }
@@ -125,18 +128,64 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public Student createStudent(Student student) {
+        if (student.getName() == null || student.getName().isBlank()) {
+            throw new BusinessException(400, "学员姓名不能为空");
+        }
         studentMapper.insert(student);
         return student;
     }
 
     @Override
     public Student updateStudent(Student student) {
-        studentMapper.updateById(student);
+        Student existing = studentMapper.selectById(student.getId());
+        if (existing == null) {
+            throw new BusinessException(404, "学员不存在");
+        }
+        existing.setName(student.getName());
+        existing.setGender(student.getGender());
+        existing.setBirthday(student.getBirthday());
+        existing.setSchool(student.getSchool());
+        existing.setContactPhone(student.getContactPhone());
+        studentMapper.updateById(existing);
         return studentMapper.selectById(student.getId());
     }
 
     @Override
     public boolean deleteStudent(Long id) {
+        // 前置条件检查：不允许删除仍有在班记录或待处理报名的学员
+        Long activeClassCount = classStudentMapper.selectCount(
+                new LambdaQueryWrapper<ClassStudent>()
+                        .eq(ClassStudent::getStudentId, id)
+                        .eq(ClassStudent::getStatus, 1));
+        if (activeClassCount > 0) {
+            throw new BusinessException(409, "该学员仍有在班记录，无法删除");
+        }
+
+        Long pendingEnrollmentCount = enrollmentMapper.selectCount(
+                new LambdaQueryWrapper<Enrollment>()
+                        .eq(Enrollment::getStudentId, id)
+                        .in(Enrollment::getStatus, 1, 2));
+        if (pendingEnrollmentCount > 0) {
+            throw new BusinessException(409, "该学员仍有待处理的报名记录，无法删除");
+        }
+
+        // Issue #26: 检查是否有财务记录
+        Long paymentCount = paymentRecordMapper.selectCount(
+                new LambdaQueryWrapper<PaymentRecord>().eq(PaymentRecord::getStudentId, id));
+        Long refundCount = refundRecordMapper.selectCount(
+                new LambdaQueryWrapper<RefundRecord>().eq(RefundRecord::getStudentId, id));
+        if (paymentCount > 0 || refundCount > 0) {
+            throw new BusinessException(409, "该学员已有财务记录，无法删除");
+        }
+
+        // Issue #26: 检查是否有考级报名记录
+        Long examCount = examSignupMapper.selectCount(
+                new LambdaQueryWrapper<com.pzhu.eduadmin.modules.exam.entity.ExamSignup>()
+                        .eq(com.pzhu.eduadmin.modules.exam.entity.ExamSignup::getStudentId, id));
+        if (examCount > 0) {
+            throw new BusinessException(409, "该学员已有考级报名记录，无法删除");
+        }
+
         logOperation("学员管理", "删除学员(id=" + id + ")");
         return studentMapper.deleteById(id) > 0;
     }
@@ -153,7 +202,16 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean bindParent(ParentStudent parentStudent) {
+        // 校验家长和学员是否存在
+        if (userMapper.selectById(parentStudent.getParentUserId()) == null) {
+            throw new BusinessException(404, "家长用户不存在");
+        }
+        if (studentMapper.selectById(parentStudent.getStudentId()) == null) {
+            throw new BusinessException(404, "学员不存在");
+        }
+
         // 防重复绑定（仅统计有效关系，已逻辑删除的历史行不算重复）
         Long count = parentStudentMapper.selectCount(
                 new LambdaQueryWrapper<ParentStudent>()
@@ -218,7 +276,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> transferStudent(Long studentId, Long targetClassId) {
+    public Map<String, Object> transferStudent(Long studentId, Long targetClassId, Long fromClassId) {
         // 1. 校验学员存在
         Student student = studentMapper.selectById(studentId);
         if (student == null) {
@@ -245,15 +303,37 @@ public class StudentServiceImpl implements StudentService {
                 new LambdaQueryWrapper<ClassStudent>()
                         .eq(ClassStudent::getClassId, targetClassId)
                         .eq(ClassStudent::getStatus, 1));
-        if (targetStudentCount >= targetClass.getMaxStudentCount()) {
+        int maxCount = targetClass.getMaxStudentCount() != null ? targetClass.getMaxStudentCount() : 0;
+        if (maxCount > 0 && targetStudentCount >= maxCount) {
             throw new BusinessException(409, "目标班级已满，无法转入");
         }
 
-        // 5. 事务操作：旧记录置为已转出，插入新记录
-        for (ClassStudent cs : currentRecords) {
-            cs.setStatus(2); // 已转出
-            classStudentMapper.updateById(cs);
+        // 5. Issue #22: 精确指定源班级 or 自动选择
+        ClassStudent sourceRecord;
+        if (fromClassId != null) {
+            sourceRecord = currentRecords.stream()
+                    .filter(r -> r.getClassId().equals(fromClassId))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException(404, "该学员不在指定的源班级中"));
+        } else if (currentRecords.size() == 1) {
+            sourceRecord = currentRecords.get(0);
+        } else {
+            throw new BusinessException(400,
+                    "该学员在 " + currentRecords.size() + " 个班级中，请指定 fromClassId 参数");
         }
+
+        // 6. 校验目标班级与源班级属于同一课程
+        ClassGroup sourceClass = classGroupMapper.selectById(sourceRecord.getClassId());
+        if (sourceClass == null) {
+            throw new BusinessException(404, "源班级不存在");
+        }
+        if (!targetClass.getCourseId().equals(sourceClass.getCourseId())) {
+            throw new BusinessException(400, "目标班级必须属于同一课程");
+        }
+
+        // 7. 事务操作：源班级记录标记为已转出
+        sourceRecord.setStatus(2); // 已转出
+        classStudentMapper.updateById(sourceRecord);
 
         ClassStudent newRecord = new ClassStudent();
         newRecord.setClassId(targetClassId);
@@ -264,7 +344,7 @@ public class StudentServiceImpl implements StudentService {
 
         Map<String, Object> result = new HashMap<>();
         result.put("studentId", studentId);
-        result.put("fromClassIds", currentRecords.stream().map(ClassStudent::getClassId).toList());
+        result.put("fromClassId", sourceRecord.getClassId());
         result.put("targetClassId", targetClassId);
         result.put("message", "转班成功");
         return result;
@@ -277,6 +357,9 @@ public class StudentServiceImpl implements StudentService {
         Student student = studentMapper.selectById(studentId);
         if (student == null) {
             throw new BusinessException(404, "学员不存在");
+        }
+        if (student.getStatus() != null && student.getStatus() == 4) {
+            throw new BusinessException(409, "该学员已退班，请勿重复操作");
         }
 
         // 2. 查找当前在班记录
@@ -294,17 +377,23 @@ public class StudentServiceImpl implements StudentService {
             classStudentMapper.updateById(cs);
         }
 
+        // 3.5 更新学员状态为已退班
+        student.setStatus(4);
+        studentMapper.updateById(student);
+
         // 4. 查找该学员最近的报名和缴费记录，生成退费申请
-        PaymentRecord latestPayment = paymentRecordMapper.selectOne(
+        PaymentRecord latestPayment = paymentRecordMapper.selectPage(
+                new Page<PaymentRecord>(1, 1),
                 new LambdaQueryWrapper<PaymentRecord>()
                         .eq(PaymentRecord::getStudentId, studentId)
-                        .orderByDesc(PaymentRecord::getPayTime)
-                        .last("LIMIT 1"));
+                        .orderByDesc(PaymentRecord::getPayTime))
+                .getRecords().stream().findFirst().orElse(null);
 
         RefundRecord refund = new RefundRecord();
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
         refund.setStudentId(studentId);
-        refund.setApplicantId(CurrentUserHolder.get().getUserId());
-        refund.setApplicantRole(CurrentUserHolder.get().getRoleCode());
+        refund.setApplicantId(operator != null ? operator.getUserId() : 0L);
+        refund.setApplicantRole(operator != null ? operator.getRoleCode() : "SYSTEM");
         refund.setStatus(1); // 待审核
         refund.setAmount(BigDecimal.ZERO); // 退费金额由财务审核时确定
         refund.setLessonCount(BigDecimal.ZERO);
@@ -325,10 +414,11 @@ public class StudentServiceImpl implements StudentService {
 
     private void logOperation(String module, String operation) {
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 }

@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.user.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -32,6 +33,9 @@ public class UserController {
 
     @PutMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
+        if (status != 0 && status != 1) {
+            throw new BusinessException(400, "状态值仅支持 0-禁用 或 1-启用");
+        }
         userService.updateUserStatus(id, status);
         return Result.success();
     }
@@ -48,7 +52,11 @@ public class UserController {
 
     @PutMapping("/{id}/password")
     public Result<Void> resetPassword(@PathVariable Long id, @RequestBody java.util.Map<String, String> body) {
-        userService.resetPassword(id, body.get("newPassword"));
+        String newPassword = body.get("newPassword");
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new BusinessException(400, "新密码不能为空");
+        }
+        userService.resetPassword(id, newPassword);
         return Result.success();
     }
 }

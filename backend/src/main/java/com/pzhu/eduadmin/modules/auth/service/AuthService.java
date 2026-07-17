@@ -12,17 +12,21 @@ import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.user.service.UserService;
 import com.pzhu.eduadmin.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 登录鉴权服务实现：密码校验、Token 签发、用户信息查询。
  * 对应 docs/11-后端开发详细文档.md §2、docs/08-开发指南.md §2.2 分层约定。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService implements IAuthService {
@@ -33,25 +37,45 @@ public class AuthService implements IAuthService {
     private final com.pzhu.eduadmin.modules.user.service.RoleService roleService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
+    /** 登录失败计数（key = username），用于暴力破解防护 */
+    private final ConcurrentHashMap<String, LoginAttemptInfo> loginAttempts = new ConcurrentHashMap<>();
+
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final long LOCKOUT_DURATION_MS = 15 * 60 * 1000L; // 15 分钟
+
     @Override
     public LoginResponse login(LoginRequest request) {
+        String username = request.getUsername();
+
+        // 暴力破解防护：检查是否被锁定
+        LoginAttemptInfo attemptInfo = loginAttempts.get(username);
+        if (attemptInfo != null && attemptInfo.isLocked()) {
+            throw new BusinessException(429, "账号已锁定，请 15 分钟后再试");
+        }
+
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
-                .eq(User::getUsername, request.getUsername()));
+                .eq(User::getUsername, username));
 
         if (user == null) {
-            throw new BusinessException("用户名不存在，请检查用户名");
+            recordFailedAttempt(username);
+            throw new BusinessException("用户名或密码错误");
         }
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new BusinessException("密码错误，请重新输入");
+            recordFailedAttempt(username);
+            throw new BusinessException("用户名或密码错误");
         }
         if (user.getStatus() == null || user.getStatus() != 1) {
             throw new BusinessException("账号已被禁用，请联系管理员");
         }
 
+        // 登录成功，清除失败计数
+        loginAttempts.remove(username);
+
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRoleCode());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRoleCode(),
+                user.getVersion() != null ? user.getVersion() : 0);
         List<String> permissions = loadPermissions(user.getRoleCode());
         return new LoginResponse(token, user.getId(), user.getUsername(), user.getRealName(),
                 user.getRoleCode(), permissions);
@@ -69,7 +93,7 @@ public class AuthService implements IAuthService {
 
         User user = userService.createUser(createReq);
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), "PARENT");
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), "PARENT", 0);
         List<String> permissions = loadPermissions("PARENT");
         return new LoginResponse(token, user.getId(), user.getUsername(), user.getRealName(),
                 "PARENT", permissions);
@@ -78,6 +102,7 @@ public class AuthService implements IAuthService {
     @Override
     public CurrentUserResponse profile(Long userId) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .select(User::getId, User::getUsername, User::getRealName, User::getRoleCode)
                 .eq(User::getId, userId));
         if (user == null) {
             throw new BusinessException(401, "登录状态无效，请重新登录");
@@ -90,8 +115,42 @@ public class AuthService implements IAuthService {
         try {
             return roleService.getRolePermissions(roleCode);
         } catch (Exception e) {
-            // 权限加载失败不影响登录流程，返回空列表（至少可访问看板）
+            log.error("权限加载失败(roleCode={})", roleCode, e);
             return Collections.emptyList();
+        }
+    }
+
+    /** 记录登录失败，达到上限后锁定账号 */
+    private void recordFailedAttempt(String username) {
+        loginAttempts.compute(username, (key, info) -> {
+            if (info == null) {
+                info = new LoginAttemptInfo();
+            }
+            info.increment();
+            return info;
+        });
+    }
+
+    /** 登录尝试信息内部类 */
+    private static class LoginAttemptInfo {
+        private final AtomicInteger count = new AtomicInteger(0);
+        private volatile long lockTime = 0;
+
+        void increment() {
+            if (count.incrementAndGet() >= MAX_FAILED_ATTEMPTS) {
+                lockTime = System.currentTimeMillis();
+            }
+        }
+
+        boolean isLocked() {
+            if (lockTime == 0) return false;
+            if (System.currentTimeMillis() - lockTime > LOCKOUT_DURATION_MS) {
+                // 锁定过期，重置
+                count.set(0);
+                lockTime = 0;
+                return false;
+            }
+            return true;
         }
     }
 }

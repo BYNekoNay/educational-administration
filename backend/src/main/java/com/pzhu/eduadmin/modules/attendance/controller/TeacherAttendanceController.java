@@ -34,12 +34,14 @@ public class TeacherAttendanceController {
     @GetMapping("/lessons/{lessonId}/students")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<ClassStudent>> lessonStudents(@PathVariable Long lessonId) {
+        attendanceService.checkTeacherLessonOwnership(lessonId);
         return Result.success(attendanceService.getLessonStudents(lessonId));
     }
 
     @GetMapping("/lessons/{lessonId}/attendances")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<Attendance>> lessonAttendances(@PathVariable Long lessonId) {
+        attendanceService.checkTeacherLessonOwnership(lessonId);
         return Result.success(attendanceService.getByLessonId(lessonId));
     }
 

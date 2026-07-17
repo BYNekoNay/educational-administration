@@ -5,9 +5,11 @@ import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.entity.Role;
 import com.pzhu.eduadmin.modules.user.entity.RolePermission;
+import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.PermissionMapper;
 import com.pzhu.eduadmin.modules.user.mapper.RoleMapper;
 import com.pzhu.eduadmin.modules.user.mapper.RolePermissionMapper;
+import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -26,6 +28,7 @@ public class RoleServiceImpl implements RoleService {
     private final PermissionMapper permissionMapper;
     private final RolePermissionMapper rolePermissionMapper;
     private final OperationLogMapper operationLogMapper;
+    private final UserMapper userMapper;
 
     @Override
     public List<Role> listRoles() {
@@ -42,7 +45,7 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Role createRole(String roleCode, String roleName) {
         // 校验角色编码唯一性
         Long count = roleMapper.selectCount(
@@ -58,17 +61,17 @@ public class RoleServiceImpl implements RoleService {
 
         // 操作日志
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("权限管理");
         log.setOperation("新增角色 " + roleCode + "(" + roleName + ")");
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
 
         return role;
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void updateRole(Long id, String roleName) {
         Role role = getRoleById(id);
 
@@ -82,15 +85,15 @@ public class RoleServiceImpl implements RoleService {
 
         // 操作日志
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("权限管理");
         log.setOperation("编辑角色 " + role.getRoleCode() + " 名称为 " + roleName);
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void deleteRole(Long id) {
         Role role = getRoleById(id);
 
@@ -99,19 +102,26 @@ public class RoleServiceImpl implements RoleService {
             throw new BusinessException(400, "系统内置角色 " + role.getRoleCode() + " 不可删除");
         }
 
+        // 检查角色下是否还有关联用户
+        Long userCount = userMapper.selectCount(
+                new LambdaQueryWrapper<User>().eq(User::getRoleCode, role.getRoleCode()));
+        if (userCount > 0) {
+            throw new BusinessException(409, "该角色下仍有 " + userCount + " 个用户，请先迁移用户后再删除");
+        }
+
         // 级联清除该角色的权限关联
         rolePermissionMapper.delete(new LambdaQueryWrapper<RolePermission>()
                 .eq(RolePermission::getRoleCode, role.getRoleCode()));
 
-        // 逻辑删除角色
-        roleMapper.deleteById(id);
+        // 物理删除角色（绕过 @TableLogic 避免 role_code 唯一键冲突）
+        roleMapper.realDeleteByRoleCode(role.getRoleCode());
 
         // 操作日志
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("权限管理");
         log.setOperation("删除角色 " + role.getRoleCode() + "(" + role.getRoleName() + ")");
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 
@@ -134,7 +144,7 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void updateRolePermissions(String roleCode, List<String> permissionCodes) {
         // 先物理删除旧权限（绕过 @TableLogic，避免逻辑删除行持续占用唯一键导致重建时 409）
         rolePermissionMapper.realDeleteByRoleCode(roleCode);
@@ -148,10 +158,10 @@ public class RoleServiceImpl implements RoleService {
 
         // 操作日志：修改角色权限
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
         log.setModule("权限管理");
         log.setOperation("修改角色" + roleCode + "权限，权限数量：" + permissionCodes.size());
-        log.setIp("0.0.0.0");
+        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
         operationLogMapper.insert(log);
     }
 }

@@ -14,7 +14,10 @@
     </view>
 
     <!-- Student switcher (parent only) -->
-    <StudentSwitcher v-if="isParent" @change="onStudentChange" />
+    <view v-if="isParent" class="switcher-section">
+      <text class="section-header">我的孩子</text>
+      <StudentSwitcher @change="onStudentChange" />
+    </view>
 
     <!-- Menu list -->
     <text class="section-header">{{ isParent ? '常用功能' : '教学工具' }}</text>

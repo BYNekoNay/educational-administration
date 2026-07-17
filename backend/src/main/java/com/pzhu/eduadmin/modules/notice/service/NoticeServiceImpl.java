@@ -11,7 +11,10 @@ import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 
 @Service
@@ -62,16 +65,37 @@ public class NoticeServiceImpl implements NoticeService {
 
     @Override
     public boolean delete(Long id) {
-        logOperation("公告管理", "删除公告(id=" + id + ")");
-        return noticeMapper.deleteById(id) > 0;
+        boolean deleted = noticeMapper.deleteById(id) > 0;
+        if (deleted) {
+            logOperation("公告管理", "删除公告(id=" + id + ")");
+        }
+        return deleted;
     }
 
     private void logOperation(String module, String operation) {
         OperationLog log = new OperationLog();
-        log.setOperatorId(CurrentUserHolder.get().getUserId());
+        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
         log.setModule(module);
         log.setOperation(operation);
-        log.setIp("0.0.0.0");
+
+        String ip = "unknown";
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attrs != null) {
+            HttpServletRequest request = attrs.getRequest();
+            ip = request.getHeader("X-Forwarded-For");
+            if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+                ip = request.getHeader("X-Real-IP");
+            }
+            if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+                ip = request.getRemoteAddr();
+            }
+            // Take first IP if multiple (X-Forwarded-For can have chain)
+            if (ip != null && ip.contains(",")) {
+                ip = ip.split(",")[0].trim();
+            }
+        }
+        log.setIp(ip);
         operationLogMapper.insert(log);
     }
 }

@@ -1,5 +1,8 @@
 package com.pzhu.eduadmin.security;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,13 +17,16 @@ import java.util.Arrays;
 /**
  * 拦截器：解析 Authorization: Bearer {token}，校验并写入 CurrentUserHolder；
  * 若接口标注 @RequireRole，额外校验角色是否在允许范围内。
- * 对应 docs/11-后端开发详细文档.md §1.3。
+ * 支持 Token 吊销：通过 User.version 字段比对，禁用用户或变更角色后旧 Token 自动失效。
  */
 @Component
 public class JwtInterceptor implements HandlerInterceptor {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private UserMapper userMapper;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -49,13 +55,35 @@ public class JwtInterceptor implements HandlerInterceptor {
         Long userId = Long.valueOf(claims.getSubject());
         String username = claims.get("username", String.class);
         String roleCode = claims.get("roleCode", String.class);
+        Integer tokenVersion = claims.get("version", Integer.class);
+
+        // Token 吊销检查：比对 User.version
+        User currentUser = userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .select(User::getVersion, User::getStatus)
+                        .eq(User::getId, userId));
+        if (currentUser == null) {
+            writeUnauthorized(response, "用户不存在，请重新登录");
+            return false;
+        }
+        if (currentUser.getStatus() != null && currentUser.getStatus() != 1) {
+            writeUnauthorized(response, "账号已被禁用，请联系管理员");
+            return false;
+        }
+        int dbVersion = currentUser.getVersion() != null ? currentUser.getVersion() : 0;
+        int tkVersion = tokenVersion != null ? tokenVersion : 0;
+        if (dbVersion != tkVersion) {
+            writeUnauthorized(response, "登录已失效，请重新登录");
+            return false;
+        }
+
         CurrentUserHolder.set(new LoginUser(userId, username, roleCode));
 
         RequireRole requireRole = handlerMethod.getMethodAnnotation(RequireRole.class);
         if (requireRole == null) {
             requireRole = handlerMethod.getBeanType().getAnnotation(RequireRole.class);
         }
-        if (requireRole != null && Arrays.stream(requireRole.value()).noneMatch(roleCode::equals)) {
+        if (requireRole != null && (roleCode == null || Arrays.stream(requireRole.value()).noneMatch(roleCode::equals))) {
             writeForbidden(response, "无权访问该接口");
             return false;
         }
@@ -79,6 +107,11 @@ public class JwtInterceptor implements HandlerInterceptor {
     private void writeJson(HttpServletResponse response, int code, String message) throws Exception {
         response.setStatus(code);
         response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"code\":" + code + ",\"message\":\"" + message + "\",\"data\":null}");
+        // 转义 message 中的特殊字符，防止 JSON 注入
+        String safeMessage = message.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+        response.getWriter().write("{\"code\":" + code + ",\"message\":\"" + safeMessage + "\",\"data\":null}");
     }
 }

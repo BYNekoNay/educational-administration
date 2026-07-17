@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.salary.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -62,10 +63,21 @@ public class SalaryController {
     @PostMapping({"/calculate", ""})
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<TeacherSalary> calculate(@RequestBody Map<String, Object> body) {
+        Object teacherIdObj = body.get("teacherId");
+        if (teacherIdObj == null) throw new BusinessException(400, "teacherId不能为空");
+        Long teacherId = Long.valueOf(teacherIdObj.toString());
+
         String salaryMonth = (String) body.get("salaryMonth");
-        Long teacherId = Long.valueOf(body.get("teacherId").toString());
-        BigDecimal bonusAmount = body.get("bonusAmount") != null
-                ? new BigDecimal(body.get("bonusAmount").toString()) : BigDecimal.ZERO;
+        if (salaryMonth == null || salaryMonth.isBlank()) throw new BusinessException(400, "salaryMonth不能为空");
+
+        BigDecimal bonusAmount = BigDecimal.ZERO;
+        if (body.get("bonusAmount") != null) {
+            try {
+                bonusAmount = new BigDecimal(body.get("bonusAmount").toString());
+            } catch (NumberFormatException e) {
+                throw new BusinessException(400, "bonusAmount格式不正确");
+            }
+        }
         return Result.success(salaryService.calculateSalary(salaryMonth, teacherId, bonusAmount));
     }
 
@@ -91,8 +103,19 @@ public class SalaryController {
     @PostMapping("/adjustments")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<SalaryAdjustment> createAdjustment(@RequestBody Map<String, Object> body) {
-        Long salaryId = Long.valueOf(body.get("salaryId").toString());
-        BigDecimal adjustAmount = new BigDecimal(body.get("adjustAmount").toString());
+        Object salaryIdObj = body.get("salaryId");
+        if (salaryIdObj == null) throw new BusinessException(400, "salaryId不能为空");
+        Long salaryId = Long.valueOf(salaryIdObj.toString());
+
+        Object adjustAmountObj = body.get("adjustAmount");
+        if (adjustAmountObj == null) throw new BusinessException(400, "adjustAmount不能为空");
+        BigDecimal adjustAmount;
+        try {
+            adjustAmount = new BigDecimal(adjustAmountObj.toString());
+        } catch (NumberFormatException e) {
+            throw new BusinessException(400, "adjustAmount格式不正确");
+        }
+
         String reason = (String) body.get("reason");
         Long operatorId = CurrentUserHolder.get().getUserId();
         return Result.success(salaryService.createAdjustment(salaryId, adjustAmount, reason, operatorId));

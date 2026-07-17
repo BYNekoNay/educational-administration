@@ -9,6 +9,7 @@ import com.pzhu.eduadmin.modules.learning.mapper.HomeworkMapper;
 import com.pzhu.eduadmin.modules.learning.mapper.LearningRecordMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +29,7 @@ public class LearningServiceImpl implements LearningService {
 
     @Override
     public Homework createHomework(Homework homework) {
+        if (homework.getLessonId() == null) throw new BusinessException(400, "课次ID不能为空");
         homeworkMapper.insert(homework);
         return homework;
     }
@@ -46,6 +48,7 @@ public class LearningServiceImpl implements LearningService {
 
     @Override
     public LearningRecord createLearningRecord(LearningRecord record) {
+        if (record.getStudentId() == null) throw new BusinessException(400, "学员ID不能为空");
         learningRecordMapper.insert(record);
         return record;
     }
@@ -73,9 +76,13 @@ public class LearningServiceImpl implements LearningService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public List<LearningRecord> batchCreateRecords(List<LearningRecord> records) {
         List<LearningRecord> result = new ArrayList<>();
         for (LearningRecord r : records) {
+            if (r.getStudentId() == null) {
+                throw new BusinessException(400, "学情记录中学员ID不能为空");
+            }
             // 同一课次同一学员去重
             Long exists = learningRecordMapper.selectCount(
                     new LambdaQueryWrapper<LearningRecord>()

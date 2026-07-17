@@ -2,7 +2,7 @@
   <view class="page-wrap">
     <StudentSwitcher @change="onStudentChange" />
     <text class="page-title">在线报名</text>
-    <text class="page-sub">浏览并选择课程</text>
+    <text class="page-sub">浏览课程并选择合适的开班</text>
 
     <text class="section-header">可报名课程</text>
 
@@ -12,45 +12,96 @@
       <view
         v-for="course in courses"
         :key="course.id"
-        class="cell"
-        @click="openSignup(course)"
+        class="course-card"
+        :class="{ 'course-card-active': expandedCourseId === course.id, 'course-card-enrolled': enrolledCourseIds.has(course.id) }"
       >
-        <view class="cell-body">
-          <view class="course-top">
-            <text class="course-name">{{ course.name }}</text>
-            <text class="course-price">¥{{ course.price }}</text>
+        <view class="cell" @click="toggleCourse(course)">
+          <view class="cell-body">
+            <view class="course-top">
+              <view class="course-name-wrap">
+                <view class="course-name-row">
+                  <text class="course-name">{{ course.name }}</text>
+                  <text v-if="enrolledCourseIds.has(course.id)" class="badge-enrolled">已报名</text>
+                </view>
+                <text v-if="expandedCourseId === course.id" class="expand-tip">点击收起</text>
+              </view>
+              <text class="course-price">¥{{ course.price }}</text>
+            </view>
+            <view class="course-meta">
+              <text class="tag tag-info">{{ course.category }}</text>
+              <text class="course-info">{{ course.totalLessons }}课时 · {{ course.lessonDuration }}分钟/节</text>
+            </view>
+            <view class="course-extra">
+              <text class="extra-item">🎯 {{ getCategoryDesc(course.category) }}</text>
+              <text class="extra-item" v-if="classCountMap[course.id] !== undefined">
+                📚 {{ classCountMap[course.id] }} 个开班可选
+              </text>
+            </view>
           </view>
-          <view class="course-meta">
-            <text class="tag tag-info">{{ course.category }}</text>
-            <text class="course-info">{{ course.totalLessons }}课时 · {{ course.lessonDuration }}分钟/节</text>
+          <view class="cell-footer">
+            <view class="cell-arrow" :class="{ 'cell-arrow-up': expandedCourseId === course.id }"></view>
           </view>
         </view>
-        <view class="cell-footer">
-          <view class="cell-arrow"></view>
+
+        <!-- 展开：班级列表 -->
+        <view v-if="expandedCourseId === course.id" class="class-list">
+          <view v-if="loadingClasses" class="class-loading"><text>加载班级中...</text></view>
+          <view v-else-if="!classList.length" class="class-loading"><text>暂无可报名班级</text></view>
+          <view
+            v-for="cls in classList"
+            :key="cls.id"
+            class="class-item"
+            :class="{ 'class-item-full': isClassFull(cls) }"
+            @click="selectClass(cls)"
+          >
+            <view class="class-row1">
+              <text class="class-name">{{ cls.className }}</text>
+              <text class="class-spots" :class="{ 'class-spots-full': isClassFull(cls) }">
+                {{ cls.currentStudentCount }}/{{ cls.maxStudentCount }}
+              </text>
+            </view>
+            <view class="class-row2">
+              <text class="class-meta">👨‍🏫 {{ cls.teacherName }}</text>
+              <text class="class-meta">🕐 {{ cls.scheduleSummary }}</text>
+            </view>
+            <view class="class-row3">
+              <text v-if="cls.startDate" class="class-start">📅 {{ formatDate(cls.startDate) }} 开课</text>
+              <text v-if="isClassFull(cls)" class="class-full-tip">已满</text>
+              <text v-else class="class-remaining">剩 {{ cls.maxStudentCount - cls.currentStudentCount }} 个名额</text>
+            </view>
+          </view>
         </view>
       </view>
     </view>
 
-    <!-- Action Sheet for enrollment confirmation -->
+    <!-- 报名确认弹层 -->
     <view v-if="showSheet" class="action-sheet-mask" @click="closePopup"></view>
     <view v-if="showSheet" class="action-sheet">
       <view class="action-sheet-header">确认报名</view>
       <view class="sheet-body">
         <view class="sheet-info">
+          <text class="sheet-label">学员</text>
+          <text class="sheet-value">{{ studentName }}</text>
+        </view>
+        <view class="sheet-info">
           <text class="sheet-label">课程</text>
           <text class="sheet-value">{{ selectedCourse?.name }}</text>
         </view>
-        <view class="sheet-info">
-          <text class="sheet-label">课时</text>
-          <text class="sheet-value">{{ selectedCourse?.totalLessons }}节 · ¥{{ selectedCourse?.price }}</text>
+        <view class="sheet-info" v-if="selectedClass">
+          <text class="sheet-label">班级</text>
+          <text class="sheet-value">{{ selectedClass.className }}</text>
         </view>
-        <view class="sheet-input-wrap">
-          <input
-            class="wx-input"
-            v-model="classId"
-            type="number"
-            placeholder="意向班级ID（选填）"
-          />
+        <view class="sheet-info" v-if="selectedClass">
+          <text class="sheet-label">教师</text>
+          <text class="sheet-value">{{ selectedClass.teacherName }}</text>
+        </view>
+        <view class="sheet-info" v-if="selectedClass">
+          <text class="sheet-label">课次</text>
+          <text class="sheet-value">{{ selectedClass.scheduleSummary }}</text>
+        </view>
+        <view class="sheet-info">
+          <text class="sheet-label">课时/价格</text>
+          <text class="sheet-value">{{ selectedCourse?.totalLessons }}节 · ¥{{ selectedCourse?.price }}</text>
         </view>
         <button class="btn-primary" @click="handleSubmit" :disabled="submitting">
           {{ submitting ? '提交中...' : '确认报名' }}
@@ -63,76 +114,376 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { api, getCurrentStudentId } from '@/utils/request'
+import { api, getCurrentStudentId, getMyStudents } from '@/utils/request'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const courses = ref([])
+const classCountMap = ref({})      // courseId -> 开班数
+const enrolledCourseIds = ref(new Set()) // 已报名的课程 ID 集合
+const expandedCourseId = ref(null)
+const classList = ref([])
+const loadingClasses = ref(false)
 const selectedCourse = ref(null)
-const classId = ref('')
+const selectedClass = ref(null)
 const submitting = ref(false)
 const showSheet = ref(false)
 const studentId = ref(getCurrentStudentId())
+const studentName = ref('')
+
+const CATEGORY_DESC = {
+  '美术': '培养绘画与审美能力，激发艺术创造力',
+  '钢琴': '系统学习键盘演奏与乐理，提升音乐素养',
+  '舞蹈': '塑造体态与节奏感，培养艺术表现力',
+  '书法': '练习毛笔/硬笔书法，传承中华传统文化',
+  '声乐': '训练发声技巧与歌曲演唱',
+  '乐器': '器乐演奏入门到进阶',
+}
+
+function getCategoryDesc(cat) {
+  return CATEGORY_DESC[cat] || '系统化教学，循序渐近提升专业能力'
+}
+
+function isClassFull(cls) {
+  return cls.maxStudentCount > 0 && cls.currentStudentCount >= cls.maxStudentCount
+}
+
+function formatDate(d) {
+  if (!d) return ''
+  // 处理 "YYYY-MM-DD" 或 LocalDate 字符串
+  return typeof d === 'string' ? d.substring(0, 10) : d
+}
 
 function onStudentChange(id) {
   studentId.value = id
+  refreshStudentName()
+  checkAllEnrollments()
+}
+
+function refreshStudentName() {
+  const all = getMyStudents()
+  const s = all.find(x => (x.id || x.studentId) === studentId.value)
+  studentName.value = s?.name || '未选择'
 }
 
 async function fetchCourses() {
-  try { const res = await api({ url: '/api/parent/courses' }); courses.value = res.data || [] }
-  catch { uni.showToast({ title: '加载失败', icon: 'none' }) }
+  try {
+    const res = await api({ url: '/api/parent/courses' })
+    courses.value = res.data || []
+    // 一次性预取每个课程的开班数量（让首页能直接显示"X 个开班"）
+    classCountMap.value = {}
+    for (const c of courses.value) {
+      try {
+        const r = await api({ url: `/api/parent/courses/${c.id}/classes` })
+        classCountMap.value[c.id] = (r.data || []).length
+      } catch {
+        classCountMap.value[c.id] = 0
+      }
+    }
+    // 标记已报名课程
+    await checkAllEnrollments()
+  } catch {
+    uni.showToast({ title: '加载失败', icon: 'none' })
+  }
 }
 
-function openSignup(course) { selectedCourse.value = course; classId.value = ''; showSheet.value = true }
-function closePopup() { selectedCourse.value = null; showSheet.value = false }
+/** 为当前学员逐一检查各课程是否已有活跃报名 */
+async function checkAllEnrollments() {
+  const sid = studentId.value
+  if (!sid) { enrolledCourseIds.value = new Set(); return }
+  const set = new Set()
+  for (const c of courses.value) {
+    try {
+      const r = await api({ url: `/api/parent/enrollments/check/${sid}/${c.id}` })
+      if (r.data) set.add(c.id)
+    } catch { /* skip */ }
+  }
+  enrolledCourseIds.value = set
+}
+
+async function toggleCourse(course) {
+  if (enrolledCourseIds.value.has(course.id)) {
+    uni.showToast({ title: '已报名该课程，请查看报名记录', icon: 'none' })
+    return
+  }
+  if (expandedCourseId.value === course.id) {
+    expandedCourseId.value = null
+    classList.value = []
+    return
+  }
+  expandedCourseId.value = course.id
+  loadingClasses.value = true
+  classList.value = []
+  try {
+    const res = await api({ url: `/api/parent/courses/${course.id}/classes` })
+    classList.value = res.data || []
+  } catch {
+    uni.showToast({ title: '班级加载失败', icon: 'none' })
+  } finally {
+    loadingClasses.value = false
+  }
+}
+
+function selectClass(cls) {
+  if (isClassFull(cls)) {
+    uni.showToast({ title: '该班级已满，请选择其他班级', icon: 'none' })
+    return
+  }
+  selectedCourse.value = courses.value.find(c => c.id === expandedCourseId.value)
+  selectedClass.value = cls
+  showSheet.value = true
+}
+
+function closePopup() {
+  selectedCourse.value = null
+  selectedClass.value = null
+  showSheet.value = false
+}
 
 async function handleSubmit() {
-  if (!selectedCourse.value) return
+  if (!selectedCourse.value || !selectedClass.value) return
   if (!studentId.value) { uni.showToast({ title: '未找到学员', icon: 'none' }); return }
   submitting.value = true
   try {
-    await api({ url: '/api/parent/enrollments', method: 'POST', data: { studentId: studentId.value, courseId: selectedCourse.value.id, classId: classId.value ? parseInt(classId.value) : null } })
-    uni.showToast({ title: '报名成功，等待审核', icon: 'success' }); selectedCourse.value = null; showSheet.value = false
-  } catch { uni.showToast({ title: '报名失败', icon: 'none' }) }
-  finally { submitting.value = false }
+    await api({
+      url: '/api/parent/enrollments',
+      method: 'POST',
+      data: {
+        studentId: studentId.value,
+        courseId: selectedCourse.value.id,
+        classId: selectedClass.value.id,
+      },
+    })
+    uni.showToast({ title: '报名成功，等待审核', icon: 'success' })
+    enrolledCourseIds.value = new Set([...enrolledCourseIds.value, selectedCourse.value.id])
+    closePopup()
+    expandedCourseId.value = null
+    classList.value = []
+  } catch (e) {
+    uni.showToast({ title: e?.message || '报名失败', icon: 'none' })
+  } finally {
+    submitting.value = false
+  }
 }
 
-onMounted(fetchCourses)
+onMounted(() => {
+  refreshStudentName()
+  fetchCourses()
+})
 </script>
 
 <style scoped>
 @import '@/styles/content.css';
 
+.course-card {
+  background: #FFF;
+  border-radius: 16rpx;
+  margin: 0 24rpx 16rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 12rpx rgba(45, 42, 38, 0.04);
+  transition: all 0.2s;
+}
+.course-card-enrolled {
+  background: #F8FAF8;
+  border: 2rpx solid #DFE6DF;
+}
+.course-card-enrolled .cell {
+  opacity: 0.7;
+  pointer-events: auto;  /* 允许点击展开但会被 toggleCourse 提示拦截 */
+}
+.course-card-active {
+  box-shadow: 0 4rpx 20rpx rgba(14, 116, 144, 0.12);
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 28rpx;
+}
+
 .course-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12rpx;
+}
+
+.course-name-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.course-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.course-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #2D2A26;
+  line-height: 1.4;
+}
+
+.badge-enrolled {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #0E7490;
+  background: #ECFEFF;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  flex-shrink: 0;
+  border: 1rpx solid #A5E2EB;
+}
+
+.expand-tip {
+  display: block;
+  font-size: 22rpx;
+  color: #0E7490;
+  margin-top: 4rpx;
+}
+
+.course-price {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #FA5151;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  line-height: 1.2;
+}
+
+.course-meta {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.course-info {
+  font-size: 24rpx;
+  color: #8C7E74;
+  margin-left: 16rpx;
+}
+
+.course-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  margin-top: 4rpx;
+}
+
+.extra-item {
+  font-size: 24rpx;
+  color: #4D4139;
+  line-height: 1.5;
+}
+
+.cell-arrow {
+  width: 16rpx;
+  height: 16rpx;
+  border-right: 3rpx solid #B5ADA5;
+  border-bottom: 3rpx solid #B5ADA5;
+  transform: rotate(45deg);
+  margin-left: 16rpx;
+  transition: transform 0.25s;
+}
+
+.cell-arrow-up {
+  transform: rotate(-135deg);
+}
+
+.class-list {
+  background: #FAF8F5;
+  border-top: 1rpx solid #F0ECE8;
+  padding: 16rpx 0 20rpx;
+}
+
+.class-loading {
+  text-align: center;
+  padding: 32rpx;
+  color: #8C7E74;
+  font-size: 26rpx;
+}
+
+.class-item {
+  margin: 0 20rpx 12rpx;
+  padding: 20rpx 24rpx;
+  background: #FFF;
+  border-radius: 12rpx;
+  border: 2rpx solid transparent;
+  transition: all 0.2s;
+}
+
+.class-item:active:not(.class-item-full) {
+  border-color: #0E7490;
+  background: #ECFEFF;
+}
+
+.class-item-full {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.class-row1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12rpx;
 }
 
-.course-name {
-  font-size: 30rpx;
+.class-name {
+  font-size: 28rpx;
   font-weight: 600;
-  color: #333;
+  color: #2D2A26;
   flex: 1;
 }
 
-.course-price {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #FA5151;
-  flex-shrink: 0;
-  margin-left: 16rpx;
-}
-
-.course-meta {
-  display: flex;
-  align-items: center;
-}
-
-.course-info {
+.class-spots {
   font-size: 24rpx;
-  color: #888;
-  margin-left: 16rpx;
+  font-weight: 600;
+  color: #0E7490;
+  background: #ECFEFF;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+
+.class-spots-full {
+  color: #999;
+  background: #F0F0F0;
+}
+
+.class-row2 {
+  display: flex;
+  gap: 24rpx;
+  margin-bottom: 8rpx;
+  flex-wrap: wrap;
+}
+
+.class-meta {
+  font-size: 24rpx;
+  color: #4D4139;
+}
+
+.class-row3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4rpx;
+}
+
+.class-start {
+  font-size: 22rpx;
+  color: #8C7E74;
+}
+
+.class-remaining {
+  font-size: 22rpx;
+  color: #FA5151;
+  font-weight: 500;
+}
+
+.class-full-tip {
+  font-size: 22rpx;
+  color: #999;
 }
 
 .sheet-body {
@@ -145,20 +496,25 @@ onMounted(fetchCourses)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #F0ECE8;
+}
+
+.sheet-info:last-of-type {
+  border-bottom: none;
 }
 
 .sheet-label {
   font-size: 28rpx;
-  color: #888;
+  color: #8C7E74;
+  flex-shrink: 0;
 }
 
 .sheet-value {
   font-size: 28rpx;
-  color: #333;
+  color: #2D2A26;
   font-weight: 500;
-}
-
-.sheet-input-wrap {
-  margin: 24rpx 0;
+  text-align: right;
+  margin-left: 16rpx;
 }
 </style>

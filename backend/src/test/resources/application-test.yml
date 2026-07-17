@@ -1,0 +1,32 @@
+# 测试环境配置 — 使用 H2 内存数据库，不依赖 MySQL
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:eduadmin_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+jwt:
+  secret: test-secret-key-must-be-at-least-32-byte!!
+  expire-minutes: 60
+
+file:
+  upload-dir: ./target/test-uploads
+
+logging:
+  level:
+    com.pzhu.eduadmin: warn

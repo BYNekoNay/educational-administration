@@ -5,9 +5,13 @@ import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
+import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
+import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.learning.entity.Homework;
 import com.pzhu.eduadmin.modules.learning.entity.LearningRecord;
 import com.pzhu.eduadmin.modules.learning.service.LearningService;
+import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -24,6 +28,8 @@ public class LearningController {
 
     private final LearningService learningService;
     private final ParentStudentMapper parentStudentMapper;
+    private final ScheduleLessonMapper scheduleLessonMapper;
+    private final ClassStudentMapper classStudentMapper;
 
     // ---- 教务端 ----
 
@@ -85,12 +91,14 @@ public class LearningController {
 
     @GetMapping("/parent/learning-records")
     @Deprecated
+    @RequireRole("PARENT")
     public Result<List<LearningRecord>> myChildRecords(@RequestParam Long lessonId,
                                                         @RequestParam(defaultValue = "0") Long studentId) {
         return childLearningRecords(lessonId, studentId);
     }
 
     @GetMapping("/parent/students/{studentId}/learning-records")
+    @RequireRole("PARENT")
     public Result<List<LearningRecord>> childLearningRecords(
             @RequestParam(required = false) Long lessonId,
             @PathVariable Long studentId) {
@@ -107,6 +115,7 @@ public class LearningController {
             checkParentBinding(parentUserId, studentId);
         }
         if (lessonId != null) {
+            checkLessonBelongsToStudent(lessonId, studentId);
             return Result.success(learningService.getRecordsByLessonIdAndStudentId(lessonId, studentId));
         }
         return Result.success(learningService.getRecordsByStudentId(studentId));
@@ -114,15 +123,26 @@ public class LearningController {
 
     @GetMapping("/parent/homeworks")
     @Deprecated
+    @RequireRole("PARENT")
     public Result<List<Homework>> myChildHomeworks(@RequestParam Long lessonId) {
+        Long parentUserId = CurrentUserHolder.get().getUserId();
+        ParentStudent binding = parentStudentMapper.selectOne(
+                new LambdaQueryWrapper<ParentStudent>().eq(ParentStudent::getParentUserId, parentUserId)
+                        .orderByAsc(ParentStudent::getId).last("LIMIT 1"));
+        if (binding == null) {
+            throw new BusinessException(403, "暂无绑定的学员，请联系教务绑定");
+        }
+        checkLessonBelongsToStudent(lessonId, binding.getStudentId());
         return Result.success(learningService.getHomeworksByLessonId(lessonId));
     }
 
     @GetMapping("/parent/students/{studentId}/homeworks")
+    @RequireRole("PARENT")
     public Result<List<Homework>> childHomeworks(@RequestParam Long lessonId,
                                                   @PathVariable Long studentId) {
         Long parentUserId = CurrentUserHolder.get().getUserId();
         checkParentBinding(parentUserId, studentId);
+        checkLessonBelongsToStudent(lessonId, studentId);
         return Result.success(learningService.getHomeworksByLessonId(lessonId));
     }
 
@@ -136,6 +156,24 @@ public class LearningController {
                         .eq(ParentStudent::getStudentId, studentId));
         if (count == 0) {
             throw new BusinessException(403, "无权访问该学员数据");
+        }
+    }
+
+    /**
+     * 校验课程节次是否属于学员所在班级，防止家长越权查看非本班作业/学习记录
+     */
+    private void checkLessonBelongsToStudent(Long lessonId, Long studentId) {
+        ScheduleLesson lesson = scheduleLessonMapper.selectById(lessonId);
+        if (lesson == null || lesson.getClassId() == null) {
+            throw new BusinessException(404, "课程节次不存在");
+        }
+        Long enrollmentCount = classStudentMapper.selectCount(
+                new LambdaQueryWrapper<ClassStudent>()
+                        .eq(ClassStudent::getStudentId, studentId)
+                        .eq(ClassStudent::getClassId, lesson.getClassId())
+                        .eq(ClassStudent::getStatus, 1));
+        if (enrollmentCount == 0) {
+            throw new BusinessException(403, "无权查看该课程节次的数据，学员未 enrolled 该班级");
         }
     }
 }

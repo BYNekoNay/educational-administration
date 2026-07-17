@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.user.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pzhu.eduadmin.modules.course.entity.Course;
 import lombok.Data;
 
@@ -16,6 +17,7 @@ public class User {
 
     private String username;
 
+    @JsonIgnore
     private String password;
 
     private String realName;
@@ -36,6 +38,9 @@ public class User {
 
     @TableLogic
     private Integer isDeleted;
+
+    /** Token 版本号：禁用用户或变更角色时递增，使旧 Token 失效 */
+    private Integer version;
 
     // ---- 关联数据（不持久化） ----
 
