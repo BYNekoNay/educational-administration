@@ -1,43 +1,90 @@
+# ============================================
 # IDE / Editor
+# ============================================
 .idea/
 *.iml
 .vscode/
+*.swp
+*.swo
+*~
 
-# CodeBuddy project data
+# ============================================
+# CodeBuddy — 本地会话数据，禁止提交
+# ============================================
 .codebuddy/
+.workbuddy/
 
-# Logs
-*.log
-
-# Build output
-admin-web/dist/
-backend/target/
-mobile-uniapp/dist/
-
-# Node
-node_modules/
-admin-web/node_modules/
-mobile-uniapp/node_modules/
-
-# OS
+# ============================================
+# OS 垃圾文件
+# ============================================
 Thumbs.db
 .DS_Store
-
-# PowerShell artifacts
 $null
+Desktop.ini
 
-# SQL output
-sql_out.txt
+# ============================================
+# 日志 & 临时文件
+# ============================================
+*.log
+*.pid
+*.tmp
+*.bak
+*.orig
+*.err
 
-# Test output
-backend/test-output.txt
-backend/test_final.txt
-backend/test_final2.txt
-backend/test_out.txt
-backend/test_out2.txt
-backend/test_out3.txt
-backend/test_out4.txt
-
-# Environment
+# ============================================
+# 环境变量（仅保留 .env.example 模板）
+# ============================================
 .env
 .env.local
+.env.*.local
+
+# ============================================
+# 构建产物
+# ============================================
+admin-web/dist/
+admin-web/dist-ssr/
+backend/target/
+mobile-uniapp/dist/
+mobile-uniapp/build/
+
+# ============================================
+# Node
+# ============================================
+node_modules/
+**/node_modules/
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ============================================
+# Maven Wrapper（仅保留 mvnw 脚本本身）
+# ============================================
+.mvn/wrapper/
+
+# ============================================
+# 本地调试输出
+# ============================================
+admin-web/org-err.txt
+admin-web/test-err.txt
+admin-web/test-result.txt
+backend/db*.txt
+backend/test-*.txt
+sql_out.txt
+
+# ============================================
+# 上传目录
+# ============================================
+uploads/
+*.upload/
+
+# ============================================
+# 覆盖率报告
+# ============================================
+coverage/
+*.cover
