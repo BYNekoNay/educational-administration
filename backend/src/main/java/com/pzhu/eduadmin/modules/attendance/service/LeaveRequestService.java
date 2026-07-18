@@ -19,4 +19,10 @@ public interface LeaveRequestService {
 
     /** 教务审核请假（status=2 时自动创建考勤记录 status=3/请假） */
     LeaveRequest audit(Long id, Integer status, Long auditUserId, String remark);
+
+    /** 教师分页查询本人相关课次的请假申请 */
+    Page<LeaveRequest> pageByTeacher(Long teacherId, int pageNum, int pageSize);
+
+    /** 教师审批请假（直接确认或拒绝本人课次的请假） */
+    LeaveRequest auditByTeacher(Long id, Integer status, Long auditUserId, String remark);
 }

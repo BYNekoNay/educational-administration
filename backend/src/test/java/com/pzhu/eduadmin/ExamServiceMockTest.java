@@ -22,6 +22,8 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.Collections;
+import java.util.List;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -327,5 +329,36 @@ class ExamServiceMockTest {
 
         // No exception means sort mapping is valid
         examService.pageExamLevels(1, 10, null, "name", "asc");
+    }
+
+    @Test
+    @DisplayName("证书归档 — 查已通过报名")
+    void pageArchives_returnsPassed() {
+        Page<ExamSignup> mp = new Page<>(1, 10);
+        ExamSignup s = new ExamSignup();
+        s.setId(1L);
+        s.setStatus(2);
+        s.setStudentId(10L);
+        s.setExamId(20L);
+        mp.setRecords(List.of(s));
+        when(examSignupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mp);
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+        when(examLevelMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+
+        Page<ExamSignup> result = examService.pageArchives(1, 10, null);
+        assertThat(result.getRecords()).hasSize(1);
+        assertThat(result.getRecords().get(0).getStatus()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("证书归档 — keyword搜索无匹配返回空")
+    void pageArchives_keywordNoMatch() {
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+        Page<ExamSignup> mp = new Page<>(1, 10);
+        mp.setRecords(Collections.emptyList());
+        when(examSignupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mp);
+
+        Page<ExamSignup> result = examService.pageArchives(1, 10, "不存在的名字");
+        assertThat(result.getRecords()).isEmpty();
     }
 }

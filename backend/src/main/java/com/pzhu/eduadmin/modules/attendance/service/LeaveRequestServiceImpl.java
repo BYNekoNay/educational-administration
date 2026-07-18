@@ -212,6 +212,42 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
         }
     }
 
+    @Override
+    public Page<LeaveRequest> pageByTeacher(Long teacherId, int pageNum, int pageSize) {
+        // 查找该教师的所有课次ID
+        List<Long> lessonIds = scheduleLessonMapper.selectList(
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .eq(ScheduleLesson::getTeacherId, teacherId)
+                        .select(ScheduleLesson::getId))
+                .stream().map(ScheduleLesson::getId).collect(Collectors.toList());
+
+        LambdaQueryWrapper<LeaveRequest> wrapper = new LambdaQueryWrapper<>();
+        if (lessonIds.isEmpty()) {
+            wrapper.eq(LeaveRequest::getId, -1L); // 无课次
+        } else {
+            wrapper.in(LeaveRequest::getScheduleId, lessonIds);
+        }
+        wrapper.orderByDesc(LeaveRequest::getCreateTime);
+        Page<LeaveRequest> page = leaveRequestMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        populateNames(page.getRecords());
+        return page;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public LeaveRequest auditByTeacher(Long id, Integer status, Long auditUserId, String remark) {
+        LeaveRequest lr = leaveRequestMapper.selectById(id);
+        if (lr == null) throw new BusinessException(404, "请假记录不存在");
+        // 校验教师是否属于该课次
+        if (lr.getScheduleId() != null) {
+            ScheduleLesson lesson = scheduleLessonMapper.selectById(lr.getScheduleId());
+            if (lesson == null || !auditUserId.equals(lesson.getTeacherId())) {
+                throw new BusinessException(403, "该课次不属于您，无法审批");
+            }
+        }
+        return audit(id, status, auditUserId, remark);
+    }
+
     /** 填充请假记录的关联名称 */
     private void populateNames(List<LeaveRequest> list) {
         if (list == null || list.isEmpty()) return;

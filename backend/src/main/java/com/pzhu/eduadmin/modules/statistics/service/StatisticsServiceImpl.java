@@ -6,8 +6,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
+import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
+import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
+import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
+import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
@@ -51,6 +55,8 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final PaymentRecordMapper paymentRecordMapper;
     private final RefundRecordMapper refundRecordMapper;
     private final ClassStudentMapper classStudentMapper;
+    private final ClassGroupMapper classGroupMapper;
+    private final CourseMapper courseMapper;
 
     @Override
     public Page<StatisticsSnapshot> pageSnapshots(int pageNum, int pageSize) {
@@ -349,5 +355,173 @@ public class StatisticsServiceImpl implements StatisticsService {
             trend.add(item);
         }
         return trend;
+    }
+
+    @Override
+    public List<Map<String, Object>> getClassActivity() {
+        List<ClassGroup> classes = classGroupMapper.selectList(
+                new LambdaQueryWrapper<ClassGroup>().eq(ClassGroup::getStatus, 1));
+        if (classes.isEmpty()) return Collections.emptyList();
+
+        Set<Long> classIds = classes.stream().map(ClassGroup::getId).collect(Collectors.toSet());
+
+        // 当前学员数
+        Map<Long, Long> studentCount = classStudentMapper.selectList(
+                new LambdaQueryWrapper<ClassStudent>()
+                        .in(ClassStudent::getClassId, classIds)
+                        .eq(ClassStudent::getStatus, 1))
+                .stream().collect(Collectors.groupingBy(ClassStudent::getClassId, Collectors.counting()));
+
+        // 课次统计
+        List<ScheduleLesson> lessons = scheduleLessonMapper.selectList(
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .in(ScheduleLesson::getClassId, classIds)
+                        .select(ScheduleLesson::getId, ScheduleLesson::getClassId, ScheduleLesson::getStatus, ScheduleLesson::getLessonDate));
+
+        Map<Long, List<ScheduleLesson>> lessonByClass = lessons.stream()
+                .collect(Collectors.groupingBy(ScheduleLesson::getClassId));
+
+        Set<Long> allLessonIds = lessons.stream().map(ScheduleLesson::getId).collect(Collectors.toSet());
+
+        // 出勤率
+        Map<Long, Long> attendancePresent = new HashMap<>();
+        Map<Long, Long> attendanceTotal = new HashMap<>();
+        if (!allLessonIds.isEmpty()) {
+            List<Attendance> attendances = attendanceMapper.selectList(
+                    new LambdaQueryWrapper<Attendance>().in(Attendance::getLessonId, allLessonIds));
+            for (Attendance a : attendances) {
+                ScheduleLesson sl = lessons.stream().filter(l -> l.getId().equals(a.getLessonId())).findFirst().orElse(null);
+                if (sl == null) continue;
+                Long cid = sl.getClassId();
+                attendanceTotal.merge(cid, 1L, Long::sum);
+                if (a.getStatus() == 1 || a.getStatus() == 2) {
+                    attendancePresent.merge(cid, 1L, Long::sum);
+                }
+            }
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ClassGroup cg : classes) {
+            long sc = studentCount.getOrDefault(cg.getId(), 0L);
+            List<ScheduleLesson> clsLessons = lessonByClass.getOrDefault(cg.getId(), Collections.emptyList());
+            long completed = clsLessons.stream().filter(l -> l.getStatus() == 2).count();
+            long totalLessons = clsLessons.size();
+            long attPresent = attendancePresent.getOrDefault(cg.getId(), 0L);
+            long attTotal = attendanceTotal.getOrDefault(cg.getId(), 0L);
+            double attRate = attTotal > 0 ? Math.round((double) attPresent / attTotal * 100.0) / 100.0 : 0.0;
+            LocalDate lastDate = clsLessons.stream()
+                    .map(ScheduleLesson::getLessonDate).filter(Objects::nonNull)
+                    .max(LocalDate::compareTo).orElse(null);
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("classId", cg.getId());
+            item.put("className", cg.getClassName());
+            item.put("studentCount", sc);
+            item.put("maxStudentCount", cg.getMaxStudentCount() == null ? 0 : cg.getMaxStudentCount());
+            item.put("completedLessons", completed);
+            item.put("totalLessons", totalLessons);
+            item.put("attendanceRate", attRate);
+            item.put("lastLessonDate", lastDate != null ? lastDate.toString() : null);
+            result.add(item);
+        }
+        return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> getCourseProfit() {
+        List<Course> courses = courseMapper.selectList(
+                new LambdaQueryWrapper<Course>().orderByDesc(Course::getId));
+        if (courses.isEmpty()) return Collections.emptyList();
+
+        List<PaymentRecord> payments = paymentRecordMapper.selectList(new LambdaQueryWrapper<>());
+        List<RefundRecord> refunds = refundRecordMapper.selectList(
+                new LambdaQueryWrapper<RefundRecord>().eq(RefundRecord::getStatus, 2));
+
+        Map<Long, BigDecimal> incomeMap = new HashMap<>();
+        for (PaymentRecord p : payments) {
+            if (p.getCourseId() != null) {
+                incomeMap.merge(p.getCourseId(), p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO, BigDecimal::add);
+            }
+        }
+
+        // 退费通过enrollmentId→enrollment→courseId 映射
+        Map<Long, BigDecimal> refundMap = new HashMap<>();
+        if (!refunds.isEmpty()) {
+            Set<Long> enrollmentIds = refunds.stream().map(RefundRecord::getEnrollmentId)
+                    .filter(Objects::nonNull).collect(Collectors.toSet());
+            Map<Long, Enrollment> enrollmentMap = Collections.emptyMap();
+            if (!enrollmentIds.isEmpty()) {
+                enrollmentMap = enrollmentMapper.selectBatchIds(enrollmentIds).stream()
+                        .collect(Collectors.toMap(Enrollment::getId, e -> e, (a, b) -> a));
+            }
+            for (RefundRecord r : refunds) {
+                if (r.getEnrollmentId() != null && r.getAmount() != null) {
+                    Enrollment en = enrollmentMap.get(r.getEnrollmentId());
+                    if (en != null && en.getCourseId() != null) {
+                        refundMap.merge(en.getCourseId(), r.getAmount(), BigDecimal::add);
+                    }
+                }
+            }
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Course c : courses) {
+            BigDecimal income = incomeMap.getOrDefault(c.getId(), BigDecimal.ZERO);
+            BigDecimal refund = refundMap.getOrDefault(c.getId(), BigDecimal.ZERO);
+            BigDecimal net = income.subtract(refund);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("courseId", c.getId());
+            item.put("courseName", c.getName());
+            item.put("income", income.setScale(2, RoundingMode.HALF_UP));
+            item.put("refund", refund.setScale(2, RoundingMode.HALF_UP));
+            item.put("netProfit", net.setScale(2, RoundingMode.HALF_UP));
+            result.add(item);
+        }
+        return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> getPaymentRate() {
+        List<Course> courses = courseMapper.selectList(
+                new LambdaQueryWrapper<Course>().orderByDesc(Course::getId));
+        if (courses.isEmpty()) return Collections.emptyList();
+
+        // 实收
+        List<PaymentRecord> payments = paymentRecordMapper.selectList(new LambdaQueryWrapper<>());
+        Map<Long, BigDecimal> paidMap = new HashMap<>();
+        for (PaymentRecord p : payments) {
+            if (p.getCourseId() != null) {
+                paidMap.merge(p.getCourseId(), p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO, BigDecimal::add);
+            }
+        }
+
+        // 应收：enrollment × price（仅审核通过/已缴费状态）
+        List<Enrollment> enrollments = enrollmentMapper.selectList(
+                new LambdaQueryWrapper<Enrollment>().in(Enrollment::getStatus, 2, 3));
+        Map<Long, BigDecimal> expectedMap = new HashMap<>();
+        for (Enrollment e : enrollments) {
+            if (e.getCourseId() != null) {
+                Course c = courses.stream().filter(x -> x.getId().equals(e.getCourseId())).findFirst().orElse(null);
+                BigDecimal price = (c != null && c.getPrice() != null) ? c.getPrice() : BigDecimal.ZERO;
+                expectedMap.merge(e.getCourseId(), price, BigDecimal::add);
+            }
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Course c : courses) {
+            BigDecimal paid = paidMap.getOrDefault(c.getId(), BigDecimal.ZERO);
+            BigDecimal expected = expectedMap.getOrDefault(c.getId(), BigDecimal.ZERO);
+            double rate = expected.compareTo(BigDecimal.ZERO) > 0
+                    ? paid.divide(expected, 2, RoundingMode.HALF_UP).doubleValue()
+                    : 0.0;
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("courseId", c.getId());
+            item.put("courseName", c.getName());
+            item.put("expected", expected.setScale(2, RoundingMode.HALF_UP));
+            item.put("paid", paid.setScale(2, RoundingMode.HALF_UP));
+            item.put("rate", rate);
+            result.add(item);
+        }
+        return result;
     }
 }

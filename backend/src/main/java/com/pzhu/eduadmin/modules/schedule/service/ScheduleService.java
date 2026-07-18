@@ -6,12 +6,16 @@ import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface ScheduleService {
 
     // 课次
-    Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize, String sortField, String sortOrder);
+    Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize,
+            String keyword, String sortField, String sortOrder,
+            Long courseId, Long classId, Long teacherId, Long classroomId,
+            Integer status, LocalDate dateFrom, LocalDate dateTo);
 
     ScheduleLesson getLessonById(Long id);
 

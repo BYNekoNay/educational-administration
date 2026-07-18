@@ -8,12 +8,15 @@ import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
+import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
 import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
 import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.notification.entity.Notification;
+import com.pzhu.eduadmin.modules.notification.service.NotificationService;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
@@ -21,7 +24,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +46,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final EntityNameResolver nameResolver;
     private final ClassGroupMapper classGroupMapper;
     private final UserMapper userMapper;
+    private final CourseMapper courseMapper;
+    private final NotificationService notificationService;
 
     private static final Map<String, SFunction<ScheduleLesson, ?>> LESSON_SORT_MAP = Map.of(
             "id", ScheduleLesson::getId,
@@ -54,15 +62,55 @@ public class ScheduleServiceImpl implements ScheduleService {
     );
 
     @Override
-    public Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<ScheduleLesson> pageScheduleLessons(int pageNum, int pageSize,
+            String keyword, String sortField, String sortOrder,
+            Long courseId, Long classId, Long teacherId, Long classroomId,
+            Integer status, LocalDate dateFrom, LocalDate dateTo) {
         LambdaQueryWrapper<ScheduleLesson> wrapper = new LambdaQueryWrapper<>();
+        // 过滤：课程（需通过 class_group 中转）
+        if (courseId != null) {
+            List<ClassGroup> classes = classGroupMapper.selectList(
+                    new LambdaQueryWrapper<ClassGroup>().eq(ClassGroup::getCourseId, courseId));
+            Set<Long> classIds = classes.stream().map(ClassGroup::getId).collect(Collectors.toSet());
+            if (!classIds.isEmpty()) {
+                wrapper.in(ScheduleLesson::getClassId, classIds);
+            } else {
+                wrapper.eq(ScheduleLesson::getId, -1L);
+            }
+        }
+        if (classId != null)     wrapper.eq(ScheduleLesson::getClassId, classId);
+        if (teacherId != null)   wrapper.eq(ScheduleLesson::getTeacherId, teacherId);
+        if (classroomId != null) wrapper.eq(ScheduleLesson::getClassroomId, classroomId);
+        if (status != null)      wrapper.eq(ScheduleLesson::getStatus, status);
+        if (dateFrom != null)    wrapper.ge(ScheduleLesson::getLessonDate, dateFrom);
+        if (dateTo != null)      wrapper.le(ScheduleLesson::getLessonDate, dateTo);
         QueryHelper.applySort(wrapper, sortField, sortOrder, LESSON_SORT_MAP, () -> wrapper.orderByDesc(ScheduleLesson::getLessonDate));
         Page<ScheduleLesson> page = scheduleLessonMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateScheduleNames(page.getRecords());
+        // 关键字过滤（按课程/班级/教师/教室名称，包含中文）
+        if (keyword != null && !keyword.isBlank() && !page.getRecords().isEmpty()) {
+            String kw = keyword.trim().toLowerCase();
+            List<ScheduleLesson> filtered = page.getRecords().stream()
+                    .filter(s -> matchesKeyword(s, kw))
+                    .collect(Collectors.toList());
+            page.setRecords(filtered);
+            page.setTotal(filtered.size());
+        }
         return page;
     }
 
-    /** 填充排课记录的关联名称 */
+    private boolean matchesKeyword(ScheduleLesson s, String kw) {
+        return contains(s.getCourseName(), kw)
+            || contains(s.getClassName(), kw)
+            || contains(s.getTeacherName(), kw)
+            || contains(s.getClassroomName(), kw);
+    }
+
+    private boolean contains(String v, String kw) {
+        return v != null && v.toLowerCase().contains(kw);
+    }
+
+    /** 填充排课记录的关联名称（含课程名和课程ID） */
     private void populateScheduleNames(List<ScheduleLesson> list) {
         if (list.isEmpty()) return;
         Set<Long> classIds = list.stream().map(ScheduleLesson::getClassId).collect(Collectors.toSet());
@@ -76,10 +124,31 @@ public class ScheduleServiceImpl implements ScheduleService {
         Map<Long, String> roomNames = classroomMapper.selectBatchIds(roomIds).stream()
                 .collect(Collectors.toMap(Classroom::getId, Classroom::getName));
 
+        // 查询班级 → 课程映射，填充 courseId 和 courseName
+        Map<Long, Long> classIdToCourseId = new HashMap<>();
+        Set<Long> courseIds = new HashSet<>();
+        if (!classIds.isEmpty()) {
+            List<ClassGroup> groups = classGroupMapper.selectBatchIds(classIds);
+            for (ClassGroup g : groups) {
+                classIdToCourseId.put(g.getId(), g.getCourseId());
+                if (g.getCourseId() != null) courseIds.add(g.getCourseId());
+            }
+        }
+        Map<Long, String> courseNames = new HashMap<>();
+        if (!courseIds.isEmpty()) {
+            List<Map<String, Object>> raw = courseMapper.selectNamesByIdsIncludeDeleted(courseIds);
+            for (Map<String, Object> row : raw) {
+                courseNames.put(((Number) row.get("id")).longValue(), (String) row.get("name"));
+            }
+        }
+
         for (ScheduleLesson s : list) {
             s.setClassName(classNames.getOrDefault(s.getClassId(), ""));
             s.setTeacherName(teacherNames.getOrDefault(s.getTeacherId(), ""));
             s.setClassroomName(roomNames.getOrDefault(s.getClassroomId(), ""));
+            Long cid = classIdToCourseId.get(s.getClassId());
+            s.setCourseId(cid);
+            s.setCourseName(cid != null ? courseNames.getOrDefault(cid, "") : "");
         }
     }
 
@@ -95,7 +164,23 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
         }
         scheduleLessonMapper.insert(lesson);
+        notifyLessonTeacher(lesson, "CLASS_REMINDER", "新课提醒");
         return lesson;
+    }
+
+    private void notifyLessonTeacher(ScheduleLesson lesson, String type, String title) {
+        if (lesson.getTeacherId() == null) return;
+        try {
+            Notification n = new Notification();
+            n.setUserId(lesson.getTeacherId());
+            n.setType(type);
+            n.setTitle(title);
+            n.setContent(lesson.getLessonDate() + " " + lesson.getStartTime() + "-" + lesson.getEndTime());
+            n.setRelatedId(lesson.getId());
+            notificationService.send(lesson.getTeacherId(), n);
+        } catch (Exception ignored) {
+            // 通知失败不影响主业务
+        }
     }
 
     @Override
@@ -105,14 +190,20 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
         }
         scheduleLessonMapper.updateById(lesson);
-        return scheduleLessonMapper.selectById(lesson.getId());
+        ScheduleLesson updated = scheduleLessonMapper.selectById(lesson.getId());
+        notifyLessonTeacher(updated, "SCHEDULE_CHANGE", "课次已更新");
+        return updated;
     }
 
     @Override
     public boolean deleteLesson(Long id) {
-        // 操作日志：删除课次（对应 docs/11 §10 操作日志与审计）
+        ScheduleLesson lesson = scheduleLessonMapper.selectById(id);
+        boolean deleted = scheduleLessonMapper.deleteById(id) > 0;
+        if (deleted && lesson != null) {
+            notifyLessonTeacher(lesson, "SCHEDULE_CHANGE", "课次已取消");
+        }
         operationLogService.log("排课管理", "删除课次（id=" + id + "）");
-        return scheduleLessonMapper.deleteById(id) > 0;
+        return deleted;
     }
 
     @Override

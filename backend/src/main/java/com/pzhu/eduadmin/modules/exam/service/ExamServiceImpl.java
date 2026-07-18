@@ -146,4 +146,24 @@ public class ExamServiceImpl implements ExamService {
         examSignupMapper.updateById(signup);
         return examSignupMapper.selectById(signup.getId());
     }
+
+    @Override
+    public Page<ExamSignup> pageArchives(int pageNum, int pageSize, String keyword) {
+        LambdaQueryWrapper<ExamSignup> wrapper = new LambdaQueryWrapper<ExamSignup>()
+                .eq(ExamSignup::getStatus, 2);
+        if (keyword != null && !keyword.isBlank()) {
+            List<Student> matched = studentMapper.selectList(
+                    new LambdaQueryWrapper<Student>().like(Student::getName, keyword));
+            List<Long> studentIds = matched.stream().map(Student::getId).collect(Collectors.toList());
+            if (!studentIds.isEmpty()) {
+                wrapper.in(ExamSignup::getStudentId, studentIds);
+            } else {
+                wrapper.eq(ExamSignup::getId, -1L);
+            }
+        }
+        wrapper.orderByDesc(ExamSignup::getCreateTime);
+        Page<ExamSignup> page = examSignupMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        enrichSignupNames(page.getRecords());
+        return page;
+    }
 }

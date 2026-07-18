@@ -39,6 +39,7 @@
           <el-menu-item index="/edu/courses" v-if="authStore.hasPermission('menu:course')">课程管理</el-menu-item>
           <el-menu-item index="/edu/classes" v-if="authStore.hasPermission('menu:class')">班级管理</el-menu-item>
           <el-menu-item index="/edu/enrollments" v-if="authStore.hasPermission('menu:enrollment')">报名管理</el-menu-item>
+          <el-menu-item index="/edu/big-schedule" v-if="authStore.hasPermission('menu:schedule')">大课表</el-menu-item>
           <el-menu-item index="/edu/schedules" v-if="authStore.hasPermission('menu:schedule')">排课管理</el-menu-item>
           <el-menu-item index="/edu/classrooms" v-if="authStore.hasPermission('menu:classroom')">教室管理</el-menu-item>
           <el-menu-item index="/edu/attendances" v-if="authStore.hasPermission('menu:attendance')">考勤管理</el-menu-item>
@@ -62,7 +63,10 @@
     <el-container>
       <el-header style="background: #fff; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center; justify-content: space-between; padding: 0 20px">
         <span style="font-size: 14px; color: #666">{{ authStore.userInfo?.realName }}（{{ roleName }}）</span>
-        <el-button type="danger" size="small" @click="handleLogout">退出登录</el-button>
+        <div style="display:flex;align-items:center;gap:12px">
+          <NotificationBell />
+          <el-button type="danger" size="small" @click="handleLogout">退出登录</el-button>
+        </div>
       </el-header>
       <el-main style="background: #f0f2f5; padding: 20px">
         <router-view />
@@ -72,14 +76,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
 import { Monitor, Setting, Document, Money } from '@element-plus/icons-vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
+
+onMounted(() => {
+  notificationStore.requestPermission()
+  notificationStore.connect()
+  notificationStore.fetchUnreadCount()
+})
+
+onUnmounted(() => {
+  notificationStore.disconnect()
+})
 
 const activeMenu = computed(() => route.path)
 

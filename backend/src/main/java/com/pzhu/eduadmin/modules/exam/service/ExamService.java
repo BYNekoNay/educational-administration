@@ -21,4 +21,7 @@ public interface ExamService {
     ExamSignup createExamSignup(ExamSignup signup);
 
     ExamSignup updateExamSignup(ExamSignup signup);
+
+    /** 证书归档：查询已通过(status=2)的报名 */
+    Page<ExamSignup> pageArchives(int pageNum, int pageSize, String keyword);
 }

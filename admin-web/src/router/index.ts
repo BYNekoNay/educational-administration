@@ -80,6 +80,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '报名管理', permission: 'menu:enrollment' }
       },
       {
+        path: 'edu/big-schedule',
+        name: 'BigSchedule',
+        component: () => import('@/views/edu/BigSchedule.vue'),
+        meta: { title: '大课表', permission: 'menu:schedule' }
+      },
+      {
         path: 'edu/schedules',
         name: 'Schedules',
         component: () => import('@/views/edu/ScheduleList.vue'),

@@ -107,4 +107,22 @@ public class StatisticsController {
     public Result<Object> studentLoss() {
         return Result.success(statisticsService.getStudentLossTrend());
     }
+
+    @GetMapping("/statistics/class-activity")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    public Result<java.util.List<java.util.Map<String, Object>>> classActivity() {
+        return Result.success(statisticsService.getClassActivity());
+    }
+
+    @GetMapping("/statistics/course-profit")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    public Result<java.util.List<java.util.Map<String, Object>>> courseProfit() {
+        return Result.success(statisticsService.getCourseProfit());
+    }
+
+    @GetMapping("/statistics/payment-rate")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    public Result<java.util.List<java.util.Map<String, Object>>> paymentRate() {
+        return Result.success(statisticsService.getPaymentRate());
+    }
 }

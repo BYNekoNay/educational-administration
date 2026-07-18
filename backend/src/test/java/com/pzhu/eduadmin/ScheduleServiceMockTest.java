@@ -14,6 +14,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.*;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
 import com.pzhu.eduadmin.modules.schedule.service.*;
 import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.notification.service.NotificationService;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
@@ -53,6 +54,7 @@ class ScheduleServiceMockTest {
     @Mock private EntityNameResolver nameResolver;
     @Mock private ClassGroupMapper classGroupMapper;
     @Mock private UserMapper userMapper;
+    @Mock private NotificationService notificationService;
 
     @InjectMocks
     private ScheduleServiceImpl scheduleService;
@@ -104,7 +106,7 @@ class ScheduleServiceMockTest {
         when(userMapper.selectBatchIds(anyCollection())).thenReturn(Collections.emptyList());
         when(classroomMapper.selectBatchIds(anyCollection())).thenReturn(Collections.emptyList());
 
-        Page<ScheduleLesson> result = scheduleService.pageScheduleLessons(1, 10, null, null);
+        Page<ScheduleLesson> result = scheduleService.pageScheduleLessons(1, 10, null, null, null, null, null, null, null, null, null, null);
 
         assertThat(result.getRecords()).hasSize(1);
     }

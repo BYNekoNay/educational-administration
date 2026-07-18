@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
@@ -56,6 +57,14 @@ public class LearningController {
 
     // ---- 教师端 ----
 
+    @GetMapping("/teacher/students/{studentId}/archive")
+    @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
+    public Result<Map<String, Object>> studentArchive(@PathVariable Long studentId) {
+        return Result.success(learningService.getStudentArchive(studentId));
+    }
+
+    // ---- 家长端 ----
+
     @GetMapping("/teacher/homeworks/{lessonId}")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<Homework>> lessonHomeworks(@PathVariable Long lessonId) {
@@ -88,6 +97,14 @@ public class LearningController {
     }
 
     // ---- 家长端 ----
+
+    @GetMapping("/parent/students/{studentId}/archive")
+    @RequireRole("PARENT")
+    public Result<Map<String, Object>> parentStudentArchive(@PathVariable Long studentId) {
+        Long parentUserId = CurrentUserHolder.get().getUserId();
+        checkParentBinding(parentUserId, studentId);
+        return Result.success(learningService.getStudentArchive(studentId));
+    }
 
     @GetMapping("/parent/learning-records")
     @Deprecated

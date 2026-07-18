@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -319,6 +320,30 @@ public class AttendanceServiceImpl implements AttendanceService {
                 new LambdaQueryWrapper<ScheduleLesson>().eq(ScheduleLesson::getTeacherId, teacherId)
                         .in(ScheduleLesson::getStatus, 1, 2)
                         .orderByDesc(ScheduleLesson::getLessonDate));
+    }
+
+    @Override
+    public List<ScheduleLesson> getTodayLessons(Long teacherId) {
+        LocalDate today = LocalDate.now();
+        List<ScheduleLesson> lessons = scheduleLessonMapper.selectList(
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .eq(ScheduleLesson::getTeacherId, teacherId)
+                        .eq(ScheduleLesson::getLessonDate, today)
+                        .orderByAsc(ScheduleLesson::getStartTime));
+        for (ScheduleLesson l : lessons) {
+            l.setClassName(getClassNameSafe(l.getClassId()));
+            // 标记是否已迟（当前时间>开始时间 且 状态仍为待上课）
+            if (l.getStatus() == 1 && l.getStartTime() != null) {
+                l.setLeaveStatus(LocalTime.now().isAfter(l.getStartTime()) ? 2 : null);
+            }
+        }
+        return lessons;
+    }
+
+    private String getClassNameSafe(Long classId) {
+        if (classId == null) return "";
+        ClassGroup cg = classGroupMapper.selectById(classId);
+        return cg != null ? cg.getClassName() : "";
     }
 
     @Override

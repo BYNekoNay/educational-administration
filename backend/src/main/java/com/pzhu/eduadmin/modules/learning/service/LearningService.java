@@ -5,6 +5,7 @@ import com.pzhu.eduadmin.modules.learning.entity.Homework;
 import com.pzhu.eduadmin.modules.learning.entity.LearningRecord;
 
 import java.util.List;
+import java.util.Map;
 
 public interface LearningService {
 
@@ -27,4 +28,7 @@ public interface LearningService {
 
     /** 批量保存学情记录 */
     List<LearningRecord> batchCreateRecords(List<LearningRecord> records);
+
+    /** 学员成长档案（出勤率+作业列表+老师点评总汇） */
+    Map<String, Object> getStudentArchive(Long studentId);
 }

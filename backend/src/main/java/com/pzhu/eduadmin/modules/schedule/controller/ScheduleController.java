@@ -9,6 +9,8 @@ import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.service.ScheduleService;
+import com.pzhu.eduadmin.modules.notification.entity.Notification;
+import com.pzhu.eduadmin.modules.notification.service.NotificationService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.user.service.UserService;
@@ -17,8 +19,10 @@ import com.pzhu.eduadmin.security.LoginUser;
 import com.pzhu.eduadmin.security.RequireRole;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +35,7 @@ public class ScheduleController {
     private final ScheduleService scheduleService;
     private final UserMapper userMapper;
     private final UserService userService;
+    private final NotificationService notificationService;
 
     // ========== 教师下拉列表 ==========
 
@@ -51,9 +56,33 @@ public class ScheduleController {
     // ========== 课次 ==========
 
     @GetMapping("/schedules")
-    public Result<PageResult<ScheduleLesson>> listLessons(PageQuery query) {
-        return Result.success(PageResult.of(scheduleService.pageScheduleLessons((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getSortField(), query.getSortOrder())));
+    public Result<PageResult<ScheduleLesson>> listLessons(
+            PageQuery query,
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(required = false) Long classId,
+            @RequestParam(required = false) Long teacherId,
+            @RequestParam(required = false) Long classroomId,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return Result.success(PageResult.of(scheduleService.pageScheduleLessons(
+                (int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder(),
+                courseId, classId, teacherId, classroomId, status, dateFrom, dateTo)));
+    }
+
+    /** 教师端：查看自己的课表（复用排课接口，自动取 teacherId） */
+    @GetMapping("/teacher/schedules")
+    @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
+    public Result<PageResult<ScheduleLesson>> teacherSchedules(
+            PageQuery query,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        Long teacherId = CurrentUserHolder.get().getUserId();
+        return Result.success(PageResult.of(scheduleService.pageScheduleLessons(
+                (int) query.getPageNum(), (int) query.getPageSize(),
+                query.getKeyword(), query.getSortField(), query.getSortOrder(),
+                null, null, teacherId, null, null, dateFrom, dateTo)));
     }
 
     @GetMapping("/schedules/{id}")
@@ -172,6 +201,16 @@ public class ScheduleController {
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<ScheduleAdjustRequest> auditAdjustRequest(@PathVariable Long id, @RequestParam Integer status, @RequestParam(required = false) String remark) {
         LoginUser loginUser = CurrentUserHolder.get();
-        return Result.success(scheduleService.auditAdjustRequest(id, status, loginUser.getUserId(), remark));
+        ScheduleAdjustRequest result = scheduleService.auditAdjustRequest(id, status, loginUser.getUserId(), remark);
+        // 通知申请人
+        try {
+            Notification n = new Notification();
+            n.setUserId(result.getApplicantId());
+            n.setType("SCHEDULE_CHANGE");
+            n.setTitle(status == 2 ? "调课申请已通过" : "调课申请已驳回");
+            n.setRelatedId(result.getId());
+            notificationService.send(result.getApplicantId(), n);
+        } catch (Exception ignored) {}
+        return Result.success(result);
     }
 }

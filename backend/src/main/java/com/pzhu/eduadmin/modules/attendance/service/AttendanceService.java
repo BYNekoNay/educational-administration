@@ -36,4 +36,7 @@ public interface AttendanceService {
 
     /** 家长查询学员课表（根据 studentId 查询其班级课次） */
     List<ScheduleLesson> getStudentSchedules(Long studentId);
+
+    /** 教师今日课表（含勤状态标记） */
+    List<ScheduleLesson> getTodayLessons(Long teacherId);
 }
