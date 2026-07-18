@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
+import com.pzhu.eduadmin.modules.attendance.mapper.LeaveRequestMapper;
 import com.pzhu.eduadmin.modules.attendance.service.AttendanceServiceImpl;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
@@ -17,8 +18,8 @@ import com.pzhu.eduadmin.modules.finance.mapper.LessonAccountMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.LessonFlowMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
@@ -46,6 +47,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 /**
@@ -64,8 +66,10 @@ class AttendanceServiceTest {
     @Mock private ClassGroupMapper classGroupMapper;
     @Mock private LessonAccountMapper lessonAccountMapper;
     @Mock private LessonFlowMapper lessonFlowMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private StudentMapper studentMapper;
+    @Mock private LeaveRequestMapper leaveRequestMapper;
 
     @InjectMocks
     private AttendanceServiceImpl attendanceService;
@@ -79,7 +83,6 @@ class AttendanceServiceTest {
         TableInfoHelper.initTableInfo(assistant, ScheduleLesson.class);
         TableInfoHelper.initTableInfo(assistant, LessonAccount.class);
         TableInfoHelper.initTableInfo(assistant, LessonFlow.class);
-        TableInfoHelper.initTableInfo(assistant, OperationLog.class);
         TableInfoHelper.initTableInfo(assistant, ClassGroup.class);
     }
 
@@ -88,6 +91,7 @@ class AttendanceServiceTest {
         CurrentUserHolder.set(new LoginUser(2L, "teacher1", "TEACHER"));
         // Mock enrollment check: student is enrolled in the class (status=1)
         lenient().when(classStudentMapper.selectCount(any())).thenReturn(1L);
+        lenient().when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
     }
 
     @AfterEach

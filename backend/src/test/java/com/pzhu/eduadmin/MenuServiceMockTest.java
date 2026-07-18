@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.IpUtil;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.Menu;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.mapper.MenuMapper;
@@ -28,6 +28,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,7 +37,8 @@ class MenuServiceMockTest {
 
     @Mock private MenuMapper menuMapper;
     @Mock private PermissionMapper permissionMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
 
     @InjectMocks
     private MenuServiceImpl menuService;
@@ -49,7 +51,6 @@ class MenuServiceMockTest {
         MapperBuilderAssistant asst = new MapperBuilderAssistant(cfg, "");
         TableInfoHelper.initTableInfo(asst, Menu.class);
         TableInfoHelper.initTableInfo(asst, Permission.class);
-        TableInfoHelper.initTableInfo(asst, OperationLog.class);
     }
 
     @BeforeEach
@@ -120,7 +121,6 @@ class MenuServiceMockTest {
         m.setMenuName("新菜单");
         doAnswer(inv -> { inv.getArgument(0, Menu.class).setId(100L); return 1; })
                 .when(menuMapper).insert(any(Menu.class));
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         Menu result = menuService.create(m);
 
@@ -128,7 +128,7 @@ class MenuServiceMockTest {
         assertThat(result.getParentId()).isEqualTo(0L);
         assertThat(result.getSortOrder()).isEqualTo(0);
         assertThat(result.getVisible()).isEqualTo(1);
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -146,7 +146,7 @@ class MenuServiceMockTest {
         m.setPermissionCode("new:code");
         when(permissionMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
         when(menuMapper.updateById(any(Menu.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+
 
         Menu result = menuService.update(m);
 
@@ -168,12 +168,12 @@ class MenuServiceMockTest {
                 .thenReturn(List.of(child))
                 .thenReturn(Collections.emptyList());
         when(menuMapper.deleteById(anyLong())).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+
 
         menuService.delete(1L);
 
         verify(menuMapper, times(2)).deleteById(anyLong());
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -183,7 +183,6 @@ class MenuServiceMockTest {
         m.setMenuName("无权限菜单");
         doAnswer(inv -> { inv.getArgument(0, Menu.class).setId(100L); return 1; })
                 .when(menuMapper).insert(any(Menu.class));
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         Menu result = menuService.create(m);
 

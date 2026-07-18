@@ -16,8 +16,8 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -36,6 +36,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,7 +45,8 @@ import static org.mockito.Mockito.*;
 class EnrollmentServiceMockTest {
 
     @Mock private EnrollmentMapper enrollmentMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private StudentMapper studentMapper;
     @Mock private UserMapper userMapper;
     @Mock private CourseMapper courseMapper;
@@ -63,7 +66,6 @@ class EnrollmentServiceMockTest {
         TableInfoHelper.initTableInfo(assistant, PaymentRecord.class);
         TableInfoHelper.initTableInfo(assistant, RefundRecord.class);
         TableInfoHelper.initTableInfo(assistant, ClassStudent.class);
-        TableInfoHelper.initTableInfo(assistant, OperationLog.class);
     }
 
     @BeforeEach
@@ -114,7 +116,7 @@ class EnrollmentServiceMockTest {
 
         assertThatThrownBy(() -> enrollmentService.create(enrollment))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("已报名")
+                .hasMessageContaining("该学员已有此课程的报名记录")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(enrollmentMapper, never()).insert(any(Enrollment.class));
@@ -148,7 +150,8 @@ class EnrollmentServiceMockTest {
         when(enrollmentMapper.selectById(1L)).thenReturn(enrollment);
         // CAS 更新：update(null, wrapper)
         when(enrollmentMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+        when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
+        when(nameResolver.getCourseName(anyLong())).thenReturn("测试课程");
 
         Enrollment result = enrollmentService.audit(1L, 2, 1L, "审核通过");
 
@@ -158,7 +161,7 @@ class EnrollmentServiceMockTest {
         assertThat(result.getAuditRemark()).isEqualTo("审核通过");
         assertThat(result.getHoldExpireTime()).isNotNull();
         verify(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -171,7 +174,6 @@ class EnrollmentServiceMockTest {
         when(enrollmentMapper.selectById(2L)).thenReturn(enrollment);
         // CAS 更新：update(null, wrapper)
         when(enrollmentMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         Enrollment result = enrollmentService.audit(2L, 4, 1L, "资料不全");
 
@@ -225,6 +227,7 @@ class EnrollmentServiceMockTest {
         Enrollment enrollment = new Enrollment();
         enrollment.setId(5L);
         enrollment.setStudentId(10L);
+        enrollment.setCourseId(20L);
         enrollment.setClassId(30L);
 
         when(paymentRecordMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
@@ -232,14 +235,15 @@ class EnrollmentServiceMockTest {
         when(enrollmentMapper.selectById(5L)).thenReturn(enrollment);
         when(enrollmentMapper.deleteById(5L)).thenReturn(1);
         when(classStudentMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+        lenient().when(nameResolver.getStudentName(anyLong())).thenReturn("学员A");
+        lenient().when(nameResolver.getCourseName(anyLong())).thenReturn("课程A");
 
         boolean result = enrollmentService.delete(5L);
 
         assertThat(result).isTrue();
         verify(enrollmentMapper).deleteById(5L);
         verify(classStudentMapper).delete(any(LambdaQueryWrapper.class));
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test

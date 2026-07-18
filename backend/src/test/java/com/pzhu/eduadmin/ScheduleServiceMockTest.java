@@ -13,8 +13,8 @@ import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.*;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
 import com.pzhu.eduadmin.modules.schedule.service.*;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -37,6 +37,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,7 +49,8 @@ class ScheduleServiceMockTest {
     @Mock private RoomBookingMapper roomBookingMapper;
     @Mock private ScheduleAdjustRequestMapper scheduleAdjustRequestMapper;
     @Mock private ScheduleConflictService scheduleConflictService;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private ClassGroupMapper classGroupMapper;
     @Mock private UserMapper userMapper;
 
@@ -68,7 +70,6 @@ class ScheduleServiceMockTest {
         TableInfoHelper.initTableInfo(asst, ScheduleAdjustRequest.class);
         TableInfoHelper.initTableInfo(asst, ClassGroup.class);
         TableInfoHelper.initTableInfo(asst, User.class);
-        TableInfoHelper.initTableInfo(asst, OperationLog.class);
     }
 
     @BeforeEach
@@ -148,10 +149,9 @@ class ScheduleServiceMockTest {
     @DisplayName("删除课次并写操作日志")
     void deleteLesson_Success() {
         when(scheduleLessonMapper.deleteById(1L)).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         assertThat(scheduleService.deleteLesson(1L)).isTrue();
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     // ============ 更新课次 ============
@@ -257,9 +257,9 @@ class ScheduleServiceMockTest {
     @DisplayName("删除教室写日志")
     void deleteClassroom_Success() {
         when(classroomMapper.deleteById(1L)).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         assertThat(scheduleService.deleteClassroom(1L)).isTrue();
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -395,7 +395,6 @@ class ScheduleServiceMockTest {
         req.setExpectTime(LocalDateTime.now());
         when(scheduleAdjustRequestMapper.selectById(1L)).thenReturn(req);
         when(scheduleAdjustRequestMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         ScheduleAdjustRequest result = scheduleService.auditAdjustRequest(1L, 3, 1L, "时间不合适");
 
@@ -429,7 +428,6 @@ class ScheduleServiceMockTest {
         when(scheduleConflictService.checkConflict(any(ScheduleLesson.class))).thenReturn(Collections.emptyList());
         doAnswer(inv -> { inv.getArgument(0, ScheduleLesson.class).setId(newLessonId); return 1; })
                 .when(scheduleLessonMapper).insert(any(ScheduleLesson.class));
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         ScheduleAdjustRequest result = scheduleService.auditAdjustRequest(reqId, 2, 1L, "同意调课");
 

@@ -15,8 +15,8 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.dto.ParentBindingVO;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
@@ -47,7 +47,8 @@ public class StudentServiceImpl implements StudentService {
     private final PaymentRecordMapper paymentRecordMapper;
     private final RefundRecordMapper refundRecordMapper;
     private final EnrollmentMapper enrollmentMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final com.pzhu.eduadmin.modules.exam.mapper.ExamSignupMapper examSignupMapper;
 
     private static final Map<String, SFunction<Student, ?>> STUDENT_SORT_MAP = Map.of(
@@ -186,7 +187,8 @@ public class StudentServiceImpl implements StudentService {
             throw new BusinessException(409, "该学员已有考级报名记录，无法删除");
         }
 
-        logOperation("学员管理", "删除学员(id=" + id + ")");
+        Student student = studentMapper.selectById(id);
+        operationLogService.log("学员管理", "删除学员（学员=" + student.getName() + "）");
         return studentMapper.deleteById(id) > 0;
     }
 
@@ -226,8 +228,8 @@ public class StudentServiceImpl implements StudentService {
         if (parentStudentMapper.countIncludingDeleted(parentStudent.getStudentId(), parentStudent.getParentUserId()) > 0) {
             parentStudentMapper.physicalDelete(parentStudent.getStudentId(), parentStudent.getParentUserId());
         }
-        logOperation("学员管理", "绑定家长(studentId=" + parentStudent.getStudentId()
-                + ", parentUserId=" + parentStudent.getParentUserId() + ")");
+        operationLogService.log("学员管理", "绑定家长（学员=" + nameResolver.getStudentName(parentStudent.getStudentId())
+                + "，家长=" + nameResolver.getUserDisplayName(parentStudent.getParentUserId()) + "）");
         return parentStudentMapper.insert(parentStudent) > 0;
     }
 
@@ -270,7 +272,8 @@ public class StudentServiceImpl implements StudentService {
         if (rows == 0) {
             throw new BusinessException(404, "未找到该家长的绑定关系");
         }
-        logOperation("学员管理", "解绑家长(studentId=" + studentId + ", parentUserId=" + parentUserId + ")");
+        operationLogService.log("学员管理", "解绑家长（学员=" + nameResolver.getStudentName(studentId)
+                + "，家长=" + nameResolver.getUserDisplayName(parentUserId) + "）");
         return true;
     }
 
@@ -412,13 +415,4 @@ public class StudentServiceImpl implements StudentService {
         return result;
     }
 
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
-    }
 }

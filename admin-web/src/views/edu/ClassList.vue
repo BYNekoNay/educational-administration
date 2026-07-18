@@ -15,6 +15,18 @@
       <el-table-column prop="courseName" label="课程" min-width="120" sortable />
       <el-table-column prop="teacherName" label="教师" min-width="100" sortable />
       <el-table-column prop="maxStudentCount" label="最大人数" width="80" sortable="custom" />
+      <el-table-column label="当前人数" width="100">
+        <template #default="{ row }">
+          <span :style="{
+            color: (row.currentStudentCount || 0) > (row.maxStudentCount || 0) ? '#f56c6c'
+                 : (row.currentStudentCount || 0) >= (row.maxStudentCount || 0) ? '#e6a23c'
+                 : '#67c23a',
+            fontWeight: 600
+          }">
+            {{ row.currentStudentCount ?? 0 }} / {{ row.maxStudentCount || '-' }}
+          </span>
+        </template>
+      </el-table-column>
       <el-table-column prop="startDate" label="开课日期" width="110" sortable="custom" />
       <el-table-column prop="status" label="状态" width="80" sortable="custom">
         <template #default="{ row }">

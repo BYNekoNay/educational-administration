@@ -22,9 +22,9 @@ import com.pzhu.eduadmin.modules.statistics.entity.StatisticsSnapshot;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.modules.statistics.mapper.OrganizationMapper;
 import com.pzhu.eduadmin.modules.statistics.mapper.StatisticsSnapshotMapper;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -43,6 +43,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final StatisticsSnapshotMapper statisticsSnapshotMapper;
     private final OrganizationMapper organizationMapper;
     private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
     private final UserMapper userMapper;
     private final EnrollmentMapper enrollmentMapper;
     private final AttendanceMapper attendanceMapper;
@@ -78,13 +79,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         organizationMapper.updateById(organization);
 
         // 操作日志
-        OperationLog opLog = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        opLog.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        opLog.setModule("系统配置");
-        opLog.setOperation("更新机构配置(id=" + organization.getId() + ")");
-        opLog.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(opLog);
+        operationLogService.log("系统配置", "更新机构配置(id=" + organization.getId() + ")");
 
         return organizationMapper.selectById(organization.getId());
     }

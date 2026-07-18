@@ -8,8 +8,8 @@ import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.IpUtil;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.UpdateUserRequest;
 import com.pzhu.eduadmin.modules.user.entity.TeacherCourse;
@@ -33,6 +33,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,7 +42,8 @@ import static org.mockito.Mockito.*;
 class UserServiceMockTest {
 
     @Mock private UserMapper userMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private TeacherCourseMapper teacherCourseMapper;
     @Mock private CourseMapper courseMapper;
 
@@ -63,6 +66,7 @@ class UserServiceMockTest {
         queryHelperMock = mockStatic(QueryHelper.class);
         ipUtilMock = mockStatic(IpUtil.class);
         ipUtilMock.when(IpUtil::getCurrentIp).thenReturn("127.0.0.1");
+        lenient().when(nameResolver.getUserDisplayName(anyLong())).thenReturn("测试用户");
         // 默认让 teacherCourseMapper.selectList 返回空列表，避免 fillUserSpecialties 中 NPE
         lenient().when(teacherCourseMapper.selectList(any())).thenReturn(Collections.emptyList());
         lenient().when(teacherCourseMapper.realDeleteByUserId(any())).thenReturn(0);
@@ -130,7 +134,7 @@ class UserServiceMockTest {
         assertThat(result.getPassword()).isNull();
 
         verify(userMapper).insert(any(User.class));
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     // ========== 2. createUser() — 用户名已存在应拒绝 ==========
@@ -224,7 +228,7 @@ class UserServiceMockTest {
         // version: 1 → 2
         assertThat(existing.getVersion()).isEqualTo(2);
         verify(userMapper).updateById(existing);
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     // ========== 7. resetPassword() — 正常重置密码应递增 version ==========
@@ -244,7 +248,7 @@ class UserServiceMockTest {
         // version: 1 → 2
         assertThat(existing.getVersion()).isEqualTo(2);
         verify(userMapper).updateById(existing);
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     // ========== 8. resetPassword() — 密码为空应拒绝 ==========

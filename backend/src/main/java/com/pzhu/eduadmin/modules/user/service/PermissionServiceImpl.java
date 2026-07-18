@@ -6,9 +6,7 @@ import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.entity.RolePermission;
 import com.pzhu.eduadmin.modules.user.mapper.PermissionMapper;
 import com.pzhu.eduadmin.modules.user.mapper.RolePermissionMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,7 +19,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     private final PermissionMapper permissionMapper;
     private final RolePermissionMapper rolePermissionMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
 
     @Override
     public List<Permission> listAll() {
@@ -48,12 +46,7 @@ public class PermissionServiceImpl implements PermissionService {
         }
         permissionMapper.insert(permission);
 
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("权限管理");
-        log.setOperation("新增菜单权限：" + permission.getPermissionCode() + " → " + permission.getPath());
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("权限管理", "新增菜单权限：" + permission.getPermissionCode() + " → " + permission.getPath());
 
         return permission;
     }
@@ -72,12 +65,7 @@ public class PermissionServiceImpl implements PermissionService {
         }
         permissionMapper.updateById(permission);
 
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("权限管理");
-        log.setOperation("编辑菜单权限：" + permission.getPermissionCode() + " → " + permission.getPath());
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("权限管理", "编辑菜单权限：" + permission.getPermissionCode() + " → " + permission.getPath());
 
         return permission;
     }
@@ -92,11 +80,6 @@ public class PermissionServiceImpl implements PermissionService {
         // 删除权限定义
         permissionMapper.deleteById(id);
 
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("权限管理");
-        log.setOperation("删除菜单权限：" + permission.getPermissionCode());
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("权限管理", "删除菜单权限：" + permission.getPermissionCode());
     }
 }

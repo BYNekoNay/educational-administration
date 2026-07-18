@@ -19,7 +19,8 @@ import com.pzhu.eduadmin.modules.salary.mapper.TeacherSalaryMapper;
 import com.pzhu.eduadmin.modules.salary.service.SalaryServiceImpl;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
@@ -37,6 +38,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,7 +51,8 @@ class SalaryServiceMockTest {
     @Mock private ScheduleLessonMapper lessonMapper;
     @Mock private AttendanceMapper attendanceMapper;
     @Mock private ClassGroupMapper classGroupMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private UserMapper userMapper;
     @Mock private CourseMapper courseMapper;
 
@@ -326,11 +329,12 @@ class SalaryServiceMockTest {
     @DisplayName("确认薪资状态置为 2")
     void shouldConfirmSalary() {
         TeacherSalary salary = new TeacherSalary();
-        salary.setId(1L); salary.setStatus(1);
+        salary.setId(1L); salary.setTeacherId(1L); salary.setStatus(1);
 
         when(salaryMapper.selectById(1L)).thenReturn(salary);
         // CAS 更新：update(null, wrapper)
         doReturn(1).when(salaryMapper).update(any(), any(LambdaUpdateWrapper.class));
+        lenient().when(nameResolver.getUserDisplayName(anyLong())).thenReturn("教师A");
 
         TeacherSalary result = salaryService.confirmSalary(1L);
         assertThat(result.getStatus()).isEqualTo(2);
@@ -340,11 +344,12 @@ class SalaryServiceMockTest {
     @DisplayName("作废薪资状态置为 4")
     void shouldVoidSalary() {
         TeacherSalary salary = new TeacherSalary();
-        salary.setId(1L); salary.setStatus(2);
+        salary.setId(1L); salary.setTeacherId(1L); salary.setStatus(2);
 
         when(salaryMapper.selectById(1L)).thenReturn(salary);
         // CAS 更新：update(null, wrapper)
         doReturn(1).when(salaryMapper).update(any(), any(LambdaUpdateWrapper.class));
+        lenient().when(nameResolver.getUserDisplayName(anyLong())).thenReturn("教师A");
 
         TeacherSalary result = salaryService.voidSalary(1L);
         assertThat(result.getStatus()).isEqualTo(4);

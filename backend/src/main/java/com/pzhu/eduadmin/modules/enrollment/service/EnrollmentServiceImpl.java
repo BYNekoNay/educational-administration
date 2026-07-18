@@ -18,13 +18,12 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -45,7 +44,8 @@ import java.util.stream.Collectors;
 public class EnrollmentServiceImpl implements EnrollmentService {
 
     private final EnrollmentMapper enrollmentMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final StudentMapper studentMapper;
     private final UserMapper userMapper;
     private final CourseMapper courseMapper;
@@ -186,7 +186,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                     .eq(ClassStudent::getStudentId, enrollment.getStudentId()));
         }
         if (deleted) {
-            logOperation("报名管理", "删除报名记录(id=" + id + ")");
+            operationLogService.log("报名管理", "删除报名记录（学员=" + nameResolver.getStudentName(enrollment.getStudentId())
+                    + "，id=" + id + "）");
         }
         return deleted;
     }
@@ -236,19 +237,13 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         }
 
         // 操作日志
-        logOperation("报名管理", status == 2 ? "审核通过报名(id=" + id + ")" : "驳回报名(id=" + id + ")");
+        String studentName = nameResolver.getStudentName(enrollment.getStudentId());
+        String courseName = nameResolver.getCourseName(enrollment.getCourseId());
+        operationLogService.log("报名管理", status == 2
+                ? "审核通过报名（学员=" + studentName + "，课程=" + courseName + "，id=" + id + "）"
+                : "驳回报名（学员=" + studentName + "，课程=" + courseName + "，id=" + id + "）");
 
         return enrollment;
-    }
-
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
     }
 
     /**

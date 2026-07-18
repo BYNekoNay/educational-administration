@@ -13,11 +13,10 @@ import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +36,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final RoomBookingMapper roomBookingMapper;
     private final ScheduleAdjustRequestMapper scheduleAdjustRequestMapper;
     private final ScheduleConflictService scheduleConflictService;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final ClassGroupMapper classGroupMapper;
     private final UserMapper userMapper;
 
@@ -111,7 +111,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     @Override
     public boolean deleteLesson(Long id) {
         // 操作日志：删除课次（对应 docs/11 §10 操作日志与审计）
-        logOperation("排课管理", "删除课次(id=" + id + ")");
+        operationLogService.log("排课管理", "删除课次（id=" + id + "）");
         return scheduleLessonMapper.deleteById(id) > 0;
     }
 
@@ -191,7 +191,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public boolean deleteClassroom(Long id) {
-        logOperation("教室管理", "删除教室(id=" + id + ")");
+        operationLogService.log("教室管理", "删除教室（id=" + id + "）");
         return classroomMapper.deleteById(id) > 0;
     }
 
@@ -272,7 +272,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
 
         // 操作日志
-        logOperation("排课管理", status == 2 ? "审核通过调课申请(id=" + id + ")" : "驳回调课申请(id=" + id + ")");
+        operationLogService.log("排课管理", (status == 2 ? "审核通过调课申请" : "驳回调课申请") + "（id=" + id + "）");
 
         return request;
     }
@@ -284,15 +284,5 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (a.getStartTime() == null || a.getEndTime() == null) return false;
         if (b.getStartTime() == null || b.getEndTime() == null) return false;
         return a.getStartTime().isBefore(b.getEndTime()) && a.getEndTime().isAfter(b.getStartTime());
-    }
-
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
     }
 }

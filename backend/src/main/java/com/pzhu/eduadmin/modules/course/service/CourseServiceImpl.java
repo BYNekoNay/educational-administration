@@ -15,11 +15,10 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,7 +42,8 @@ public class CourseServiceImpl implements CourseService {
     private final ClassStudentMapper classStudentMapper;
     private final UserMapper userMapper;
     private final StudentMapper studentMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final ScheduleLessonMapper scheduleLessonMapper;
     private final PaymentRecordMapper paymentRecordMapper;
 
@@ -130,7 +131,8 @@ public class CourseServiceImpl implements CourseService {
                 throw new BusinessException(409, "该课程存在未来的排课记录，无法删除");
             }
         }
-        logOperation("课程管理", "删除课程(id=" + id + ")");
+        Course course = courseMapper.selectById(id);
+        operationLogService.log("课程管理", "删除课程（课程=" + course.getName() + "）");
         return courseMapper.deleteById(id) > 0;
     }
 
@@ -173,10 +175,25 @@ public class CourseServiceImpl implements CourseService {
         } else {
             teacherNameMap = Collections.emptyMap();
         }
+        // 查询在班人数（status=1）
+        Set<Long> classIds = records.stream().map(ClassGroup::getId).filter(id -> id != null).collect(Collectors.toSet());
+        Map<Long, Integer> studentCountMap = new HashMap<>();
+        if (!classIds.isEmpty()) {
+            List<Map<String, Object>> rawCounts = classStudentMapper.countActiveStudentsByClassIds(classIds);
+            for (Map<String, Object> row : rawCounts) {
+                Object classIdObj = row.get("classId");
+                Object cntObj = row.get("cnt");
+                if (classIdObj != null && cntObj != null) {
+                    studentCountMap.put(((Number) classIdObj).longValue(),
+                                        ((Number) cntObj).intValue());
+                }
+            }
+        }
         // 回填
         records.forEach(c -> {
             c.setCourseName(courseNameMap.getOrDefault(c.getCourseId(), "未知课程"));
             c.setTeacherName(teacherNameMap.getOrDefault(c.getTeacherId(), "未知教师"));
+            c.setCurrentStudentCount(studentCountMap.getOrDefault(c.getId(), 0));
         });
     }
 
@@ -214,7 +231,8 @@ public class CourseServiceImpl implements CourseService {
         if (futureLessonCount > 0) {
             throw new BusinessException(409, "该班级存在未来的排课记录，无法删除");
         }
-        logOperation("班级管理", "删除班级(id=" + id + ")");
+        ClassGroup classGroup = classGroupMapper.selectById(id);
+        operationLogService.log("班级管理", "删除班级（班级=" + classGroup.getClassName() + "）");
         return classGroupMapper.deleteById(id) > 0;
     }
 
@@ -279,7 +297,8 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public boolean removeStudentFromClass(Long classId, Long studentId) {
-        logOperation("班级学员管理", "移除班级学员(classId=" + classId + ", studentId=" + studentId + ")");
+        operationLogService.log("班级学员管理", "移除班级学员（班级=" + nameResolver.getClassName(classId)
+                + "，学员=" + nameResolver.getStudentName(studentId) + "）");
         ClassStudent record = classStudentMapper.selectOne(new LambdaQueryWrapper<ClassStudent>()
                 .eq(ClassStudent::getClassId, classId)
                 .eq(ClassStudent::getStudentId, studentId));
@@ -289,13 +308,4 @@ public class CourseServiceImpl implements CourseService {
         return classStudentMapper.deleteById(record.getId()) > 0;
     }
 
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
-    }
 }

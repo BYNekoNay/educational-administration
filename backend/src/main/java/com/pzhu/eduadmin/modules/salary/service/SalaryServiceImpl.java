@@ -20,11 +20,10 @@ import com.pzhu.eduadmin.modules.salary.mapper.SalaryRuleMapper;
 import com.pzhu.eduadmin.modules.salary.mapper.TeacherSalaryMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,7 +51,8 @@ public class SalaryServiceImpl implements SalaryService {
     private final SalaryAdjustmentMapper salaryAdjustmentMapper;
     private final ScheduleLessonMapper scheduleLessonMapper;
     private final AttendanceMapper attendanceMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final UserMapper userMapper;
     private final CourseMapper courseMapper;
     private final ClassGroupMapper classGroupMapper;
@@ -331,7 +331,8 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setStatus(2);
 
         // 操作日志
-        logOperation("薪资管理", "确认薪资(teacherId=" + salary.getTeacherId() + ",月份=" + salary.getSalaryMonth() + ",id=" + id + ")");
+        operationLogService.log("薪资管理", "确认薪资（教师=" + nameResolver.getUserDisplayName(salary.getTeacherId())
+                + "，月份=" + salary.getSalaryMonth() + "，金额=" + salary.getTotalAmount() + "，id=" + id + "）");
 
         return salary;
     }
@@ -354,8 +355,8 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setStatus(4);
 
         // 操作日志
-        logOperation("薪资管理", "撤销薪资(teacherId=" + salary.getTeacherId()
-                + ",月份=" + salary.getSalaryMonth() + ",id=" + id + ")");
+        operationLogService.log("薪资管理", "撤销薪资（教师=" + nameResolver.getUserDisplayName(salary.getTeacherId())
+                + "，月份=" + salary.getSalaryMonth() + "，id=" + id + "）");
 
         return salary;
     }
@@ -381,15 +382,5 @@ public class SalaryServiceImpl implements SalaryService {
     @Override
     public Page<SalaryAdjustment> pageSalaryAdjustments(int pageNum, int pageSize) {
         return salaryAdjustmentMapper.selectPage(new Page<>(pageNum, pageSize), new LambdaQueryWrapper<>());
-    }
-
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
     }
 }

@@ -6,9 +6,7 @@ import com.pzhu.eduadmin.modules.user.entity.Menu;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.mapper.MenuMapper;
 import com.pzhu.eduadmin.modules.user.mapper.PermissionMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +20,7 @@ public class MenuServiceImpl implements MenuService {
 
     private final MenuMapper menuMapper;
     private final PermissionMapper permissionMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
 
     @Override
     public List<Menu> treeList() {
@@ -64,12 +62,7 @@ public class MenuServiceImpl implements MenuService {
         if (menu.getVisible() == null) menu.setVisible(1);
         menuMapper.insert(menu);
 
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("菜单管理");
-        log.setOperation("新增菜单：" + menu.getMenuName());
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("菜单管理", "新增菜单：" + menu.getMenuName());
 
         return menu;
     }
@@ -89,12 +82,7 @@ public class MenuServiceImpl implements MenuService {
         }
         menuMapper.updateById(menu);
 
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("菜单管理");
-        log.setOperation("编辑菜单：" + menu.getMenuName());
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("菜单管理", "编辑菜单：" + menu.getMenuName());
 
         return getById(menu.getId());
     }
@@ -108,12 +96,7 @@ public class MenuServiceImpl implements MenuService {
         // 删除自身
         menuMapper.deleteById(id);
 
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("菜单管理");
-        log.setOperation("删除菜单：" + menu.getMenuName() + "（含子节点）");
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("菜单管理", "删除菜单：" + menu.getMenuName() + "（含子节点）");
     }
 
     /** 递归删除指定 parentId 的所有子节点 */

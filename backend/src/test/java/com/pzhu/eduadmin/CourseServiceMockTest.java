@@ -11,8 +11,8 @@ import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.course.service.CourseServiceImpl;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -33,6 +33,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,7 +44,8 @@ class CourseServiceMockTest {
     @Mock private ClassStudentMapper classStudentMapper;
     @Mock private UserMapper userMapper;
     @Mock private StudentMapper studentMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private ScheduleLessonMapper scheduleLessonMapper;
     @Mock private PaymentRecordMapper paymentRecordMapper;
 
@@ -297,16 +299,19 @@ class CourseServiceMockTest {
     @Test
     @DisplayName("deleteCourse - 正常删除成功")
     void deleteCourse_success() {
+        Course course = new Course();
+        course.setId(1L);
+        course.setName("测试课程");
+        when(courseMapper.selectById(1L)).thenReturn(course);
         when(classGroupMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(classGroupMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
         when(courseMapper.deleteById(1L)).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         boolean result = courseService.deleteCourse(1L);
 
         assertThat(result).isTrue();
         verify(courseMapper).deleteById(1L);
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -345,16 +350,19 @@ class CourseServiceMockTest {
     @Test
     @DisplayName("deleteClassGroup - 正常删除成功")
     void deleteClassGroup_success() {
+        ClassGroup classGroup = new ClassGroup();
+        classGroup.setId(10L);
+        classGroup.setClassName("测试班级");
+        when(classGroupMapper.selectById(10L)).thenReturn(classGroup);
         when(classStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(scheduleLessonMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(classGroupMapper.deleteById(10L)).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         boolean result = courseService.deleteClassGroup(10L);
 
         assertThat(result).isTrue();
         verify(classGroupMapper).deleteById(10L);
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test

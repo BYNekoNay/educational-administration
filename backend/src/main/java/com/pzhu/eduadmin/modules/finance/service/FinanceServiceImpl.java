@@ -20,9 +20,8 @@ import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +47,8 @@ public class FinanceServiceImpl implements FinanceService {
     private final ClassGroupMapper classGroupMapper;
     private final ClassStudentMapper classStudentMapper;
     private final CourseMapper courseMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final StudentMapper studentMapper;
     private final UserMapper userMapper;
 
@@ -177,7 +177,8 @@ public class FinanceServiceImpl implements FinanceService {
         }
 
         // 操作日志
-        logOperation("财务管理", "登记收费(studentId=" + record.getStudentId() + ",金额=" + record.getAmount() + ",id=" + record.getId() + ")");
+        operationLogService.log("财务管理", "登记收费（学员=" + nameResolver.getStudentName(record.getStudentId())
+                + "，金额=" + record.getAmount() + "，id=" + record.getId() + "）");
 
         return record;
     }
@@ -275,7 +276,10 @@ public class FinanceServiceImpl implements FinanceService {
         }
 
         // 操作日志
-        logOperation("财务管理", status == 2 ? "审核通过退费(id=" + id + ")" : "驳回退费(id=" + id + ")");
+        String studentName = nameResolver.getStudentName(record.getStudentId());
+        operationLogService.log("财务管理", status == 2
+                ? "审核通过退费（学员=" + studentName + "，金额=" + (refundAmount != null ? refundAmount : record.getAmount()) + "，id=" + id + "）"
+                : "驳回退费（学员=" + studentName + "，id=" + id + "）");
 
         return record;
     }
@@ -485,15 +489,5 @@ public class FinanceServiceImpl implements FinanceService {
                 new LambdaQueryWrapper<LessonFlow>().eq(LessonFlow::getStudentId, studentId)
                         .orderByDesc(LessonFlow::getCreateTime));
         return page.getRecords();
-    }
-
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
     }
 }

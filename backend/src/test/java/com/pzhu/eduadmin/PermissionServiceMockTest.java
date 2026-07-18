@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.IpUtil;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.entity.RolePermission;
 import com.pzhu.eduadmin.modules.user.mapper.PermissionMapper;
@@ -27,6 +27,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,7 +36,8 @@ class PermissionServiceMockTest {
 
     @Mock private PermissionMapper permissionMapper;
     @Mock private RolePermissionMapper rolePermissionMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
 
     @InjectMocks
     private PermissionServiceImpl permissionService;
@@ -48,7 +50,6 @@ class PermissionServiceMockTest {
         MapperBuilderAssistant asst = new MapperBuilderAssistant(cfg, "");
         TableInfoHelper.initTableInfo(asst, Permission.class);
         TableInfoHelper.initTableInfo(asst, RolePermission.class);
-        TableInfoHelper.initTableInfo(asst, OperationLog.class);
     }
 
     @BeforeEach
@@ -118,12 +119,11 @@ class PermissionServiceMockTest {
         when(permissionMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         doAnswer(inv -> { inv.getArgument(0, Permission.class).setId(100L); return 1; })
                 .when(permissionMapper).insert(any(Permission.class));
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         Permission result = permissionService.create(p);
 
         assertThat(result.getId()).isEqualTo(100L);
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -139,7 +139,7 @@ class PermissionServiceMockTest {
         p.setPermissionCode("new:code");
         when(permissionMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(permissionMapper.updateById(any(Permission.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+
 
         Permission result = permissionService.update(p);
 
@@ -173,7 +173,7 @@ class PermissionServiceMockTest {
         when(permissionMapper.selectById(1L)).thenReturn(p);
         when(rolePermissionMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(1);
         when(permissionMapper.deleteById(1L)).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+
 
         permissionService.delete(1L);
 

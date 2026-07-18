@@ -10,9 +10,7 @@ import com.pzhu.eduadmin.modules.user.mapper.PermissionMapper;
 import com.pzhu.eduadmin.modules.user.mapper.RoleMapper;
 import com.pzhu.eduadmin.modules.user.mapper.RolePermissionMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +25,7 @@ public class RoleServiceImpl implements RoleService {
     private final RoleMapper roleMapper;
     private final PermissionMapper permissionMapper;
     private final RolePermissionMapper rolePermissionMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
     private final UserMapper userMapper;
 
     @Override
@@ -60,12 +58,7 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.insert(role);
 
         // 操作日志
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("权限管理");
-        log.setOperation("新增角色 " + roleCode + "(" + roleName + ")");
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("权限管理", "新增角色 " + roleCode + "(" + roleName + ")");
 
         return role;
     }
@@ -84,12 +77,7 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.updateById(role);
 
         // 操作日志
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("权限管理");
-        log.setOperation("编辑角色 " + role.getRoleCode() + " 名称为 " + roleName);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("权限管理", "编辑角色 " + role.getRoleCode() + " 名称为 " + roleName);
     }
 
     @Override
@@ -117,12 +105,7 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.realDeleteByRoleCode(role.getRoleCode());
 
         // 操作日志
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("权限管理");
-        log.setOperation("删除角色 " + role.getRoleCode() + "(" + role.getRoleName() + ")");
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("权限管理", "删除角色 " + role.getRoleCode() + "(" + role.getRoleName() + ")");
     }
 
     /** 判断是否为系统内置角色（受保护不可删除） */
@@ -157,11 +140,6 @@ public class RoleServiceImpl implements RoleService {
         }
 
         // 操作日志：修改角色权限
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser opLog = CurrentUserHolder.get(); log.setOperatorId(opLog != null ? opLog.getUserId() : 0L);
-        log.setModule("权限管理");
-        log.setOperation("修改角色" + roleCode + "权限，权限数量：" + permissionCodes.size());
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("权限管理", "修改角色" + roleCode + "权限，权限数量：" + permissionCodes.size());
     }
 }

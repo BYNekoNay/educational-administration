@@ -15,9 +15,9 @@ import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.finance.entity.*;
 import com.pzhu.eduadmin.modules.finance.mapper.*;
+import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.finance.service.FinanceServiceImpl;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -41,6 +41,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,7 +55,8 @@ class FinanceServiceMockTest {
     @Mock private EnrollmentMapper enrollmentMapper;
     @Mock private ClassGroupMapper classGroupMapper;
     @Mock private ClassStudentMapper classStudentMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private CourseMapper courseMapper;
     @Mock private StudentMapper studentMapper;
     @Mock private UserMapper userMapper;
@@ -121,7 +123,7 @@ class FinanceServiceMockTest {
                     .when(accountMapper).insert(any(LessonAccount.class));
             doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
             doReturn(1).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             PaymentRecord result = financeService.createPayment(record);
 
@@ -154,7 +156,7 @@ class FinanceServiceMockTest {
             when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
             doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
             doReturn(1).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             PaymentRecord result = financeService.createPayment(record);
 
@@ -188,7 +190,7 @@ class FinanceServiceMockTest {
             when(classStudentMapper.selectCount(any())).thenReturn(0L);
             when(classStudentMapper.selectOne(any())).thenReturn(null);
             doReturn(1).when(classStudentMapper).insert(any(ClassStudent.class));
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             PaymentRecord result = financeService.createPayment(record);
 
@@ -225,7 +227,7 @@ class FinanceServiceMockTest {
             when(classStudentMapper.selectCount(any())).thenReturn(0L);
             when(classStudentMapper.selectOne(any())).thenReturn(refundedRecord);
             when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             financeService.createPayment(record);
 
@@ -289,7 +291,7 @@ class FinanceServiceMockTest {
                     .when(accountMapper).insert(any(LessonAccount.class));
             doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
             doReturn(1).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             PaymentRecord result = financeService.createPayment(record);
 
@@ -394,7 +396,7 @@ class FinanceServiceMockTest {
             when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
             doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
             doReturn(1).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             PaymentRecord result = financeService.createPayment(record);
 
@@ -533,7 +535,7 @@ class FinanceServiceMockTest {
             when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
             doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
             lenient().when(classGroupMapper.selectList(any())).thenReturn(Collections.emptyList());
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             RefundRecord result = financeService.auditRefund(1L, 2, 4L, new BigDecimal("500"));
 
@@ -623,11 +625,12 @@ class FinanceServiceMockTest {
             RefundRecord record = new RefundRecord();
             record.setId(3L);
             record.setStatus(1);
+            record.setStudentId(10L);
             record.setApplicantId(1L);
 
             when(refundMapper.selectById(3L)).thenReturn(record);
             when(refundMapper.update(any(), any())).thenReturn(1);
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            lenient().when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             RefundRecord result = financeService.auditRefund(3L, 3, 4L, BigDecimal.ZERO);
 
@@ -668,7 +671,7 @@ class FinanceServiceMockTest {
             when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
             doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
             when(classGroupMapper.selectList(any())).thenReturn(List.of(classGroup));
-            doReturn(1).when(operationLogMapper).insert(any(OperationLog.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
             financeService.auditRefund(10L, 2, 4L, new BigDecimal("1000"));
 

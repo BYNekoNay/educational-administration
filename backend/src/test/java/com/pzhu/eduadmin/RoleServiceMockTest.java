@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.IpUtil;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.entity.Role;
 import com.pzhu.eduadmin.modules.user.entity.RolePermission;
@@ -31,6 +31,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,7 +41,8 @@ class RoleServiceMockTest {
     @Mock private RoleMapper roleMapper;
     @Mock private PermissionMapper permissionMapper;
     @Mock private RolePermissionMapper rolePermissionMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private UserMapper userMapper;
 
     @InjectMocks
@@ -56,7 +58,6 @@ class RoleServiceMockTest {
         TableInfoHelper.initTableInfo(asst, Permission.class);
         TableInfoHelper.initTableInfo(asst, RolePermission.class);
         TableInfoHelper.initTableInfo(asst, User.class);
-        TableInfoHelper.initTableInfo(asst, OperationLog.class);
     }
 
     @BeforeEach
@@ -122,7 +123,6 @@ class RoleServiceMockTest {
         when(roleMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         doAnswer(inv -> { inv.getArgument(0, Role.class).setId(100L); return 1; })
                 .when(roleMapper).insert(any(Role.class));
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         Role result = roleService.createRole("NEW", "新角色");
 
@@ -149,7 +149,6 @@ class RoleServiceMockTest {
         Role r = buildRole(1L, "CUSTOM");
         when(roleMapper.selectById(1L)).thenReturn(r);
         when(roleMapper.updateById(any(Role.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         roleService.updateRole(1L, "新名称");
 
@@ -189,7 +188,7 @@ class RoleServiceMockTest {
         when(userMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(rolePermissionMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(1);
         when(roleMapper.realDeleteByRoleCode("CUSTOM")).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+
 
         roleService.deleteRole(1L);
 
@@ -227,20 +226,20 @@ class RoleServiceMockTest {
     void updateRolePermissions_Success() {
         when(rolePermissionMapper.realDeleteByRoleCode("CUSTOM")).thenReturn(1);
         when(rolePermissionMapper.insert(any(RolePermission.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+
 
         roleService.updateRolePermissions("CUSTOM", List.of("menu:a", "menu:b"));
 
         verify(rolePermissionMapper).realDeleteByRoleCode("CUSTOM");
         verify(rolePermissionMapper, times(2)).insert(any(RolePermission.class));
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
     @DisplayName("更新角色权限为空列表 — 只删不建")
     void updateRolePermissions_EmptyList() {
         when(rolePermissionMapper.realDeleteByRoleCode("CUSTOM")).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+
 
         roleService.updateRolePermissions("CUSTOM", List.of());
 

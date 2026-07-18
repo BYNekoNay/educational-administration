@@ -6,15 +6,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.notice.entity.Notice;
 import com.pzhu.eduadmin.modules.notice.mapper.NoticeMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 
 @Service
@@ -22,7 +17,7 @@ import java.util.Map;
 public class NoticeServiceImpl implements NoticeService {
 
     private final NoticeMapper noticeMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
 
     private static final Map<String, SFunction<Notice, ?>> NOTICE_SORT_MAP = Map.of(
             "id", Notice::getId,
@@ -48,7 +43,7 @@ public class NoticeServiceImpl implements NoticeService {
         noticeMapper.insert(notice);
 
         // 操作日志
-        logOperation("公告管理", "发布公告(id=" + notice.getId() + ",标题=" + notice.getTitle() + ")");
+        operationLogService.log("公告管理", "发布公告（标题=" + notice.getTitle() + "）");
 
         return notice;
     }
@@ -58,44 +53,18 @@ public class NoticeServiceImpl implements NoticeService {
         noticeMapper.updateById(notice);
 
         // 操作日志
-        logOperation("公告管理", "更新公告(id=" + notice.getId() + ")");
+        operationLogService.log("公告管理", "更新公告（标题=" + notice.getTitle() + "）");
 
         return noticeMapper.selectById(notice.getId());
     }
 
     @Override
     public boolean delete(Long id) {
+        Notice notice = noticeMapper.selectById(id);
         boolean deleted = noticeMapper.deleteById(id) > 0;
         if (deleted) {
-            logOperation("公告管理", "删除公告(id=" + id + ")");
+            operationLogService.log("公告管理", "删除公告（标题=" + (notice != null ? notice.getTitle() : "id=" + id) + "）");
         }
         return deleted;
-    }
-
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-
-        String ip = "unknown";
-        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attrs != null) {
-            HttpServletRequest request = attrs.getRequest();
-            ip = request.getHeader("X-Forwarded-For");
-            if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-                ip = request.getHeader("X-Real-IP");
-            }
-            if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-                ip = request.getRemoteAddr();
-            }
-            // Take first IP if multiple (X-Forwarded-For can have chain)
-            if (ip != null && ip.contains(",")) {
-                ip = ip.split(",")[0].trim();
-            }
-        }
-        log.setIp(ip);
-        operationLogMapper.insert(log);
     }
 }

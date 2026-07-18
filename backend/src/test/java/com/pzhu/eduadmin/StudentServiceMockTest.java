@@ -14,8 +14,8 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
@@ -43,6 +43,8 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -78,7 +80,9 @@ class StudentServiceMockTest {
     private EnrollmentMapper enrollmentMapper;
 
     @Mock
-    private OperationLogMapper operationLogMapper;
+    private OperationLogService operationLogService;
+    @Mock
+    private EntityNameResolver nameResolver;
     @Mock
     private ExamSignupMapper examSignupMapper;
 
@@ -189,18 +193,22 @@ class StudentServiceMockTest {
 
     @Test
     void deleteStudent_NormalDelete_Success() {
+        Student student = new Student();
+        student.setId(1L);
+        student.setName("张三");
+
         when(classStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(paymentRecordMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(refundRecordMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+        when(studentMapper.selectById(1L)).thenReturn(student);
         when(studentMapper.deleteById(1L)).thenReturn(1);
 
         boolean result = studentService.deleteStudent(1L);
 
         assertThat(result).isTrue();
         verify(studentMapper).deleteById(1L);
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -281,13 +289,15 @@ class StudentServiceMockTest {
         when(parentStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(parentStudentMapper.countIncludingDeleted(20L, 10L)).thenReturn(0);
         when(parentStudentMapper.insert(any(ParentStudent.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+        when(nameResolver.getStudentName(anyLong())).thenReturn("学员A");
+        when(nameResolver.getUserDisplayName(anyLong())).thenReturn("家长B");
 
         boolean result = studentService.bindParent(ps);
 
         assertThat(result).isTrue();
         verify(parentStudentMapper).insert(ps);
         verify(parentStudentMapper, never()).physicalDelete(any(), any());
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -308,13 +318,15 @@ class StudentServiceMockTest {
         when(parentStudentMapper.countIncludingDeleted(20L, 10L)).thenReturn(1);
         when(parentStudentMapper.physicalDelete(20L, 10L)).thenReturn(1);
         when(parentStudentMapper.insert(any(ParentStudent.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
+        when(nameResolver.getStudentName(anyLong())).thenReturn("学员A");
+        when(nameResolver.getUserDisplayName(anyLong())).thenReturn("家长B");
 
         boolean result = studentService.bindParent(ps);
 
         assertThat(result).isTrue();
         verify(parentStudentMapper).physicalDelete(20L, 10L);
         verify(parentStudentMapper).insert(ps);
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test

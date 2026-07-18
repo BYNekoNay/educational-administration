@@ -13,7 +13,8 @@ import com.pzhu.eduadmin.modules.finance.mapper.LessonAccountMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.LessonFlowMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
 import org.junit.jupiter.api.AfterEach;
@@ -46,7 +47,8 @@ class LessonAccountServiceTest {
     @Mock private ClassGroupMapper classGroupMapper;
     @Mock private LessonAccountMapper lessonAccountMapper;
     @Mock private LessonFlowMapper lessonFlowMapper;
-    @Mock private OperationLogMapper operationLogMapper;
+    @Mock private OperationLogService operationLogService;
+    @Mock private EntityNameResolver nameResolver;
 
     @InjectMocks
     private AttendanceServiceImpl attendanceService;

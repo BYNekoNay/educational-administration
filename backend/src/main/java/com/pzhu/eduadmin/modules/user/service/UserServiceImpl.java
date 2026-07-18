@@ -7,16 +7,14 @@ import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.UpdateUserRequest;
 import com.pzhu.eduadmin.modules.user.entity.TeacherCourse;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.TeacherCourseMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
-import com.pzhu.eduadmin.security.CurrentUserHolder;
-import com.pzhu.eduadmin.security.LoginUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,7 +29,8 @@ import java.util.stream.Collectors;
 public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final TeacherCourseMapper teacherCourseMapper;
     private final CourseMapper courseMapper;
 
@@ -85,7 +84,7 @@ public class UserServiceImpl implements UserService {
             fillUserSpecialties(user);
         }
 
-        logOperation("用户管理", "新增用户(username=" + user.getUsername() + ")");
+        operationLogService.log("用户管理", "新增用户（用户=" + user.getUsername() + "）");
 
         user.setPassword(null);
         return user;
@@ -123,7 +122,7 @@ public class UserServiceImpl implements UserService {
         }
         fillUserSpecialties(user);
 
-        logOperation("用户管理", "编辑用户(id=" + id + ")");
+        operationLogService.log("用户管理", "编辑用户（用户=" + user.getUsername() + "）");
 
         user.setPassword(null);
         return user;
@@ -140,7 +139,7 @@ public class UserServiceImpl implements UserService {
         user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
         userMapper.updateById(user);
 
-        logOperation("用户管理", status == 1 ? "启用用户(id=" + id + ")" : "禁用用户(id=" + id + ")");
+        operationLogService.log("用户管理", (status == 1 ? "启用用户" : "禁用用户") + "（用户=" + nameResolver.getUserDisplayName(id) + "）");
     }
 
     @Override
@@ -158,17 +157,7 @@ public class UserServiceImpl implements UserService {
         user.setPassword(new BCryptPasswordEncoder().encode(newPassword));
         user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
         userMapper.updateById(user);
-        logOperation("用户管理", "重置密码(id=" + id + ", username=" + user.getUsername() + ")");
-    }
-
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
+        operationLogService.log("用户管理", "重置密码（用户=" + user.getUsername() + "）");
     }
 
     // ---- 教师教学特长管理 ----

@@ -21,8 +21,8 @@ import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ClassroomMapper;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
-import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
-import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.entity.User;
@@ -55,7 +55,8 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final ClassGroupMapper classGroupMapper;
     private final LessonAccountMapper lessonAccountMapper;
     private final LessonFlowMapper lessonFlowMapper;
-    private final OperationLogMapper operationLogMapper;
+    private final OperationLogService operationLogService;
+    private final EntityNameResolver nameResolver;
     private final StudentMapper studentMapper;
     private final UserMapper userMapper;
 
@@ -209,8 +210,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         // 操作日志
-        logOperation("考勤管理", "提交考勤(lessonId=" + attendance.getLessonId()
-                + ",studentId=" + attendance.getStudentId() + ",status=" + attendance.getStatus() + ")");
+        operationLogService.log("考勤管理", "提交考勤（学员=" + nameResolver.getStudentName(attendance.getStudentId())
+                + "，课次id=" + attendance.getLessonId() + "，状态=" + attendance.getStatus() + "）");
 
         return attendance;
     }
@@ -340,17 +341,6 @@ public class AttendanceServiceImpl implements AttendanceService {
                 throw new BusinessException(403, "该课次不属于您，无法操作");
             }
         }
-    }
-
-    /** 记录操作日志 */
-    private void logOperation(String module, String operation) {
-        OperationLog log = new OperationLog();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        log.setOperatorId(operator != null ? operator.getUserId() : 0L);
-        log.setModule(module);
-        log.setOperation(operation);
-        log.setIp(com.pzhu.eduadmin.common.IpUtil.getCurrentIp());
-        operationLogMapper.insert(log);
     }
 
     /** 回冲旧考勤扣减（到课/迟到扣减均需回冲）*/

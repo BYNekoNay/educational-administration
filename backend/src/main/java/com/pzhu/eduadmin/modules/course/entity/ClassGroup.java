@@ -33,6 +33,10 @@ public class ClassGroup {
     @TableField(exist = false)
     private String teacherName;
 
+    /** 当前在班人数（不持久化，status=1 学员数） */
+    @TableField(exist = false)
+    private Integer currentStudentCount;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

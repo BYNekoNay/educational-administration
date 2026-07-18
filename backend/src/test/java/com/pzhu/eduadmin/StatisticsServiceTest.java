@@ -14,12 +14,14 @@ import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
+import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
 import com.pzhu.eduadmin.modules.statistics.entity.Organization;
 import com.pzhu.eduadmin.modules.statistics.entity.StatisticsSnapshot;
 import com.pzhu.eduadmin.modules.statistics.mapper.OperationLogMapper;
 import com.pzhu.eduadmin.modules.statistics.mapper.OrganizationMapper;
 import com.pzhu.eduadmin.modules.statistics.mapper.StatisticsSnapshotMapper;
+import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.statistics.service.StatisticsServiceImpl;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
@@ -41,6 +43,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -53,7 +56,9 @@ class StatisticsServiceTest {
 
     @Mock private StatisticsSnapshotMapper snapshotMapper;
     @Mock private OrganizationMapper organizationMapper;
+    @Mock private OperationLogService operationLogService;
     @Mock private OperationLogMapper operationLogMapper;
+    @Mock private EntityNameResolver nameResolver;
     @Mock private UserMapper userMapper;
     @Mock private EnrollmentMapper enrollmentMapper;
     @Mock private AttendanceMapper attendanceMapper;
@@ -200,7 +205,6 @@ class StatisticsServiceTest {
 
         when(organizationMapper.selectById(1L)).thenReturn(existing, updated);
         when(organizationMapper.updateById(any(Organization.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
 
         Organization result = statisticsService.updateOrganization(input);
 
@@ -208,7 +212,7 @@ class StatisticsServiceTest {
         assertThat(result.getId()).isEqualTo(1L);
         assertThat(result.getOrgName()).isEqualTo("测试机构");
         verify(organizationMapper).updateById(any(Organization.class));
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
@@ -228,7 +232,6 @@ class StatisticsServiceTest {
 
         when(organizationMapper.selectOne(any())).thenReturn(existingRecord);
         when(organizationMapper.updateById(any(Organization.class))).thenReturn(1);
-        when(operationLogMapper.insert(any(OperationLog.class))).thenReturn(1);
         when(organizationMapper.selectById(5L)).thenReturn(finalResult);
 
         Organization result = statisticsService.updateOrganization(input);
@@ -240,7 +243,7 @@ class StatisticsServiceTest {
         assertThat(input.getId()).isEqualTo(5L);
         verify(organizationMapper).selectOne(any());
         verify(organizationMapper).updateById(any(Organization.class));
-        verify(operationLogMapper).insert(any(OperationLog.class));
+        verify(operationLogService).log(anyString(), anyString());
     }
 
     @Test
