@@ -32,8 +32,7 @@ public class ExamSignup {
     @TableField(exist = false)
     private String studentName;
 
-    /** 证书文件链接（不持久化） */
-    @TableField(exist = false)
+    /** 证书文件链接 */
     private String certificateFileUrl;
 
     @TableField(fill = FieldFill.INSERT)

@@ -182,7 +182,7 @@ async function fetchRequests() {
   loading.value = true
   try {
     const res = await api({ url: '/api/teacher/adjust-requests' })
-    requests.value = res.data || []
+    requests.value = res.data?.records || []
   } catch {
     uni.showToast({ title: '加载申请失败', icon: 'none' })
   } finally {
@@ -230,9 +230,7 @@ async function submitRequest() {
       method: 'POST',
       data: {
         reason: f.reason,
-        adjustDate: f.adjustDate,
-        adjustStartTime: f.adjustStartTime,
-        adjustEndTime: f.adjustEndTime,
+        expectTime: `${f.adjustDate}T${f.adjustStartTime}:00`,
       },
     })
     uni.showToast({ title: '申请提交成功' })

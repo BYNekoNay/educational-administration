@@ -20,23 +20,40 @@
     <!-- Recent notices preview -->
     <view class="section-header">最近消息</view>
     <view class="cell-group">
-      <view class="cell" v-if="!hasNotices">
+      <view class="cell" v-if="recentNotices.length === 0">
         <view class="cell-body" style="text-align: center; padding: 40rpx 0;">
           <text class="cell-title" style="color: var(--text-secondary, #8C7E74)">暂无新消息</text>
         </view>
+      </view>
+      <view class="cell" v-for="item in recentNotices" :key="item.id" @click="goNotices">
+        <view class="cell-body">
+          <text class="cell-title">{{ item.title }}</text>
+          <text class="cell-desc">{{ item.createTime || item.publishTime }}</text>
+        </view>
+        <view class="cell-footer"><view class="cell-arrow"></view></view>
       </view>
     </view>
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { api } from '@/utils/request'
 
-const hasNotices = ref(false)
+const recentNotices = ref([])
 
 function goNotices() {
   uni.navigateTo({ url: '/pages/parent/notices' })
 }
+
+onMounted(async () => {
+  try {
+    const res = await api({ url: '/api/notifications?pageNum=1&pageSize=3' })
+    recentNotices.value = res.data?.records || []
+  } catch (e) {
+    recentNotices.value = []
+  }
+})
 </script>
 
 <style scoped>

@@ -17,6 +17,10 @@
         <text class="stat-value">{{ stats.attendanceRate }}%</text>
         <text class="stat-label">到课率</text>
       </view>
+      <view class="stat-card">
+        <text class="stat-value">{{ stats.completionRate }}%</text>
+        <text class="stat-label">完成率</text>
+      </view>
     </view>
 
     <!-- Monthly trend -->
@@ -42,42 +46,24 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '@/utils/request'
-const stats = reactive({ mainLessons: 0, subLessons: 0, attendanceRate: 0 })
+const stats = reactive({ mainLessons: 0, subLessons: 0, attendanceRate: 0, completionRate: 0 })
 const trends = ref([])
 
 onMounted(async () => {
   try {
-    const lessonRes = await api({ url: '/api/teacher/lessons?pageNum=1&pageSize=100' })
-    const allLessons = lessonRes.data.records || []
-    const now = new Date()
-    const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
-    const monthLessons = allLessons.filter(l => l.lessonDate && l.lessonDate.startsWith(monthStr) && l.status === 2)
-    stats.mainLessons = monthLessons.length
-    stats.subLessons = allLessons.filter(l => l.lessonDate && l.lessonDate.startsWith(monthStr) && l.status === 2 && l.sourceLessonId).length
-
-    // 计算到课率：取本月已完成课次，查考勤数据
-    if (monthLessons.length > 0) {
-      let totalRecords = 0; let presentCount = 0
-      for (const lesson of monthLessons.slice(0, 5)) {
-        try {
-          const attRes = await api({ url: `/api/teacher/lessons/${lesson.id}/attendances` })
-          const attList = attRes.data || []
-          totalRecords += attList.length
-          presentCount += attList.filter(a => a.status === 1).length
-        } catch (e) { console.warn('考勤查询失败', e) }
-      }
-      stats.attendanceRate = totalRecords > 0 ? Math.round(presentCount / totalRecords * 100) : 0
-    }
-
-    // 近6个月趋势（按月份聚合）
-    const trendMap = {}
-    allLessons.forEach(l => {
-      if (l.lessonDate && l.status === 2) {
-        const m = l.lessonDate.substring(0, 7)
-        trendMap[m] = (trendMap[m] || 0) + 1
-      }
-    })
-    trends.value = Object.entries(trendMap).map(([month, count]) => ({ month, count })).slice(-6)
+    const [overviewRes, monthlyRes] = await Promise.all([
+      api({ url: '/api/teacher/statistics' }),
+      api({ url: '/api/teacher/statistics/monthly' })
+    ])
+    const overview = overviewRes.data || {}
+    stats.mainLessons = overview.thisMonth?.lessonCount || 0
+    stats.subLessons = overview.substituteCount || 0
+    stats.attendanceRate = Math.round((overview.attendanceRate || 0) * 100)
+    stats.completionRate = Math.round((overview.completionRate || 0) * 100)
+    trends.value = (monthlyRes.data || []).slice(-6).map(item => ({
+      month: item.month,
+      count: item.lessonCount || 0
+    }))
   } catch (e) {
     console.warn('统计加载失败', e)
     uni.showToast({ title: '加载失败', icon: 'none' })

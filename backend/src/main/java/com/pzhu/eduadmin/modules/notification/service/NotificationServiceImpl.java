@@ -6,6 +6,7 @@ import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.mapper.NotificationMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -44,9 +45,28 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Async("sseExecutor")
     public void send(Long userId, Notification notification) {
+        notification.setUserId(userId);
         notification.setIsRead(0);
         notificationMapper.insert(notification);
 
+        emit(userId, notification);
+    }
+
+    @Override
+    public boolean sendOnce(Long userId, Notification notification, String dedupeKey) {
+        notification.setUserId(userId);
+        notification.setIsRead(0);
+        notification.setDedupeKey(dedupeKey);
+        try {
+            notificationMapper.insert(notification);
+        } catch (DuplicateKeyException ignored) {
+            return false;
+        }
+        emit(userId, notification);
+        return true;
+    }
+
+    private void emit(Long userId, Notification notification) {
         SseEmitter emitter = emitters.get(userId);
         if (emitter != null) {
             try {
@@ -69,6 +89,7 @@ public class NotificationServiceImpl implements NotificationService {
             copy.setTitle(notification.getTitle());
             copy.setContent(notification.getContent());
             copy.setRelatedId(notification.getRelatedId());
+            copy.setDedupeKey(notification.getDedupeKey());
             send(userId, copy);
         }
     }

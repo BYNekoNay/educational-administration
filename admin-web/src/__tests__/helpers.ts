@@ -20,6 +20,7 @@ const baseStubs: Record<string, any> = {
   'el-time-picker': true,
   'el-switch': true,
   'el-checkbox': true,
+  'el-checkbox-group': { template: '<div><slot /></div>' },
   'el-radio': true,
   'el-popconfirm': true,
   'el-icon': true,

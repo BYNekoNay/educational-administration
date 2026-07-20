@@ -3,6 +3,7 @@
     <div style="display: flex; justify-content: space-between; margin-bottom: 16px">
       <h3>排课管理</h3>
       <div>
+        <el-button type="warning" @click="autoVisible = true">智能排课</el-button>
         <el-button type="success" @click="showBatchDialog">批量排课</el-button>
         <el-button type="primary" @click="openDialog(null)">新增课次</el-button>
       </div>
@@ -88,6 +89,46 @@
       </template>
     </el-dialog>
 
+    <el-dialog title="智能排课" v-model="autoVisible" width="560px">
+      <el-form :model="autoForm" label-width="90px">
+        <el-form-item label="班级">
+          <el-select v-model="autoForm.classId" filterable style="width:100%">
+            <el-option v-for="c in classList" :key="c.id" :label="c.className" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="教师">
+          <el-select v-model="autoForm.teacherId" filterable style="width:100%">
+            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="指定教室">
+          <el-select v-model="autoForm.classroomId" clearable placeholder="自动选择容量合适的教室" style="width:100%">
+            <el-option v-for="r in roomList" :key="r.id" :label="`${r.name}（${r.capacity}人）`" :value="r.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="日期范围">
+          <el-date-picker v-model="autoDateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="上课时间">
+          <el-time-picker v-model="autoForm.startTime" value-format="HH:mm:ss" placeholder="开始" style="width:47%" />
+          <span style="margin:0 8px">至</span>
+          <el-time-picker v-model="autoForm.endTime" value-format="HH:mm:ss" placeholder="结束" style="width:47%" />
+        </el-form-item>
+        <el-form-item label="上课星期">
+          <el-checkbox-group v-model="autoForm.weekdays">
+            <el-checkbox v-for="day in weekdayOptions" :key="day.value" :value="day.value">{{ day.label }}</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item label="课次数量">
+          <el-input-number v-model="autoForm.lessonCount" :min="1" :max="100" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="autoVisible=false">取消</el-button>
+        <el-button type="primary" :loading="autoScheduling" @click="handleAutoSchedule">生成课表</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 批量排课弹窗 -->
     <el-dialog title="批量排课" v-model="batchVisible" width="700px">
       <div v-for="(item,idx) in batchItems" :key="idx" style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
@@ -120,15 +161,21 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { showError } from '@/utils/error'
 import { scheduleApi, classApi, teacherApi, classroomApi } from '@/api/edu'
 
-const loading = ref(false), saving = ref(false), batching = ref(false)
+const loading = ref(false), saving = ref(false), batching = ref(false), autoScheduling = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const tableData = ref<any[]>([]), pageNum = ref(1), pageSize = ref(10), total = ref(0)
-const dialogVisible = ref(false), batchVisible = ref(false), isEdit = ref(false)
+const dialogVisible = ref(false), batchVisible = ref(false), autoVisible = ref(false), isEdit = ref(false)
 const classList = ref<any[]>([])
 const teacherList = ref<any[]>([])
 const roomList = ref<any[]>([])
 const form = reactive<any>({ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '', status: 1 })
 const batchItems = ref<any[]>([{ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '', status: 1 }])
+const autoDateRange = ref<string[]>([])
+const autoForm = reactive<any>({ classId: null, teacherId: null, classroomId: null, startTime: '09:00:00', endTime: '10:00:00', lessonCount: 12, weekdays: [6] })
+const weekdayOptions = [
+  { value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' },
+  { value: 4, label: '周四' }, { value: 5, label: '周五' }, { value: 6, label: '周六' }, { value: 7, label: '周日' }
+]
 
 async function loadOptions() {
   try {
@@ -145,7 +192,7 @@ async function loadOptions() {
 
 async function loadData() {
   loading.value = true
-  const r = await scheduleApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+  const r = await scheduleApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
   tableData.value = r.data.records; total.value = r.data.total; loading.value = false
 }
 
@@ -222,6 +269,28 @@ async function handleBatchCreate() {
     batchVisible.value = false
     loadData()
   } finally { batching.value = false }
+}
+
+async function handleAutoSchedule() {
+  if (!autoForm.classId || !autoForm.teacherId || autoDateRange.value.length !== 2) {
+    ElMessage.warning('请选择班级、教师和日期范围')
+    return
+  }
+  autoScheduling.value = true
+  try {
+    await scheduleApi.autoSchedule({
+      ...autoForm,
+      startDate: autoDateRange.value[0],
+      endDate: autoDateRange.value[1]
+    })
+    ElMessage.success('智能排课完成')
+    autoVisible.value = false
+    loadData()
+  } catch (e) {
+    showError(e, '智能排课失败')
+  } finally {
+    autoScheduling.value = false
+  }
 }
 
 onMounted(() => { loadOptions(); loadData() })

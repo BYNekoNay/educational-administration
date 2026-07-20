@@ -14,6 +14,9 @@ public interface NotificationService {
     /** 异步发送通知（持久化 + 推送） */
     void send(Long userId, Notification notification);
 
+    /** 原子发送一次，用于定时提醒去重 */
+    boolean sendOnce(Long userId, Notification notification, String dedupeKey);
+
     /** 批量发送 */
     void sendToUsers(List<Long> userIds, Notification notification);
 

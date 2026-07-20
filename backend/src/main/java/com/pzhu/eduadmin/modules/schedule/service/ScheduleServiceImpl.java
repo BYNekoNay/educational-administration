@@ -13,6 +13,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
 import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
 import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
@@ -164,7 +165,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
         }
         scheduleLessonMapper.insert(lesson);
-        notifyLessonTeacher(lesson, "CLASS_REMINDER", "新课提醒");
+        notifyLessonTeacher(lesson, "SCHEDULE_CHANGE", "新增课次安排");
         return lesson;
     }
 
@@ -246,7 +247,84 @@ public class ScheduleServiceImpl implements ScheduleService {
         for (ScheduleLesson lesson : lessons) {
             lesson.setStatus(1);
             scheduleLessonMapper.insert(lesson);
+            notifyLessonTeacher(lesson, "SCHEDULE_CHANGE", "新增课次安排");
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<ScheduleLesson> autoSchedule(AutoScheduleRequest request) {
+        if (scheduleLessonMapper.lockAutoSchedule() == null) {
+            throw new BusinessException(500, "智能排课事务锁未初始化");
+        }
+        if (request.getEndDate().isBefore(request.getStartDate())) {
+            throw new BusinessException(400, "排课结束日期不能早于开始日期");
+        }
+        if (!request.getEndTime().isAfter(request.getStartTime())) {
+            throw new BusinessException(400, "结束时间必须晚于开始时间");
+        }
+
+        ClassGroup classGroup = classGroupMapper.selectById(request.getClassId());
+        if (classGroup == null) throw new BusinessException(404, "班级不存在");
+        if (Integer.valueOf(0).equals(classGroup.getStatus())) {
+            throw new BusinessException(409, "停用班级不能排课");
+        }
+
+        User teacher = userMapper.selectById(request.getTeacherId());
+        if (teacher == null || !"TEACHER".equals(teacher.getRoleCode())) {
+            throw new BusinessException(404, "授课教师不存在");
+        }
+        if (!Integer.valueOf(1).equals(teacher.getStatus())) {
+            throw new BusinessException(409, "授课教师已停用");
+        }
+
+        List<Classroom> rooms;
+        if (request.getClassroomId() != null) {
+            Classroom room = classroomMapper.selectById(request.getClassroomId());
+            rooms = room == null ? List.of() : List.of(room);
+        } else {
+            rooms = classroomMapper.selectList(
+                    new LambdaQueryWrapper<Classroom>()
+                            .eq(Classroom::getStatus, 1)
+                            .orderByAsc(Classroom::getCapacity));
+        }
+        int requiredCapacity = classGroup.getMaxStudentCount() == null ? 0 : classGroup.getMaxStudentCount();
+        rooms = rooms.stream()
+                .filter(room -> Integer.valueOf(1).equals(room.getStatus()))
+                .filter(room -> room.getCapacity() != null && room.getCapacity() >= requiredCapacity)
+                .toList();
+        if (rooms.isEmpty()) throw new BusinessException(409, "没有容量满足要求的可用教室");
+
+        Set<Integer> weekdays = request.getWeekdays() == null || request.getWeekdays().isEmpty()
+                ? Set.of(request.getStartDate().getDayOfWeek().getValue())
+                : new HashSet<>(request.getWeekdays());
+        List<ScheduleLesson> generated = new ArrayList<>();
+        LocalDate date = request.getStartDate();
+        while (!date.isAfter(request.getEndDate()) && generated.size() < request.getLessonCount()) {
+            if (weekdays.contains(date.getDayOfWeek().getValue())) {
+                for (Classroom room : rooms) {
+                    ScheduleLesson candidate = new ScheduleLesson();
+                    candidate.setClassId(request.getClassId());
+                    candidate.setTeacherId(request.getTeacherId());
+                    candidate.setClassroomId(room.getId());
+                    candidate.setLessonDate(date);
+                    candidate.setStartTime(request.getStartTime());
+                    candidate.setEndTime(request.getEndTime());
+                    candidate.setStatus(1);
+                    if (scheduleConflictService.checkConflict(candidate).isEmpty()) {
+                        generated.add(candidate);
+                        break;
+                    }
+                }
+            }
+            date = date.plusDays(1);
+        }
+
+        if (generated.size() < request.getLessonCount()) {
+            throw new BusinessException(409, "指定日期范围内无法生成足够的无冲突课次");
+        }
+        batchCreate(generated);
+        return generated;
     }
 
     @Override

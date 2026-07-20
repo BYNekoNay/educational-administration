@@ -10,6 +10,10 @@ import com.pzhu.eduadmin.modules.learning.entity.LearningRecord;
 import com.pzhu.eduadmin.modules.learning.mapper.HomeworkMapper;
 import com.pzhu.eduadmin.modules.learning.mapper.LearningRecordMapper;
 import com.pzhu.eduadmin.modules.learning.service.LearningServiceImpl;
+import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
+import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
+import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +34,8 @@ class LearningServiceMockTest {
 
     @Mock private HomeworkMapper homeworkMapper;
     @Mock private LearningRecordMapper learningRecordMapper;
+    @Mock private ClassStudentMapper classStudentMapper;
+    @Mock private ScheduleLessonMapper scheduleLessonMapper;
 
     @InjectMocks
     private LearningServiceImpl learningService;
@@ -40,6 +46,8 @@ class LearningServiceMockTest {
         MapperBuilderAssistant asst = new MapperBuilderAssistant(cfg, "");
         TableInfoHelper.initTableInfo(asst, Homework.class);
         TableInfoHelper.initTableInfo(asst, LearningRecord.class);
+        TableInfoHelper.initTableInfo(asst, ClassStudent.class);
+        TableInfoHelper.initTableInfo(asst, ScheduleLesson.class);
     }
 
     // ============ Homework ============
@@ -96,6 +104,31 @@ class LearningServiceMockTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getLessonId()).isEqualTo(10L);
+    }
+
+    @Test
+    @DisplayName("按学员查询所在班级全部作业")
+    void getHomeworksByStudentId_Success() {
+        ClassStudent enrollment = new ClassStudent();
+        enrollment.setClassId(5L);
+        enrollment.setStudentId(20L);
+        enrollment.setStatus(1);
+
+        ScheduleLesson lesson = new ScheduleLesson();
+        lesson.setId(10L);
+        lesson.setClassId(5L);
+
+        Homework homework = new Homework();
+        homework.setId(1L);
+        homework.setLessonId(10L);
+
+        when(classStudentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(enrollment));
+        when(scheduleLessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(lesson));
+        when(homeworkMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(homework));
+
+        List<Homework> result = learningService.getHomeworksByStudentId(20L);
+
+        assertThat(result).containsExactly(homework);
     }
 
     // ============ LearningRecord ============

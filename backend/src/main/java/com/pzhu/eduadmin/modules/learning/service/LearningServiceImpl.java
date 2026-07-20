@@ -5,11 +5,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
+import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
+import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.learning.entity.Homework;
 import com.pzhu.eduadmin.modules.learning.entity.LearningRecord;
 import com.pzhu.eduadmin.modules.learning.mapper.HomeworkMapper;
 import com.pzhu.eduadmin.modules.learning.mapper.LearningRecordMapper;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
+import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +21,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +32,7 @@ public class LearningServiceImpl implements LearningService {
     private final LearningRecordMapper learningRecordMapper;
     private final AttendanceMapper attendanceMapper;
     private final ScheduleLessonMapper scheduleLessonMapper;
+    private final ClassStudentMapper classStudentMapper;
 
     @Override
     public Page<Homework> pageHomeworks(int pageNum, int pageSize) {
@@ -45,6 +51,26 @@ public class LearningServiceImpl implements LearningService {
     public List<Homework> getHomeworksByLessonId(Long lessonId) {
         return homeworkMapper.selectList(
                 new LambdaQueryWrapper<Homework>().eq(Homework::getLessonId, lessonId));
+    }
+
+    @Override
+    public List<Homework> getHomeworksByStudentId(Long studentId) {
+        Set<Long> classIds = classStudentMapper.selectList(
+                        new LambdaQueryWrapper<ClassStudent>()
+                                .eq(ClassStudent::getStudentId, studentId)
+                                .eq(ClassStudent::getStatus, 1))
+                .stream().map(ClassStudent::getClassId).collect(Collectors.toSet());
+        if (classIds.isEmpty()) return List.of();
+
+        List<Long> lessonIds = scheduleLessonMapper.selectList(
+                        new LambdaQueryWrapper<ScheduleLesson>().in(ScheduleLesson::getClassId, classIds))
+                .stream().map(ScheduleLesson::getId).toList();
+        if (lessonIds.isEmpty()) return List.of();
+
+        return homeworkMapper.selectList(
+                new LambdaQueryWrapper<Homework>()
+                        .in(Homework::getLessonId, lessonIds)
+                        .orderByDesc(Homework::getCreateTime));
     }
 
     @Override
@@ -112,8 +138,8 @@ public class LearningServiceImpl implements LearningService {
         double attRate = attendances.isEmpty() ? 0.0 : Math.round((double) present / attendances.size() * 100.0) / 100.0;
 
         // 2. 作业列表
-        List<Homework> homeworks = homeworkMapper.selectList(
-                new LambdaQueryWrapper<Homework>().orderByDesc(Homework::getCreateTime).last("LIMIT 50"));
+        List<Homework> homeworks = getHomeworksByStudentId(studentId);
+        if (homeworks.size() > 50) homeworks = homeworks.subList(0, 50);
 
         // 3. 学习记录（点评）
         List<LearningRecord> records = learningRecordMapper.selectList(

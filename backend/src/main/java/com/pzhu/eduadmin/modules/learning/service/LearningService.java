@@ -15,6 +15,9 @@ public interface LearningService {
 
     List<Homework> getHomeworksByLessonId(Long lessonId);
 
+    /** 按学员当前所在班级查询全部作业 */
+    List<Homework> getHomeworksByStudentId(Long studentId);
+
     Page<LearningRecord> pageLearningRecords(int pageNum, int pageSize);
 
     LearningRecord createLearningRecord(LearningRecord record);

@@ -68,6 +68,14 @@ export const dashboardApi = {
   get: () => request.get('/admin/dashboard'),
 }
 
+export const statisticsApi = {
+  teacherWorkload: (month = '') => request.get('/admin/statistics/teacher-workload', { params: { month } }),
+  studentLoss: () => request.get('/admin/statistics/student-loss'),
+  classActivity: () => request.get('/admin/statistics/class-activity'),
+  courseProfit: () => request.get('/admin/statistics/course-profit'),
+  paymentRate: () => request.get('/admin/statistics/payment-rate'),
+}
+
 /** 通知公告 */
 export const noticeApi = {
   list: (params?: any) => request.get('/admin/notices', { params }),

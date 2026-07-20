@@ -12,4 +12,4 @@
 | 教师 | `teacher1` | 移动端 H5 | 教师首页 | `teacher-home.png` |
 | 家长 | `parent1` | 移动端 H5 | 家长首页、退费入口 | `parent-home.png`、`parent-refund.png` |
 
-自动化交叉验证见 `../../acceptance-matrix-2026-07-19.md` 和 `../../test-report-2026-07-19.md`。五角色授权端点 21/21、代表性越权拒绝 5/5 均通过。
+自动化交叉验证见 `../../acceptance-matrix-2026-07-19.md` 和 `../../test-report-2026-07-19.md`。五角色业务端点 32/32、未授权与越权拒绝 6/6 均通过。

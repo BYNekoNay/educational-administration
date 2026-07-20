@@ -52,6 +52,45 @@ export function api(options) {
   })
 }
 
+export function uploadFile(filePath) {
+  const token = uni.getStorageSync('token') || ''
+  return new Promise((resolve, reject) => {
+    uni.uploadFile({
+      url: BASE_URL + '/api/files/upload',
+      filePath,
+      name: 'file',
+      header: { Authorization: token ? `Bearer ${token}` : '' },
+      success(res) {
+        try {
+          const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+          if (data.code !== 0) throw new Error(data.message || '上传失败')
+          resolve(data.data.url)
+        } catch (error) {
+          reject(error)
+        }
+      },
+      fail: reject,
+    })
+  })
+}
+
+export function downloadProtectedFile(url) {
+  if (!url) return Promise.resolve('')
+  const token = uni.getStorageSync('token') || ''
+  const protectedUrl = url.startsWith('/files/') ? `/api${url}` : url
+  return new Promise((resolve, reject) => {
+    uni.downloadFile({
+      url: BASE_URL + protectedUrl,
+      header: { Authorization: token ? `Bearer ${token}` : '' },
+      success(result) {
+        if (result.statusCode === 200) resolve(result.tempFilePath)
+        else reject(new Error(result.statusCode === 401 ? '登录已过期' : '附件下载失败'))
+      },
+      fail: reject,
+    })
+  })
+}
+
 export function getMyStudents() {
   try {
     return uni.getStorageSync('students') || []

@@ -9,13 +9,12 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import axios from 'axios'
-import { useAuthStore } from '@/stores/auth'
 
 // 单独实例：仅注入鉴权头，不挂载响应拦截器，
 // 避免 blob 响应（无 code 字段）被统一拦截器误判为失败。
 const exportAxios = axios.create({ baseURL: '/api', timeout: 30000 })
 exportAxios.interceptors.request.use((config) => {
-  const token = useAuthStore().token
+  const token = localStorage.getItem('token') || ''
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })

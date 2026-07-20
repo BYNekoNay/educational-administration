@@ -12,6 +12,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -53,6 +54,21 @@ class NotificationServiceTest {
         notificationService.send(100L, n);
 
         verify(notificationMapper).insert(any(Notification.class));
+    }
+
+    @Test
+    @DisplayName("sendOnce — 重复幂等键不重复发送")
+    void sendOnce_duplicateKeyReturnsFalse() {
+        Notification notification = new Notification();
+        notification.setType("CLASS_REMINDER");
+        notification.setTitle("上课提醒");
+        doThrow(new DuplicateKeyException("duplicate"))
+                .when(notificationMapper).insert(any(Notification.class));
+
+        boolean sent = notificationService.sendOnce(100L, notification, "CLASS_REMINDER:100:10");
+
+        assertThat(sent).isFalse();
+        assertThat(notification.getDedupeKey()).isEqualTo("CLASS_REMINDER:100:10");
     }
 
     @Test

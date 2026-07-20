@@ -20,13 +20,13 @@
 
 | 角色 | 账号 | 授权端点 | 越权拒绝 | 状态 |
 |------|------|---------|---------|------|
-| 超级管理员 | admin/123456 | 6/6 ✅ | — | PASS |
+| 超级管理员 | admin/123456 | 12/12 ✅ | — | PASS |
 | 教务管理员 | edu/123456 | 6/6 ✅ | 1/1 ✅ | PASS |
 | 财务管理员 | finance/123456 | 3/3 ✅ | — | PASS |
-| 教师 | teacher1/123456 | 2/2 ✅ | 2/2 ✅ | PASS |
-| 家长 | parent1/123456 | 4/4 ✅ | 1/1 ✅ | PASS |
+| 教师 | teacher1/123456 | 4/4 ✅ | 2/2 ✅ | PASS |
+| 家长 | parent1/123456 | 7/7 ✅ | 2/2 ✅ | PASS |
 
-**总计**: 21 个授权端点 ✅ | 5 个越权拒绝 ✅ | 0 失败
+**总计**: 32 个授权端点 ✅ | 6 个未授权/越权拒绝 ✅ | 0 失败
 
 ---
 
@@ -39,9 +39,15 @@
 | `/api/edu/students` | GET | 200 | ✅ |
 | `/api/admin/users` | GET | 200 | ✅ |
 | `/api/admin/roles` | GET | 200 | ✅ |
-| `/api/admin/menus` | GET | 200 | ✅ |
+| `/api/admin/menus/tree` | GET | 200 | ✅ |
 | `/api/admin/permissions` | GET | 200 | ✅ |
-| `/api/statistics/dashboard` | GET | 200 | ✅ |
+| `/api/admin/dashboard` | GET | 200 | ✅ |
+| `/api/admin/statistics/teacher-workload` | GET | 200 | ✅ |
+| `/api/admin/statistics/student-loss` | GET | 200 | ✅ |
+| `/api/admin/statistics/class-activity` | GET | 200 | ✅ |
+| `/api/admin/statistics/course-profit` | GET | 200 | ✅ |
+| `/api/admin/statistics/payment-rate` | GET | 200 | ✅ |
+| `/api/export/payments` | GET | 200 | ✅ |
 
 ### 教务管理员 (EDU_ADMIN)
 
@@ -68,6 +74,8 @@
 |------|------|------|------|
 | `/api/teacher/statistics` | GET | 200 | ✅ |
 | `/api/teacher/schedules` | GET | 200 | ✅ |
+| `/api/teacher/adjust-requests` | GET | 200 | ✅ |
+| `/api/notifications` | GET | 200 | ✅ |
 
 ### 家长 (PARENT)
 
@@ -77,6 +85,9 @@
 | `/api/parent/courses` | GET | 200 | ✅ |
 | `/api/parent/payments` | GET | 200 | ✅ |
 | `/api/parent/refunds/available` | GET | 200 | ✅ (v0.9 新增) |
+| `/api/parent/notices` | GET | 200 | ✅ |
+| `/api/notifications` | GET | 200 | ✅ |
+| `/api/parent/students/{id}/homeworks` | GET | 200 | ✅ |
 
 ---
 
@@ -84,6 +95,7 @@
 
 | 攻击者 | 目标端点 | HTTP | 结果 |
 |--------|---------|------|------|
+| 匿名用户 | `/api/files/{fileName}` (附件读取) | 401 | ✅ 正确拒绝 |
 | 教师 | `/api/admin/users` (用户管理) | 403 | ✅ 正确拒绝 |
 | 家长 | `/api/admin/users` (用户管理) | 403 | ✅ 正确拒绝 |
 | 家长 | `/api/finance/salaries` (薪资) | 403 | ✅ 正确拒绝 |
@@ -114,6 +126,6 @@
 
 ## 附件清单
 
-- 后端测试: 352 通过, 0 失败 (`mvn test`)
-- 前端测试: 21 文件 70 测试通过 (`vitest --run`)
+- 后端测试: 362 通过, 0 失败 (`mvn test`)
+- 前端测试: 22 文件 74 测试通过 (`vitest --run`)
 - 验收脚本: `acceptance_test.sh`

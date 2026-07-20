@@ -33,6 +33,7 @@
         <view v-for="h in homeworks" :key="h.id" class="cell">
           <view class="cell-body">
             <text class="cell-title">{{ h.content }}</text>
+            <image v-if="h.attachmentDisplayUrl" :src="h.attachmentDisplayUrl" mode="aspectFit" class="homework-image" />
             <text class="cell-desc">{{ h.createTime }}</text>
           </view>
         </view>
@@ -59,7 +60,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { api, getCurrentStudentId } from '@/utils/request'
+import { api, downloadProtectedFile, getCurrentStudentId } from '@/utils/request'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const tab = ref(0)
@@ -82,11 +83,16 @@ async function loadData() {
     const [aR, lR, hR] = await Promise.all([
       api({ url: `/api/parent/students/${studentId.value}/attendance` }),
       api({ url: `/api/parent/students/${studentId.value}/learning-records` }),
-      api({ url: `/api/parent/students/${studentId.value}/homeworks?lessonId=0` })
+      api({ url: `/api/parent/students/${studentId.value}/homeworks` })
     ])
     attendances.value = (aR.data && aR.data.records) || (aR.data || [])
     records.value = lR.data || []
-    homeworks.value = hR.data || []
+    homeworks.value = await Promise.all((hR.data || []).map(async item => ({
+      ...item,
+      attachmentDisplayUrl: item.attachmentUrl
+        ? await downloadProtectedFile(item.attachmentUrl).catch(() => '')
+        : ''
+    })))
   } catch {
     uni.showToast({ title: '加载失败', icon: 'none' })
   }
@@ -104,4 +110,5 @@ onMounted(loadData)
   gap: 16rpx;
   margin-top: 8rpx;
 }
+.homework-image { width: 100%; height: 300rpx; margin: 16rpx 0; border-radius: 8rpx; }
 </style>

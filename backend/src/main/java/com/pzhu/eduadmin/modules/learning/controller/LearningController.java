@@ -155,10 +155,13 @@ public class LearningController {
 
     @GetMapping("/parent/students/{studentId}/homeworks")
     @RequireRole("PARENT")
-    public Result<List<Homework>> childHomeworks(@RequestParam Long lessonId,
+    public Result<List<Homework>> childHomeworks(@RequestParam(required = false) Long lessonId,
                                                   @PathVariable Long studentId) {
         Long parentUserId = CurrentUserHolder.get().getUserId();
         checkParentBinding(parentUserId, studentId);
+        if (lessonId == null) {
+            return Result.success(learningService.getHomeworksByStudentId(studentId));
+        }
         checkLessonBelongsToStudent(lessonId, studentId);
         return Result.success(learningService.getHomeworksByLessonId(lessonId));
     }

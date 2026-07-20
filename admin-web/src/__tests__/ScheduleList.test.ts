@@ -15,7 +15,12 @@ function m() { return mountPage(ScheduleList, { 'el-button': { template: '<butto
 describe('ScheduleList.vue', () => {
   beforeEach(() => { vi.clearAllMocks() })
   it('renders title', () => { expect(m().html()).toContain('排课管理') })
-  it('renders batch/add buttons', () => { const t = m().text(); expect(t).toContain('批量排课'); expect(t).toContain('新增课次') })
+  it('renders scheduling action buttons', () => {
+    const t = m().text()
+    expect(t).toContain('智能排课')
+    expect(t).toContain('批量排课')
+    expect(t).toContain('新增课次')
+  })
   it('calls list API', () => { m(); expect(vi.mocked(scheduleApi.list)).toHaveBeenCalled() })
   it('add opens dialog', async () => {
     const w = m()

@@ -36,12 +36,12 @@
           :key="s.studentId"
         >
           <view class="cell-body">
-            <text class="cell-title">学员{{ s.studentId }}</text>
+            <text class="cell-title">{{ s.studentName || `学员${s.studentId}` }}</text>
           </view>
           <view class="cell-footer">
             <picker :range="statusOpts" @change="e => setStatus(s.studentId, e.detail.value)">
-              <view class="picker-label" :class="statusClass(statusMap[s.studentId])">
-                {{ statusMap[s.studentId] !== undefined ? statusOpts[statusMap[s.studentId]] : '点击选择' }}
+              <view class="picker-label" :class="statusClass(statusMap[s.studentId] - 1)">
+                {{ statusMap[s.studentId] !== undefined ? statusOpts[statusMap[s.studentId] - 1] : '点击选择' }}
               </view>
             </picker>
           </view>

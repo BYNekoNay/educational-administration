@@ -48,6 +48,13 @@ export function createAuthApiMocks() {
     dashboardApi: {
       get: makeResolve({ cards: { activeStudents: 100, monthlyLessons: 50, monthlyRevenue: 50000, attendanceRate: 95 }, charts: { lessonTrend: [], revenueTrend: [], attendanceTrend: [] } }),
     },
+    statisticsApi: {
+      teacherWorkload: makeResolve([]),
+      studentLoss: makeResolve([]),
+      classActivity: makeResolve([]),
+      courseProfit: makeResolve([]),
+      paymentRate: makeResolve([]),
+    },
     noticeApi: {
       list: makeResolve(emptyPage),
       create: makeResolve({}),
@@ -97,6 +104,7 @@ export function createEduApiMocks() {
       delete: makeResolve({}),
       checkConflict: makeResolve({}),
       batchCreate: makeResolve({}),
+      autoSchedule: makeResolve([]),
     },
     teacherApi: {
       list: makeResolve([]),

@@ -11,6 +11,7 @@ import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.*;
+import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
 import com.pzhu.eduadmin.modules.schedule.service.*;
 import com.pzhu.eduadmin.common.EntityNameResolver;
@@ -32,6 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.DayOfWeek;
 import java.util.Collections;
 import java.util.List;
 
@@ -90,6 +92,64 @@ class ScheduleServiceMockTest {
     }
 
     // ============ 课次 ============
+
+    @Test
+    @DisplayName("智能排课按星期和教室容量自动生成无冲突课次")
+    void autoSchedule_Success() {
+        ClassGroup classGroup = new ClassGroup();
+        classGroup.setId(10L);
+        classGroup.setMaxStudentCount(10);
+
+        User teacher = new User();
+        teacher.setId(20L);
+        teacher.setRoleCode("TEACHER");
+        teacher.setStatus(1);
+
+        Classroom smallRoom = new Classroom();
+        smallRoom.setId(1L);
+        smallRoom.setCapacity(5);
+        smallRoom.setStatus(1);
+        Classroom suitableRoom = new Classroom();
+        suitableRoom.setId(2L);
+        suitableRoom.setCapacity(20);
+        suitableRoom.setStatus(1);
+
+        AutoScheduleRequest request = new AutoScheduleRequest();
+        request.setClassId(10L);
+        request.setTeacherId(20L);
+        request.setStartDate(LocalDate.of(2026, 7, 6));
+        request.setEndDate(LocalDate.of(2026, 7, 20));
+        request.setStartTime(LocalTime.of(9, 0));
+        request.setEndTime(LocalTime.of(10, 0));
+        request.setLessonCount(2);
+        request.setWeekdays(List.of(DayOfWeek.MONDAY.getValue()));
+
+        when(classGroupMapper.selectById(10L)).thenReturn(classGroup);
+        when(scheduleLessonMapper.lockAutoSchedule()).thenReturn(1L);
+        when(userMapper.selectById(20L)).thenReturn(teacher);
+        when(classroomMapper.selectList(any())).thenReturn(List.of(smallRoom, suitableRoom));
+        when(scheduleConflictService.checkConflict(any())).thenReturn(Collections.emptyList());
+        when(scheduleLessonMapper.insert(any(ScheduleLesson.class))).thenReturn(1);
+
+        List<ScheduleLesson> result = scheduleService.autoSchedule(request);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).allMatch(lesson -> lesson.getClassroomId().equals(2L));
+        assertThat(result).allMatch(lesson -> lesson.getLessonDate().getDayOfWeek() == DayOfWeek.MONDAY);
+        verify(scheduleLessonMapper, times(2)).insert(any(ScheduleLesson.class));
+        verify(scheduleLessonMapper).lockAutoSchedule();
+    }
+
+    @Test
+    @DisplayName("智能排课事务锁缺失时拒绝继续排课")
+    void autoSchedule_MissingLockFailsClosed() {
+        when(scheduleLessonMapper.lockAutoSchedule()).thenReturn(null);
+
+        assertThatThrownBy(() -> scheduleService.autoSchedule(new AutoScheduleRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("事务锁未初始化");
+        verify(scheduleLessonMapper, never()).insert(any(ScheduleLesson.class));
+    }
 
     @Test
     @DisplayName("分页查询课次 — 含名称填充")

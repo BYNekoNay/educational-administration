@@ -9,6 +9,7 @@
 | `reset.sql` | **完整一键脚本**：DROP 旧库 → 建表 → 填充全量演示数据，单文件直灌 |
 | `schema.sql` | 建表脚本（参考，已合入 reset.sql） |
 | `data.sql` | 初始化数据（参考，已合入 reset.sql） |
+| `migrate_functional_gaps.sql` | 已有数据库增量升级：证书字段、通知表、提醒幂等键及排课事务锁 |
 | `reset-all.ps1` | Windows PowerShell 快捷方式（效果与直灌 reset.sql 相同） |
 
 ## 使用方式
@@ -21,6 +22,11 @@ mysql -uroot -p123456 < sql/reset.sql
 PowerShell 也可以用：
 ```powershell
 Get-Content sql\reset.sql | mysql -uroot -p123456
+```
+
+已有数据库不重置数据时执行：
+```bash
+mysql -uroot -p123456 edu_admin < sql/migrate_functional_gaps.sql
 ```
 
 ## 初始化账号（密码均为 `123456`，已按 BCrypt 加密存储）

@@ -8,6 +8,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
 import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 import com.pzhu.eduadmin.modules.schedule.service.ScheduleService;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.service.NotificationService;
@@ -105,6 +106,12 @@ public class ScheduleController {
         }
         scheduleService.batchCreate(lessons);
         return Result.success();
+    }
+
+    @PostMapping("/schedules/auto")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
+    public Result<List<ScheduleLesson>> autoSchedule(@Valid @RequestBody AutoScheduleRequest request) {
+        return Result.success(scheduleService.autoSchedule(request));
     }
 
     @PostMapping("/schedules")

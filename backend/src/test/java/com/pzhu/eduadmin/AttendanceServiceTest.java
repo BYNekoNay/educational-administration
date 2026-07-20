@@ -366,10 +366,14 @@ class AttendanceServiceTest {
 
         when(scheduleLessonMapper.selectById(1L)).thenReturn(lesson);
         when(classStudentMapper.selectList(any())).thenReturn(List.of(cs1, cs2));
+        when(studentMapper.selectNamesByIdsIncludeDeleted(any())).thenReturn(List.of(
+                Map.of("id", 100L, "name", "张三"),
+                Map.of("id", 200L, "name", "李四")));
 
         List<ClassStudent> result = attendanceService.getLessonStudents(1L);
 
         assertThat(result).hasSize(2);
+        assertThat(result).extracting(ClassStudent::getStudentName).containsExactly("张三", "李四");
     }
 
     @Test

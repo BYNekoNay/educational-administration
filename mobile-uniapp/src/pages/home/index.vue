@@ -54,6 +54,7 @@ const parentMenus = [
   { path: '/pages/parent/enrollment',         emoji: '📋', label: '课程报名', desc: '浏览课程并报名', bg: '#E0F7FA' },
   { path: '/pages/parent/enrollment-history',  emoji: '📄', label: '报名记录', desc: '报名状态与审核进度', bg: '#FFF8E1' },
   { path: '/pages/parent/payments',            emoji: '💰', label: '缴费记录', desc: '查看缴费历史', bg: '#E8F5E9' },
+  { path: '/pages/parent/learning',            emoji: '📚', label: '学情查看', desc: '考勤、作业与老师评语', bg: '#E0F2FE' },
   { path: '/pages/parent/lesson-account',      emoji: '📊', label: '课时账户', desc: '余额与消费明细', bg: '#FCE4EC' },
   { path: '/pages/parent/leave-request',       emoji: '✋', label: '请假申请', desc: '提交请假并查看记录', bg: '#F3E5F5' },
   { path: '/pages/parent/refund',               emoji: '💸', label: '退费申请', desc: '申请退费并查看记录', bg: '#FFEBEE' },

@@ -157,10 +157,21 @@ public class ParentRefundController {
         record.setPaymentRecordId(payment.getId());
         record.setApplicantId(parentUserId);
         record.setApplicantRole("PARENT");
+
+        // 退费金额 = 已缴金额 × (剩余课时 / 总课时)，按比例扣除已上课时费用
+        BigDecimal paidAmount = payment.getAmount() != null ? payment.getAmount() : BigDecimal.ZERO;
         if (account != null) {
             record.setLessonCount(account.getRemainingLessons());
+            BigDecimal remain = account.getRemainingLessons() != null ? account.getRemainingLessons() : BigDecimal.ZERO;
+            BigDecimal total = account.getTotalLessons() != null ? account.getTotalLessons() : BigDecimal.ZERO;
+            if (total.compareTo(BigDecimal.ZERO) > 0) {
+                record.setAmount(paidAmount.multiply(remain).divide(total, 2, java.math.RoundingMode.HALF_UP));
+            } else {
+                record.setAmount(paidAmount);
+            }
+        } else {
+            record.setAmount(paidAmount);
         }
-        record.setAmount(BigDecimal.ZERO); // 金额由财务审核时确定
 
         return Result.success(financeService.createRefund(record));
     }
@@ -189,6 +200,11 @@ public class ParentRefundController {
         int from = Math.min((pageNum - 1) * pageSize, total);
         int to = Math.min(from + pageSize, total);
         List<RefundRecord> page = from < total ? records.subList(from, to) : Collections.emptyList();
+
+        // 无记录时直接返回空分页，避免 selectBatchIds(emptySet) 报 `IN ( )` 语法错
+        if (page.isEmpty()) {
+            return Result.success(PageResult.empty());
+        }
 
         // 填充名称
         Set<Long> sIds = page.stream().map(RefundRecord::getStudentId).collect(Collectors.toSet());

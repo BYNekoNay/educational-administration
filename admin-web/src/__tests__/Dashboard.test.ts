@@ -6,7 +6,7 @@ vi.mock('@/api/auth', async () => {
   return createAuthApiMocks()
 })
 
-import { dashboardApi } from '@/api/auth'
+import { dashboardApi, statisticsApi } from '@/api/auth'
 import Dashboard from '@/views/dashboard/Dashboard.vue'
 
 describe('Dashboard.vue', () => {
@@ -27,5 +27,22 @@ describe('Dashboard.vue', () => {
     expect(t).toContain('导出课时消耗')
     expect(t).toContain('导出薪资')
   })
+  it('renders multidimensional statistics', () => {
+    const t = m().text()
+    expect(t).toContain('多维运营分析')
+    expect(t).toContain('教师工作量')
+    expect(t).toContain('学员流失率')
+    expect(t).toContain('班级活跃度')
+    expect(t).toContain('课程盈利')
+    expect(t).toContain('收费率')
+  })
   it('calls dashboard API', () => { m(); expect(vi.mocked(dashboardApi.get)).toHaveBeenCalled() })
+  it('calls multidimensional statistics APIs', () => {
+    m()
+    expect(vi.mocked(statisticsApi.teacherWorkload)).toHaveBeenCalled()
+    expect(vi.mocked(statisticsApi.studentLoss)).toHaveBeenCalled()
+    expect(vi.mocked(statisticsApi.classActivity)).toHaveBeenCalled()
+    expect(vi.mocked(statisticsApi.courseProfit)).toHaveBeenCalled()
+    expect(vi.mocked(statisticsApi.paymentRate)).toHaveBeenCalled()
+  })
 })

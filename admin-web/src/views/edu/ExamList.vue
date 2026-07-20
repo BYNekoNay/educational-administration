@@ -55,6 +55,12 @@
           <el-table-column prop="studentName" label="学员" width="120" sortable />
           <el-table-column prop="score" label="成绩" width="80" sortable="custom" />
           <el-table-column prop="certificateNo" label="证书编号" width="150" sortable />
+          <el-table-column label="证书文件" width="100">
+            <template #default="{ row }">
+              <el-link v-if="row.certificateFileUrl" type="primary" @click="viewCertificate(row.certificateFileUrl)">查看</el-link>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" width="90" sortable="custom">
             <template #default="{ row }">
               <el-tag :type="row.status === 1 ? 'info' : row.status === 2 ? 'success' : 'warning'" size="small">
@@ -86,6 +92,9 @@
             </el-form-item>
             <el-form-item label="成绩"><el-input-number v-model="signupForm.score" :min="0" :max="100" /></el-form-item>
             <el-form-item label="证书编号"><el-input v-model="signupForm.certificateNo" /></el-form-item>
+            <el-form-item label="证书文件">
+              <UploadFile v-model="certificateFiles" action="/files/upload" accept=".jpg,.jpeg,.png,.pdf" :limit="1" tip="支持图片或 PDF，最大 10MB" />
+            </el-form-item>
             <el-form-item label="状态">
               <el-select v-model="signupForm.status">
                 <el-option :value="1" label="已报名" /><el-option :value="2" label="已通过" /><el-option :value="3" label="未通过" />
@@ -107,6 +116,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { examApi, studentApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import UploadFile from '@/components/UploadFile.vue'
+import { openProtectedFile } from '@/utils/protectedFile'
 
 const activeTab = ref('levels')
 
@@ -167,6 +178,7 @@ const signupVisible = ref(false), signupSaving = ref(false)
 const editingSignup = ref<any>(null)
 const studentList = ref<any[]>([])
 const signupForm = reactive<any>({ examId: 1, studentId: 1, score: null, certificateNo: '', status: 1 })
+const certificateFiles = ref<string[]>([])
 
 async function loadSignups() {
   signupsLoading.value = true
@@ -184,20 +196,34 @@ function handleSignupSortChange({ prop, order }: any) {
 }
 function showSignupDialog(row: any) {
   editingSignup.value = row
-  if (row) { Object.assign(signupForm, { examId: row.examId, studentId: row.studentId, score: row.score, certificateNo: row.certificateNo || '', status: row.status }) }
-  else { Object.assign(signupForm, { examId: 1, studentId: 1, score: null, certificateNo: '', status: 1 }) }
+  if (row) {
+    Object.assign(signupForm, { examId: row.examId, studentId: row.studentId, score: row.score, certificateNo: row.certificateNo || '', status: row.status })
+    certificateFiles.value = row.certificateFileUrl ? [row.certificateFileUrl] : []
+  } else {
+    Object.assign(signupForm, { examId: 1, studentId: 1, score: null, certificateNo: '', status: 1 })
+    certificateFiles.value = []
+  }
   signupVisible.value = true
 }
 async function saveSignup() {
   signupSaving.value = true
   try {
+    const payload = { ...signupForm, certificateFileUrl: certificateFiles.value[0] || null }
     if (editingSignup.value?.id) {
-      await examApi.score(editingSignup.value.id, { ...signupForm })
+      await examApi.score(editingSignup.value.id, payload)
     } else {
-      await examApi.signup({ ...signupForm })
+      await examApi.signup(payload)
     }
     ElMessage.success('保存成功'); signupVisible.value = false; loadSignups()
   } catch (e: any) { showError(e, '保存失败') } finally { signupSaving.value = false }
+}
+
+async function viewCertificate(url: string) {
+  try {
+    await openProtectedFile(url)
+  } catch (e) {
+    showError(e, '证书文件打开失败')
+  }
 }
 
 async function loadStudents() {

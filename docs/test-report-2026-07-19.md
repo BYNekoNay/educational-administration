@@ -6,10 +6,10 @@
 
 | 层级 | 框架 | 测试文件 | 测试用例 | 失败 | 通过率 |
 |------|------|---------|---------|------|--------|
-| 后端单元测试 | JUnit 5 + Mockito | 24 | 352 | 0 | 100% |
-| 前端组件测试 | Vitest | 21 | 70 | 0 | 100% |
-| API 验收测试 | curl + bash | 1 | 26 | 0 | 100% |
-| **合计** | | **46** | **445** | **0** | **100%** |
+| 后端单元测试 | JUnit 5 + Mockito | 29 | 362 | 0 | 100% |
+| 前端组件测试 | Vitest | 22 | 74 | 0 | 100% |
+| API 验收测试 | curl + bash | 1 | 38 | 0 | 100% |
+| **合计** | | **52** | **474** | **0** | **100%** |
 
 ## 后端测试详情
 
@@ -34,7 +34,7 @@
 | LessonAccountService | LessonAccountServiceTest | 6 | ✅ |
 | TeacherStatisticsService | TeacherStatisticsServiceTest | 6 | ✅ |
 | NotificationService | (含于 FinanceServiceMockTest) | 6 | ✅ |
-| **总计** | **17/17 服务** | **352** | ✅ |
+| **总计** | **17/17 服务** | **362** | ✅ |
 
 ### 关键测试覆盖点
 
@@ -52,7 +52,7 @@
 | 测试文件 | 用例数 | 状态 |
 |---------|--------|------|
 | Login.test.ts | 4 | ✅ |
-| Dashboard.test.ts | 4 | ✅ |
+| Dashboard.test.ts | 6 | ✅ |
 | SalaryList.test.ts | 3 | ✅ |
 | UserList.test.ts | 5 | ✅ |
 | RoleList.test.ts | 1 | ✅ |
@@ -72,18 +72,20 @@
 | LessonAccountList.test.ts | 2 | ✅ |
 | LessonFlowList.test.ts | 2 | ✅ |
 | NoticeList.test.ts | 4 | ✅ |
-| **总计** | **70** | ✅ |
+| ProtectedFile.test.ts | 2 | ✅ |
+| **总计** | **74** | ✅ |
 
 ## API 验收测试详情
 
 | 角色 | 授权端点 | 越权拒绝 |
 |------|---------|---------|
-| 超级管理员 (admin) | 6/6 | — |
+| 超级管理员 (admin) | 12/12 | — |
 | 教务管理员 (edu) | 6/6 | 1/1 |
 | 财务管理员 (finance) | 3/3 | — |
-| 教师 (teacher1) | 2/2 | 2/2 |
-| 家长 (parent1) | 4/4 | 1/1 |
-| **总计** | **21/21** | **5/5** |
+| 教师 (teacher1) | 4/4 | 2/2 |
+| 家长 (parent1) | 7/7 | 2/2 |
+| 匿名用户 | — | 1/1 |
+| **总计** | **32/32** | **6/6** |
 
 详见 `acceptance-matrix-2026-07-19.md`
 
@@ -102,11 +104,11 @@
 | 构建项 | 命令 | 状态 |
 |--------|------|------|
 | 后端编译 | `mvn clean package -DskipTests` | ✅ |
-| 后端测试 | `mvn test` | ✅ 352/352 |
+| 后端测试 | `mvn test` | ✅ 362/362 |
 | 管理前端编译 | `npm run build` | ✅ (vue-tsc + vite) |
-| 管理前端测试 | `npx vitest --run` | ✅ 70/70 |
+| 管理前端测试 | `npx vitest --run` | ✅ 74/74 |
 | 移动端 H5 | `npm run build:h5` | ✅ |
 
 ---
 
-*报告生成时间：2026-07-20 11:15 GMT+8 | 最终验证：352 后端测试 + 70 前端测试 + 26 API 验收全部通过 | H5 产物：`mobile-uniapp/dist/build/h5-release/`*
+*报告生成时间：2026-07-20 15:06 GMT+8 | 最终验证：362 后端测试 + 74 前端测试 + 38 API 验收全部通过 | H5 产物：`mobile-uniapp/dist/build/h5-release/`*

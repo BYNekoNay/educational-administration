@@ -141,8 +141,14 @@ public class AttendanceServiceImpl implements AttendanceService {
     public List<ClassStudent> getLessonStudents(Long lessonId) {
         ScheduleLesson lesson = scheduleLessonMapper.selectById(lessonId);
         if (lesson == null) throw new BusinessException(404, "课次不存在");
-        return classStudentMapper.selectList(
-                new LambdaQueryWrapper<ClassStudent>().eq(ClassStudent::getClassId, lesson.getClassId()));
+        List<ClassStudent> students = classStudentMapper.selectList(
+                new LambdaQueryWrapper<ClassStudent>()
+                        .eq(ClassStudent::getClassId, lesson.getClassId())
+                        .eq(ClassStudent::getStatus, 1));
+        Set<Long> studentIds = students.stream().map(ClassStudent::getStudentId).collect(Collectors.toSet());
+        Map<Long, String> names = loadStudentNamesIncludeDeleted(studentIds);
+        students.forEach(student -> student.setStudentName(names.getOrDefault(student.getStudentId(), "")));
+        return students;
     }
 
     @Override

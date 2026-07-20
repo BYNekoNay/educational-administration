@@ -12,6 +12,9 @@ import java.util.List;
 @Mapper
 public interface ScheduleLessonMapper extends BaseMapper<ScheduleLesson> {
 
+    @Select("SELECT id FROM schedule_lock WHERE id = 1 FOR UPDATE")
+    Long lockAutoSchedule();
+
     @Select("<script>SELECT * FROM schedule_lesson WHERE id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
     List<ScheduleLesson> selectByIdsIncludeDeleted(@Param("ids") Collection<Long> ids);
 }

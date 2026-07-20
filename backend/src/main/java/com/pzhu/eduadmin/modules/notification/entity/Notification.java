@@ -25,6 +25,8 @@ public class Notification {
 
     private Long relatedId;
 
+    private String dedupeKey;
+
     private Integer isRead;
 
     private LocalDateTime createTime;

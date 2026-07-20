@@ -461,6 +461,7 @@ CREATE TABLE `exam_signup` (
   student_id BIGINT NOT NULL,
   score DECIMAL(6,2),
   certificate_no VARCHAR(60),
+  certificate_file_url VARCHAR(255),
   status TINYINT NOT NULL DEFAULT 1 COMMENT '1-已报名，2-已考试，3-已发证',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -529,9 +530,18 @@ CREATE TABLE `notification` (
   title VARCHAR(200) NOT NULL,
   content VARCHAR(500),
   related_id BIGINT COMMENT '关联业务ID',
+  dedupe_key VARCHAR(160) NULL COMMENT '定时提醒幂等键',
   is_read TINYINT NOT NULL DEFAULT 0,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user_id_read (user_id, is_read, create_time DESC)
+  INDEX idx_user_id_read (user_id, is_read, create_time DESC),
+  UNIQUE KEY uk_notification_dedupe (dedupe_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户通知';
+
+DROP TABLE IF EXISTS `schedule_lock`;
+CREATE TABLE `schedule_lock` (
+  id TINYINT PRIMARY KEY,
+  lock_name VARCHAR(50) NOT NULL UNIQUE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='排课事务互斥锁';
+INSERT INTO `schedule_lock` (id, lock_name) VALUES (1, 'auto_schedule');
 
 SET FOREIGN_KEY_CHECKS = 1;

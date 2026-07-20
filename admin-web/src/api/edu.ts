@@ -51,6 +51,7 @@ export const scheduleApi = {
   delete: (id: number) => request.delete(`/edu/schedules/${id}`),
   checkConflict: (data: any) => request.post('/edu/schedules/check-conflict', data),
   batchCreate: (data: any) => request.post('/edu/schedules/batch', data),
+  autoSchedule: (data: any) => request.post('/edu/schedules/auto', data),
 }
 
 /** 教师下拉列表 */
@@ -102,7 +103,7 @@ export const examApi = {
   deleteLevel: (id: number) => request.delete(`/edu/exams/levels/${id}`),
   signups: (params?: any) => request.get('/edu/exams/signups', { params }),
   signup: (data: any) => request.post('/edu/exams/signups', data),
-  score: (id: number, data: any) => request.put(`/edu/exams/signups/${id}/score`, data),
+  score: (id: number, data: any) => request.put(`/edu/exams/signups/${id}`, data),
 }
 
 /** 请假审核 */
