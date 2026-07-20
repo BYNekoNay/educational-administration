@@ -24,7 +24,7 @@
             </template>
           </el-table-column>
         </el-table>
-        <el-pagination style="margin-top: 12px; justify-content: flex-end" small
+        <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
           v-model:current-page="levelsPage" v-model:page-size="levelsPageSize"
           :total="levelsTotal" layout="total, prev, pager, next" @change="loadLevels" />
 
@@ -68,7 +68,7 @@
             </template>
           </el-table-column>
         </el-table>
-        <el-pagination style="margin-top: 12px; justify-content: flex-end" small
+        <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
           v-model:current-page="signupsPage" v-model:page-size="signupsPageSize"
           :total="signupsTotal" layout="total, prev, pager, next" @change="loadSignups" />
 

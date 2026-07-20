@@ -86,7 +86,7 @@
     </el-dialog>
 
     <!-- 加入学员弹窗 -->
-    <el-dialog title="加入学员" v-model="addStudentVisible" width="460px" @closed="addForm.studentId = null; studentOptions.value = []">
+    <el-dialog title="加入学员" v-model="addStudentVisible" width="460px" @closed="addForm.studentId = null">
       <el-form :model="addForm" label-width="80px">
         <el-form-item label="班级">{{ currentClass?.className }}</el-form-item>
         <el-form-item label="选择学员">

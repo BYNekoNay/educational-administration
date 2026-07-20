@@ -41,7 +41,9 @@
         </div>
         <el-table :data="leaveList" border stripe v-loading="leaveLoading">
           <el-table-column prop="studentName" label="学生" min-width="100" />
-          <el-table-column prop="leaveDate" label="请假日期" min-width="120" />
+          <el-table-column prop="lessonDate" label="请假日期" min-width="120">
+            <template #default="{ row }">{{ row.lessonDate || '-' }}</template>
+          </el-table-column>
           <el-table-column prop="reason" label="请假原因" min-width="180" show-overflow-tooltip />
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">

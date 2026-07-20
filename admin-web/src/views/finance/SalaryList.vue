@@ -25,7 +25,7 @@
             </template>
           </el-table-column>
         </el-table>
-        <el-pagination style="margin-top: 12px; justify-content: flex-end" small
+        <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
           v-model:current-page="rulesPage" v-model:page-size="rulesPageSize"
           :total="rulesTotal" layout="total, prev, pager, next" @change="loadRules" />
 
@@ -103,7 +103,7 @@
             </template>
           </el-table-column>
         </el-table>
-        <el-pagination style="margin-top: 12px; justify-content: flex-end" small
+        <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
           v-model:current-page="salariesPage" v-model:page-size="salariesPageSize"
           :total="salariesTotal" layout="total, prev, pager, next" @change="loadSalaries" />
 
@@ -215,7 +215,7 @@ async function handleConfirm(id: number) {
   ElMessage.success('薪资已确认'); loadSalaries()
 }
 async function handleVoid(id: number) {
-  ElMessageBox.confirm('确认作废该薪资单？', '作废确认', { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' })
+  ElMessageBox.confirm('确认作废该薪资单吗', '作废确认', { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' })
     .then(async () => { await salaryApi.void(id); ElMessage.success('已作废，可重新核算'); loadSalaries() }).catch(() => {})
 }
 function showAdjust(salaryId: number) { adjustForm.salaryId = salaryId; adjustForm.adjustAmount = 0; adjustForm.reason = ''; adjustVisible.value = true }

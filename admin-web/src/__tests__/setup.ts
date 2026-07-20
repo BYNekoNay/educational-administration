@@ -1,14 +1,16 @@
 import { vi } from 'vitest'
 
 // ---- Mock echarts (avoids jsdom canvas errors) ----
+const echartsMock = {
+  init: () => ({
+    setOption: vi.fn(),
+    resize: vi.fn(),
+    dispose: vi.fn(),
+  }),
+}
 vi.mock('echarts', () => ({
-  default: {
-    init: () => ({
-      setOption: vi.fn(),
-      resize: vi.fn(),
-      dispose: vi.fn(),
-    }),
-  },
+  default: echartsMock,
+  ...echartsMock,
 }))
 
 // ---- Mock ElementPlus ElMessage / ElMessageBox ----

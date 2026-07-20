@@ -1,5 +1,7 @@
-// H5 使用 Vite 代理，无需完整地址
-// 小程序/App 没有代理，需要指定后端完整地址
+// API 基础地址
+// H5 开发：Vite 代理 /api → localhost:8080，BASE_URL 留空
+// H5 发布：需配置反向代理（nginx）将 /api 转发到后端
+// 小程序/App：部署时改为后端公网可达地址
 // #ifdef MP-WEIXIN
 const BASE_URL = 'http://localhost:8080'
 // #endif

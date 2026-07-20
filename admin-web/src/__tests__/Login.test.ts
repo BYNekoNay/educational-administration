@@ -27,7 +27,7 @@ function m() {
 
 describe('Login.vue', () => {
   beforeEach(() => { vi.clearAllMocks() })
-  it('renders title', () => { expect(m().text()).toContain('教务管理平台登录') })
+  it('renders title', () => { expect(m().text()).toContain('艺培通') })
   it('renders login button', () => { expect(m().text()).toContain('登 录') })
   it('renders demo account hint', () => { expect(m().text()).toContain('演示账号') })
   it('renders inputs', () => { expect(m().findAll('input').length).toBeGreaterThanOrEqual(2) })

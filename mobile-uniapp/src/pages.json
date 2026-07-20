@@ -32,6 +32,7 @@
         { "path": "learning", "style": { "navigationBarTitleText": "学情记录" } },
         { "path": "lesson-account", "style": { "navigationBarTitleText": "课时账户" } },
         { "path": "leave-request", "style": { "navigationBarTitleText": "请假申请" } },
+        { "path": "refund", "style": { "navigationBarTitleText": "退费申请" } },
         { "path": "notices", "style": { "navigationBarTitleText": "消息中心" } }
       ]
     },

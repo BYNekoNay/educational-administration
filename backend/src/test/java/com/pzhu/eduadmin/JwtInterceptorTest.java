@@ -240,6 +240,66 @@ class JwtInterceptorTest {
         assertThat(json).contains("\"message\":\"无权访问该接口\"");
     }
 
+    @Test
+    @DisplayName("SSE 通知流接受 query param token")
+    void sseStreamAcceptsQueryToken() throws Exception {
+        when(request.getHeader("Authorization")).thenReturn(null);
+        when(request.getRequestURI()).thenReturn("/api/notifications/stream");
+        when(request.getParameter("token")).thenReturn("valid.token");
+        mockClaims("1", "admin", "SUPER_ADMIN", 0);
+        User u = new User();
+        u.setVersion(0);
+        u.setStatus(1);
+        when(userMapper.selectOne(any())).thenReturn(u);
+        when(handlerMethod.getBeanType()).thenReturn((Class) Object.class);
+
+        boolean result = jwtInterceptor.preHandle(request, response, handlerMethod);
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    @DisplayName("普通接口拒绝 query param token（仅 SSE 可用）")
+    void normalPathRejectsQueryToken() throws Exception {
+        when(request.getHeader("Authorization")).thenReturn(null);
+        when(request.getRequestURI()).thenReturn("/api/edu/students");
+
+        boolean result = jwtInterceptor.preHandle(request, response, handlerMethod);
+        assertThat(result).isFalse();
+        verify(response).setStatus(401);
+        // 非 SSE 路径，不得尝试读取 query param
+        verify(request, never()).getParameter("token");
+    }
+
+    @Test
+    @DisplayName("Authorization Header 优先于 query param token")
+    void authHeaderOverridesQueryToken() throws Exception {
+        when(request.getHeader("Authorization")).thenReturn("Bearer header.token");
+        DefaultClaims claims = new DefaultClaims();
+        claims.setSubject("1");
+        claims.put("username", "admin");
+        claims.put("roleCode", "SUPER_ADMIN");
+        claims.put("version", 0);
+        when(jwtUtil.parseToken("header.token")).thenReturn(claims);
+        User u = new User();
+        u.setVersion(0);
+        u.setStatus(1);
+        when(userMapper.selectOne(any())).thenReturn(u);
+        when(handlerMethod.getBeanType()).thenReturn((Class) Object.class);
+
+        boolean result = jwtInterceptor.preHandle(request, response, handlerMethod);
+        assertThat(result).isTrue();
+        verify(jwtUtil, never()).parseToken("query.token");
+    }
+
+    private void mockClaims(String userId, String username, String roleCode, int version) {
+        DefaultClaims claims = new DefaultClaims();
+        claims.setSubject(userId);
+        claims.put("username", username);
+        claims.put("roleCode", roleCode);
+        claims.put("version", version);
+        when(jwtUtil.parseToken("valid.token")).thenReturn(claims);
+    }
+
     private void mockValidToken(String userId, String username, String roleCode, int version) {
         when(request.getHeader("Authorization")).thenReturn("Bearer valid.token");
         DefaultClaims claims = new DefaultClaims();

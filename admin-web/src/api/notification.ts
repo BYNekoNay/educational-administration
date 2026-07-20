@@ -1,4 +1,5 @@
-import { useAuthStore } from './auth'
+import { useAuthStore } from '@/stores/auth'
+import request from './request'
 
 const BASE = '/api'
 
@@ -15,14 +16,4 @@ export const notificationApi = {
     const authStore = useAuthStore()
     return `${BASE}/notifications/stream?token=${authStore.token}`
   },
-}
-
-async function request(url: string, options?: any) {
-  const authStore = useAuthStore()
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${authStore.token}`, 'Content-Type': 'application/json' },
-    ...options,
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
 }

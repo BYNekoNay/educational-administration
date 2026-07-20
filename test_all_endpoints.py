@@ -8,9 +8,9 @@ import urllib.request, urllib.error, json, re, os, datetime, sys
 # 绕过环境 HTTP 代理（localhost 必须直连，否则 502）
 urllib.request.install_opener(urllib.request.build_opener(urllib.request.ProxyHandler({})))
 
-BASE = "http://localhost:8080"
-SRC = r"D:\codegitee\educational-administration\backend\src\main\java\com\pzhu\eduadmin"
-OUT = r"D:\codegitee\educational-administration\test-all-report-2026-07-14.md"
+BASE = os.environ.get("BASE_URL", "http://localhost:8080")
+SRC = os.environ.get("SRC_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend", "src", "main", "java", "com", "pzhu", "eduadmin"))
+OUT = os.environ.get("REPORT_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", f"test-all-report-{datetime.date.today()}.md"))
 
 def req(method, path, token=None, body=None, query=None):
     """返回 (http_status, raw_text)"""

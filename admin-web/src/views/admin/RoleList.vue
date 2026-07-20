@@ -58,7 +58,7 @@
       :title="editingRole ? '编辑角色' : '新增角色'"
       v-model="roleDialogVisible"
       width="460px"
-      @closed="roleForm = { roleCode: '', roleName: '' }; editingRole = null"
+      @closed="roleForm.roleCode = ''; roleForm.roleName = ''; editingRole = null"
     >
       <el-form :model="roleForm" label-width="90px">
         <el-form-item label="角色编码" required>

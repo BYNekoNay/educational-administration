@@ -34,13 +34,22 @@ public class JwtInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        String token = null;
         String authHeader = request.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        }
+        // SSE EventSource 不支持自定义 Header，仅 /api/notifications/stream 兼容 query param 传 token
+        if (token == null || token.isEmpty()) {
+            String uri = request.getRequestURI();
+            if (uri != null && uri.startsWith("/api/notifications/stream")) {
+                token = request.getParameter("token");
+            }
+        }
+        if (token == null || token.isEmpty()) {
             writeUnauthorized(response, "未登录或登录已过期");
             return false;
         }
-
-        String token = authHeader.substring(7);
         Claims claims;
         try {
             claims = jwtUtil.parseToken(token);

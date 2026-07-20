@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: 8080
 
 spring:
@@ -38,7 +38,7 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 jwt:
-  secret: change-me-eduadmin-secret-key-please-override-in-prod
+  secret: ${JWT_SECRET}
   expire-minutes: 120
 
 file:

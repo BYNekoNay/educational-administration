@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -23,6 +24,22 @@ public class PageResult<T> implements Serializable {
         result.setPageNum(page.getCurrent());
         result.setPageSize(page.getSize());
         result.setRecords(page.getRecords());
+        return result;
+    }
+
+    /** 手动分页场景：total + records */
+    public static <T> PageResult<T> of(long total, List<T> records) {
+        PageResult<T> result = new PageResult<>();
+        result.setTotal(total);
+        result.setRecords(records);
+        return result;
+    }
+
+    /** 空结果 */
+    public static <T> PageResult<T> empty() {
+        PageResult<T> result = new PageResult<>();
+        result.setTotal(0);
+        result.setRecords(Collections.emptyList());
         return result;
     }
 }

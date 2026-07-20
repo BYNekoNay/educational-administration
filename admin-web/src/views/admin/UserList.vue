@@ -218,7 +218,7 @@ function roleTagType(code: string): string {
     SUPER_ADMIN: 'danger',
     EDU_ADMIN: 'warning',
     FINANCE: 'success',
-    TEACHER: '',
+    TEACHER: 'primary',
     PARENT: 'info',
   }
   return map[code] || ''

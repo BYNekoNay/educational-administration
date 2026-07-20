@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """管理端功能实际测试：针对运行中的真实后端(8080)做接口级功能验证。"""
 import urllib.request, urllib.error, json, datetime, sys
@@ -6,7 +6,8 @@ import urllib.request, urllib.error, json, datetime, sys
 # 避免环境中的 HTTP 代理拦截对 localhost 的请求
 urllib.request.install_opener(urllib.request.build_opener(urllib.request.ProxyHandler({})))
 
-BASE = "http://localhost:8080"
+import os
+BASE = os.environ.get("BASE_URL", "http://localhost:8080")
 ADMIN = ("admin", "123456")
 
 results = []  # (category, method, path, status, biz_code, ok, note)
@@ -240,6 +241,6 @@ else:
 lines.append("")
 lines.append("*本报告由自动化测试脚本对运行中的真实后端采集生成。*")
 
-with open("test-report-2026-07-14.md", "w", encoding="utf-8") as f:
+REPORT_PATH = os.environ.get("REPORT_PATH", f"test-runner-report-{datetime.date.today()}.md")
+with open(REPORT_PATH, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))
-print("\n报告已写入 test-report-2026-07-14.md")

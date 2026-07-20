@@ -13,6 +13,9 @@ export default defineConfig({
       '@': resolve(__dirname, 'src')
     }
   },
+  build: {
+    outDir: 'dist/build/h5-release',
+  },
   server: {
     port: 5175,
     host: '0.0.0.0',
