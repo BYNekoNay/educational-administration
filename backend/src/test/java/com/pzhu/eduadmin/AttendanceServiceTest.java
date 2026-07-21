@@ -149,7 +149,7 @@ class AttendanceServiceTest {
         account.setId(1L); account.setStudentId(1L); account.setCourseId(5L);
         account.setRemainingLessons(BigDecimal.valueOf(2)); account.setVersion(0);
         when(lessonAccountMapper.selectOne(any())).thenReturn(account);
-        when(lessonAccountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
+        when(lessonAccountMapper.update(any(), any())).thenReturn(1);
 
         Attendance result = attendanceService.submit(attendance);
         assertThat(result.getStudentId()).isEqualTo(1L);
@@ -184,7 +184,7 @@ class AttendanceServiceTest {
         account.setId(1L); account.setStudentId(1L); account.setCourseId(5L);
         account.setRemainingLessons(BigDecimal.valueOf(10)); account.setVersion(0);
         lenient().when(lessonAccountMapper.selectOne(any())).thenReturn(account);
-        lenient().when(lessonAccountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
+        lenient().when(lessonAccountMapper.update(any(), any())).thenReturn(1);
 
         Attendance result = attendanceService.submit(newAttendance);
         assertThat(result.getStatus()).isEqualTo(2);
@@ -252,7 +252,7 @@ class AttendanceServiceTest {
         account.setId(1L); account.setStudentId(10L); account.setCourseId(5L);
         account.setRemainingLessons(BigDecimal.TEN); account.setVersion(0);
         when(lessonAccountMapper.selectOne(any())).thenReturn(account);
-        when(lessonAccountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
+        when(lessonAccountMapper.update(any(), any())).thenReturn(1);
 
         // populateAttendanceNames
         lenient().when(studentMapper.selectNamesByIdsIncludeDeleted(any())).thenReturn(List.of());

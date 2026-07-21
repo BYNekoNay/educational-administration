@@ -110,6 +110,7 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteCourse(Long id) {
         Long classCount = classGroupMapper.selectCount(new LambdaQueryWrapper<ClassGroup>()
                 .eq(ClassGroup::getCourseId, id)
@@ -132,6 +133,9 @@ public class CourseServiceImpl implements CourseService {
             }
         }
         Course course = courseMapper.selectById(id);
+        if (course == null) {
+            throw new BusinessException(404, "课程不存在");
+        }
         operationLogService.log("课程管理", "删除课程（课程=" + course.getName() + "）");
         return courseMapper.deleteById(id) > 0;
     }
@@ -210,11 +214,17 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public ClassGroup updateClassGroup(ClassGroup classGroup) {
+        // M10 fix: 校验班级存在
+        ClassGroup existing = classGroupMapper.selectById(classGroup.getId());
+        if (existing == null) {
+            throw new BusinessException(404, "班级不存在");
+        }
         classGroupMapper.updateById(classGroup);
         return classGroupMapper.selectById(classGroup.getId());
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteClassGroup(Long id) {
         Long studentCount = classStudentMapper.selectCount(new LambdaQueryWrapper<ClassStudent>()
                 .eq(ClassStudent::getClassId, id)
@@ -232,6 +242,9 @@ public class CourseServiceImpl implements CourseService {
             throw new BusinessException(409, "该班级存在未来的排课记录，无法删除");
         }
         ClassGroup classGroup = classGroupMapper.selectById(id);
+        if (classGroup == null) {
+            throw new BusinessException(404, "班级不存在");
+        }
         operationLogService.log("班级管理", "删除班级（班级=" + classGroup.getClassName() + "）");
         return classGroupMapper.deleteById(id) > 0;
     }
@@ -292,20 +305,36 @@ public class CourseServiceImpl implements CourseService {
         if (maxCount > 0 && currentCount >= maxCount) {
             throw new BusinessException(409, "班级已满（容量" + maxCount + "），无法加入更多学员");
         }
-        return classStudentMapper.insert(classStudent) > 0;
+        boolean inserted = classStudentMapper.insert(classStudent) > 0;
+        // C4 fix: 插入后二次校验容量（防止并发 TOCTOU 超员），超出则回滚
+        if (inserted && maxCount > 0) {
+            Long postCount = classStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getClassId, classStudent.getClassId())
+                            .eq(ClassStudent::getStatus, 1));
+            if (postCount > maxCount) {
+                throw new BusinessException(409, "班级已满（容量" + maxCount + "），无法加入更多学员");
+            }
+        }
+        return inserted;
     }
 
     @Override
     public boolean removeStudentFromClass(Long classId, Long studentId) {
-        operationLogService.log("班级学员管理", "移除班级学员（班级=" + nameResolver.getClassName(classId)
-                + "，学员=" + nameResolver.getStudentName(studentId) + "）");
-        ClassStudent record = classStudentMapper.selectOne(new LambdaQueryWrapper<ClassStudent>()
+        List<ClassStudent> records = classStudentMapper.selectList(new LambdaQueryWrapper<ClassStudent>()
                 .eq(ClassStudent::getClassId, classId)
-                .eq(ClassStudent::getStudentId, studentId));
-        if (record == null) {
+                .eq(ClassStudent::getStudentId, studentId)
+                .eq(ClassStudent::getStatus, 1));
+        if (records.isEmpty()) {
             throw new BusinessException(404, "该学员不在此班级中");
         }
-        return classStudentMapper.deleteById(record.getId()) > 0;
+        ClassStudent record = records.get(0);
+        boolean deleted = classStudentMapper.deleteById(record.getId()) > 0;
+        if (deleted) {
+            operationLogService.log("班级学员管理", "移除班级学员（班级=" + nameResolver.getClassName(classId)
+                    + "，学员=" + nameResolver.getStudentName(studentId) + "）");
+        }
+        return deleted;
     }
 
 }

@@ -137,13 +137,17 @@ public class ParentRefundController {
                         .eq(ParentStudent::getStudentId, enrollment.getStudentId()));
         if (bindingCount == 0) throw new BusinessException(403, "无权为该学员申请退费");
 
-        // 查该报名下的缴费记录
-        PaymentRecord payment = paymentRecordMapper.selectOne(
+        // Bug #12 fix: 使用累计缴费总额（含续费），而非仅最近一笔缴费金额
+        BigDecimal totalPaid = paymentRecordMapper.sumByEnrollmentId(enrollmentId);
+        if (totalPaid.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(404, "未找到关联缴费记录");
+        }
+        // 取最近一笔缴费记录用于关联引用
+        PaymentRecord latestPayment = paymentRecordMapper.selectOne(
                 new LambdaQueryWrapper<PaymentRecord>()
                         .eq(PaymentRecord::getEnrollmentId, enrollmentId)
                         .orderByDesc(PaymentRecord::getCreateTime)
                         .last("LIMIT 1"));
-        if (payment == null) throw new BusinessException(404, "未找到关联缴费记录");
 
         // 取剩余课时
         LessonAccount account = lessonAccountMapper.selectOne(
@@ -154,23 +158,23 @@ public class ParentRefundController {
         RefundRecord record = new RefundRecord();
         record.setStudentId(enrollment.getStudentId());
         record.setEnrollmentId(enrollmentId);
-        record.setPaymentRecordId(payment.getId());
+        record.setPaymentRecordId(latestPayment != null ? latestPayment.getId() : null);
         record.setApplicantId(parentUserId);
         record.setApplicantRole("PARENT");
 
-        // 退费金额 = 已缴金额 × (剩余课时 / 总课时)，按比例扣除已上课时费用
-        BigDecimal paidAmount = payment.getAmount() != null ? payment.getAmount() : BigDecimal.ZERO;
+        // 退费金额 = 累计已缴金额 × (剩余课时 / 原始总课时)，按比例扣除已上课时费用
+        // M1 fix: 使用稳定的原始总课时（不随退费缩小）作为分母，与审核端计算一致
         if (account != null) {
             record.setLessonCount(account.getRemainingLessons());
             BigDecimal remain = account.getRemainingLessons() != null ? account.getRemainingLessons() : BigDecimal.ZERO;
-            BigDecimal total = account.getTotalLessons() != null ? account.getTotalLessons() : BigDecimal.ZERO;
-            if (total.compareTo(BigDecimal.ZERO) > 0) {
-                record.setAmount(paidAmount.multiply(remain).divide(total, 2, java.math.RoundingMode.HALF_UP));
+            BigDecimal originalTotal = paymentRecordMapper.sumLessonCountByEnrollmentId(enrollmentId);
+            if (originalTotal != null && originalTotal.compareTo(BigDecimal.ZERO) > 0) {
+                record.setAmount(totalPaid.multiply(remain).divide(originalTotal, 2, java.math.RoundingMode.HALF_UP));
             } else {
-                record.setAmount(paidAmount);
+                record.setAmount(totalPaid);
             }
         } else {
-            record.setAmount(paidAmount);
+            record.setAmount(totalPaid);
         }
 
         return Result.success(financeService.createRefund(record));

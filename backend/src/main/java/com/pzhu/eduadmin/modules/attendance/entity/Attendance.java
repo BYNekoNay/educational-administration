@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.attendance.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -31,6 +32,7 @@ public class Attendance {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
+    @JsonIgnore
     @TableLogic
     private Integer isDeleted;
 

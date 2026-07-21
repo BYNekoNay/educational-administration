@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.salary.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -23,6 +24,9 @@ public class TeacherSalary {
 
     private BigDecimal baseAmount;
 
+    /** Bug #32 fix: 代课金额单独持久化，避免 totalAmount = base + substitute + bonus 中代课部分丢失 */
+    private BigDecimal substituteAmount;
+
     private BigDecimal bonusAmount;
 
     private BigDecimal totalAmount;
@@ -37,6 +41,7 @@ public class TeacherSalary {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
+    @JsonIgnore
     @TableLogic
     private Integer isDeleted;
 

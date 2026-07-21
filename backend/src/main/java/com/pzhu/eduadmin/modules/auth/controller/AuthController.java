@@ -1,11 +1,14 @@
 package com.pzhu.eduadmin.modules.auth.controller;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.Result;
 import com.pzhu.eduadmin.modules.auth.service.IAuthService;
 import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
 import com.pzhu.eduadmin.modules.user.dto.LoginRequest;
 import com.pzhu.eduadmin.modules.user.dto.LoginResponse;
 import com.pzhu.eduadmin.modules.user.dto.RegisterRequest;
+import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
 import jakarta.validation.Valid;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final IAuthService authService;
+    private final UserMapper userMapper;
 
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -44,7 +48,13 @@ public class AuthController {
 
     @PostMapping("/logout")
     public Result<Void> logout() {
-        // 无状态 JWT：退出登录由前端清除本地 Token 即可，此接口保留用于记录操作日志等扩展
+        // C6 fix: 登出时原子递增 version，使该用户所有现有 Token 立即失效
+        LoginUser loginUser = CurrentUserHolder.get();
+        if (loginUser != null) {
+            userMapper.update(null, new LambdaUpdateWrapper<User>()
+                    .eq(User::getId, loginUser.getUserId())
+                    .setSql("version = version + 1"));
+        }
         return Result.success();
     }
 }

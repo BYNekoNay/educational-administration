@@ -345,6 +345,23 @@ class CourseServiceMockTest {
         verify(courseMapper, never()).deleteById(anyLong());
     }
 
+    // ======================== deleteCourse — not found ========================
+
+    @Test
+    @DisplayName("deleteCourse - 课程不存在应抛出404")
+    void deleteCourse_notFound_throws404() {
+        when(classGroupMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(classGroupMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+        when(courseMapper.selectById(999L)).thenReturn(null);
+
+        assertThatThrownBy(() -> courseService.deleteCourse(999L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("课程不存在")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+
+        verify(courseMapper, never()).deleteById(anyLong());
+    }
+
     // ======================== deleteClassGroup ========================
 
     @Test
@@ -390,6 +407,57 @@ class CourseServiceMockTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(classGroupMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    @DisplayName("deleteClassGroup - 班级不存在应抛出404")
+    void deleteClassGroup_notFound_throws404() {
+        when(classStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(scheduleLessonMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(classGroupMapper.selectById(999L)).thenReturn(null);
+
+        assertThatThrownBy(() -> courseService.deleteClassGroup(999L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("班级不存在")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+
+        verify(classGroupMapper, never()).deleteById(anyLong());
+    }
+
+    // ======================== removeStudentFromClass ========================
+
+    @Test
+    @DisplayName("removeStudentFromClass - 正常移除成功且日志在删除后记录")
+    void removeStudentFromClass_success_logsAfterDelete() {
+        ClassStudent cs = new ClassStudent();
+        cs.setId(1L);
+        cs.setClassId(10L);
+        cs.setStudentId(100L);
+        cs.setStatus(1);
+
+        when(classStudentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(cs));
+        when(classStudentMapper.deleteById(1L)).thenReturn(1);
+        when(nameResolver.getClassName(10L)).thenReturn("测试班级");
+        when(nameResolver.getStudentName(100L)).thenReturn("测试学员");
+
+        boolean result = courseService.removeStudentFromClass(10L, 100L);
+
+        assertThat(result).isTrue();
+        verify(classStudentMapper).deleteById(1L);
+        verify(operationLogService).log(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("removeStudentFromClass - 学员不在班级中应抛出404且不记录日志")
+    void removeStudentFromClass_notFound_noLog() {
+        when(classStudentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+
+        assertThatThrownBy(() -> courseService.removeStudentFromClass(10L, 999L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("该学员不在此班级中");
+
+        verify(classStudentMapper, never()).deleteById(anyLong());
+        verify(operationLogService, never()).log(anyString(), anyString());
     }
 
     // ======================== addStudentToClass ========================

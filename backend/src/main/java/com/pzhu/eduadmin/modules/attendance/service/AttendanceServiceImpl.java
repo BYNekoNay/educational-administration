@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.attendance.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
@@ -159,7 +160,34 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void reverseDeductByLessonId(Long lessonId, Long operatorId) {
+        List<Attendance> records = attendanceMapper.selectList(
+                new LambdaQueryWrapper<Attendance>().eq(Attendance::getLessonId, lessonId));
+        int reversed = 0;
+        for (Attendance record : records) {
+            // 仅回冲到课/迟到且实际扣减了的记录
+            if ((record.getStatus() == 1 || record.getStatus() == 2)
+                    && record.getDeductLessons() != null
+                    && record.getDeductLessons().compareTo(BigDecimal.ZERO) > 0) {
+                reverseDeduct(record);
+                // 标记该记录已回冲：将 deductLessons 置零，防止重复回冲
+                record.setDeductLessons(BigDecimal.ZERO);
+                attendanceMapper.updateById(record);
+                reversed++;
+            }
+        }
+        log.info("调课审批回冲考勤扣减完成：lessonId={}, operatorId={}, 回冲记录数={}",
+                lessonId, operatorId, reversed);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public Attendance submit(Attendance attendance) {
+        // M6+M8 fix: 校验考勤状态非空且为合法值，防止 NPE 和幽灵记录
+        if (attendance.getStatus() == null || !java.util.Set.of(1, 2, 3, 4).contains(attendance.getStatus())) {
+            throw new BusinessException(400, "无效的考勤状态（仅支持1=到课/2=迟到/3=请假/4=缺勤）");
+        }
+
         // 1. 校验课次
         ScheduleLesson lesson = scheduleLessonMapper.selectById(attendance.getLessonId());
         if (lesson == null) throw new BusinessException(404, "课次不存在");
@@ -208,7 +236,24 @@ public class AttendanceServiceImpl implements AttendanceService {
         } else {
             // 3. 保存考勤
             if (attendance.getCheckTime() == null) attendance.setCheckTime(LocalDateTime.now());
-            attendanceMapper.insert(attendance);
+            // H3 fix: 捕获唯一键冲突（并发提交），转为更新路径
+            try {
+                attendanceMapper.insert(attendance);
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                Attendance conflicted = attendanceMapper.selectOne(
+                        new LambdaQueryWrapper<Attendance>()
+                                .eq(Attendance::getLessonId, attendance.getLessonId())
+                                .eq(Attendance::getStudentId, attendance.getStudentId()));
+                if (conflicted != null) {
+                    reverseDeduct(conflicted);
+                    conflicted.setStatus(attendance.getStatus());
+                    conflicted.setDeductLessons(attendance.getDeductLessons());
+                    if (attendance.getCheckTime() != null) conflicted.setCheckTime(attendance.getCheckTime());
+                    if (attendance.getRemark() != null) conflicted.setRemark(attendance.getRemark());
+                    attendanceMapper.updateById(conflicted);
+                    attendance.setId(conflicted.getId());
+                }
+            }
         }
 
         // 4. 计算课时扣减（到课/迟到均扣）
@@ -216,9 +261,13 @@ public class AttendanceServiceImpl implements AttendanceService {
             deductLessons(attendance, lesson);
         }
 
-        // 操作日志
-        operationLogService.log("考勤管理", "提交考勤（学员=" + nameResolver.getStudentName(attendance.getStudentId())
-                + "，课次id=" + attendance.getLessonId() + "，状态=" + attendance.getStatus() + "）");
+        // 操作日志（M4 fix: 日志失败不应回滚考勤事务）
+        try {
+            operationLogService.log("考勤管理", "提交考勤（学员=" + nameResolver.getStudentName(attendance.getStudentId())
+                    + "，课次id=" + attendance.getLessonId() + "，状态=" + attendance.getStatus() + "）");
+        } catch (Exception e) {
+            log.warn("考勤操作日志写入失败", e);
+        }
 
         return attendance;
     }
@@ -299,9 +348,16 @@ public class AttendanceServiceImpl implements AttendanceService {
                         .eq(LeaveRequest::getStudentId, studentId)
                         .ne(LeaveRequest::getStatus, 3)
                         .ge(LeaveRequest::getLessonDate, LocalDate.now().minusDays(7)));
-        Map<LocalDate, Integer> leaveStatusMap = leaves.stream()
-                .collect(Collectors.toMap(LeaveRequest::getLessonDate, LeaveRequest::getStatus,
-                        (a, b) -> a)); // 同一天多条请假取第一条
+        // M6 fix: 使用复合键（scheduleId + lessonDate）构建请假映射，
+        // 避免同一日期不同班级/课次的请假相互影响。
+        // 已关联具体课次的请假用 "scheduleId_date" 精确匹配；
+        // 未关联课次的请假（待审核）用 "null_date" 作为日期级别兜底。
+        Map<String, Integer> leaveStatusMap = new java.util.HashMap<>();
+        for (LeaveRequest leave : leaves) {
+            String key = (leave.getScheduleId() != null
+                    ? leave.getScheduleId().toString() : "null") + "_" + leave.getLessonDate();
+            leaveStatusMap.putIfAbsent(key, leave.getStatus());
+        }
 
         // 7. 填充关联名称 + 请假状态
         for (ScheduleLesson l : lessons) {
@@ -314,8 +370,12 @@ public class AttendanceServiceImpl implements AttendanceService {
                 l.setCourseId(cg.getCourseId());
             }
             l.setClassroomName(classroomNameMap.getOrDefault(l.getClassroomId(), ""));
-            // 请假状态（null=无请假, 1=请假中, 2=已通过）
-            l.setLeaveStatus(leaveStatusMap.get(l.getLessonDate()));
+            // M6 fix: 先按课次ID精确匹配请假状态，再回退到日期级别（兼容未关联课次的待审核请假）
+            Integer leaveStatus = leaveStatusMap.get(l.getId() + "_" + l.getLessonDate());
+            if (leaveStatus == null) {
+                leaveStatus = leaveStatusMap.get("null_" + l.getLessonDate());
+            }
+            l.setLeaveStatus(leaveStatus);
         }
         return lessons;
     }
@@ -339,8 +399,9 @@ public class AttendanceServiceImpl implements AttendanceService {
         for (ScheduleLesson l : lessons) {
             l.setClassName(getClassNameSafe(l.getClassId()));
             // 标记是否已迟（当前时间>开始时间 且 状态仍为待上课）
+            // Bug #24 fix: 使用99代替2，避免与请假状态语义冲突（2=请假已通过）
             if (l.getStatus() == 1 && l.getStartTime() != null) {
-                l.setLeaveStatus(LocalTime.now().isAfter(l.getStartTime()) ? 2 : null);
+                l.setLeaveStatus(LocalTime.now().isAfter(l.getStartTime()) ? 99 : null);
             }
         }
         return lessons;
@@ -366,7 +427,9 @@ public class AttendanceServiceImpl implements AttendanceService {
     /** 校验教师角色：当前课次是否属于当前登录教师 */
     private void checkTeacherLessonOwnership(ScheduleLesson lesson) {
         com.pzhu.eduadmin.security.LoginUser loginUser = CurrentUserHolder.get();
-        if (loginUser == null) return;
+        if (loginUser == null) {
+            throw new BusinessException(401, "未获取到用户上下文，请重新登录");
+        }
         if ("TEACHER".equals(loginUser.getRoleCode())) {
             if (!loginUser.getUserId().equals(lesson.getTeacherId())) {
                 throw new BusinessException(403, "该课次不属于您，无法操作");
@@ -376,19 +439,33 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     /** 回冲旧考勤扣减（到课/迟到扣减均需回冲）*/
     private void reverseDeduct(Attendance old) {
+        // M7 fix: 跳过 null 和 <=0 的 deductLessons，防止负数导致回冲时窃取课时
         if ((old.getStatus() != 1 && old.getStatus() != 2)
                 || old.getDeductLessons() == null
-                || BigDecimal.ZERO.compareTo(old.getDeductLessons()) == 0) return;
+                || old.getDeductLessons().compareTo(BigDecimal.ZERO) <= 0) return;
         // 找到课时账户并回冲（课次可能已软删，绕过 @TableLogic）
         List<ScheduleLesson> lessons = scheduleLessonMapper.selectByIdsIncludeDeleted(Collections.singleton(old.getLessonId()));
         if (lessons.isEmpty()) return;
         ScheduleLesson lesson = lessons.get(0);
-        LessonAccount account = findAccount(old.getStudentId(), lesson.getClassId());
+        // M1 fix: 班级也可能已软删，绕过 @TableLogic 查 courseId
+        Long courseId = classGroupMapper.selectCourseIdByIdIncludeDeleted(lesson.getClassId());
+        if (courseId == null) return;
+        LessonAccount account = lessonAccountMapper.selectOne(
+                new LambdaQueryWrapper<LessonAccount>()
+                        .eq(LessonAccount::getStudentId, old.getStudentId())
+                        .eq(LessonAccount::getCourseId, courseId));
         if (account == null) return;
 
-        account.setRemainingLessons(account.getRemainingLessons().add(old.getDeductLessons()));
-        account.setTotalLessons(account.getTotalLessons().add(old.getDeductLessons())); // 同步回冲 totalLessons
-        int rows = lessonAccountMapper.updateById(account);
+        BigDecimal beforeBalance = account.getRemainingLessons();
+        BigDecimal afterBalance = beforeBalance.add(old.getDeductLessons());
+        // C2 fix: CAS 中纳入 version 校验并递增，防止与财务模块 updateById 并发时丢失更新
+        int rows = lessonAccountMapper.update(null,
+                new LambdaUpdateWrapper<LessonAccount>()
+                        .eq(LessonAccount::getId, account.getId())
+                        .eq(LessonAccount::getRemainingLessons, beforeBalance)
+                        .eq(LessonAccount::getVersion, account.getVersion())
+                        .set(LessonAccount::getRemainingLessons, afterBalance)
+                        .set(LessonAccount::getVersion, account.getVersion() + 1));
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
 
         LessonFlow flow = new LessonFlow();
@@ -399,8 +476,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         flow.setSourceId(old.getId());
         flow.setChangeAmount(old.getDeductLessons());
         flow.setChangeType(1); // 增加（回冲=归还）
-        flow.setBeforeBalance(account.getRemainingLessons().subtract(old.getDeductLessons()));
-        flow.setAfterBalance(account.getRemainingLessons());
+        flow.setBeforeBalance(beforeBalance);
+        flow.setAfterBalance(afterBalance);
         flow.setRemark("删除考勤回冲");
         lessonFlowMapper.insert(flow);
     }
@@ -424,8 +501,14 @@ public class AttendanceServiceImpl implements AttendanceService {
             log.warn("考勤扣课时余额不足：studentId={}, lessonId={}, 请求扣减={}, 实际扣减={}",
                     attendance.getStudentId(), attendance.getLessonId(), deduct, actualDeduct);
         }
-        account.setRemainingLessons(before.subtract(actualDeduct));
-        int rows = lessonAccountMapper.updateById(account);
+        // C2 fix: CAS 中纳入 version 校验并递增，防止与财务模块 updateById 并发时丢失更新
+        int rows = lessonAccountMapper.update(null,
+                new LambdaUpdateWrapper<LessonAccount>()
+                        .eq(LessonAccount::getId, account.getId())
+                        .eq(LessonAccount::getRemainingLessons, before)
+                        .eq(LessonAccount::getVersion, account.getVersion())
+                        .set(LessonAccount::getRemainingLessons, before.subtract(actualDeduct))
+                        .set(LessonAccount::getVersion, account.getVersion() + 1));
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
 
         // 写流水
@@ -438,7 +521,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         flow.setChangeAmount(actualDeduct.negate());
         flow.setChangeType(2); // 减少
         flow.setBeforeBalance(before);
-        flow.setAfterBalance(account.getRemainingLessons());
+        flow.setAfterBalance(before.subtract(actualDeduct));
         flow.setRemark(before.compareTo(deduct) < 0 ? "课时不足，扣至0" : "正常考勤扣课时");
         lessonFlowMapper.insert(flow);
     }

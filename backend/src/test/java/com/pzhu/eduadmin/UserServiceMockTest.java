@@ -14,6 +14,7 @@ import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.UpdateUserRequest;
 import com.pzhu.eduadmin.modules.user.entity.TeacherCourse;
 import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.RoleMapper;
 import com.pzhu.eduadmin.modules.user.mapper.TeacherCourseMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.user.service.UserServiceImpl;
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.*;
 class UserServiceMockTest {
 
     @Mock private UserMapper userMapper;
+    @Mock private RoleMapper roleMapper;
     @Mock private OperationLogService operationLogService;
     @Mock private EntityNameResolver nameResolver;
     @Mock private TeacherCourseMapper teacherCourseMapper;
@@ -67,6 +69,8 @@ class UserServiceMockTest {
         ipUtilMock = mockStatic(IpUtil.class);
         ipUtilMock.when(IpUtil::getCurrentIp).thenReturn("127.0.0.1");
         lenient().when(nameResolver.getUserDisplayName(anyLong())).thenReturn("测试用户");
+        // Bug #34: roleMapper 校验角色编码存在性
+        lenient().when(roleMapper.selectCount(any())).thenReturn(1L);
         // 默认让 teacherCourseMapper.selectList 返回空列表，避免 fillUserSpecialties 中 NPE
         lenient().when(teacherCourseMapper.selectList(any())).thenReturn(Collections.emptyList());
         lenient().when(teacherCourseMapper.realDeleteByUserId(any())).thenReturn(0);
@@ -173,6 +177,29 @@ class UserServiceMockTest {
         verify(userMapper).updateById(any(User.class));
     }
 
+    // ========== 3b. updateUser() — 用户名与其他用户重复应拒绝 ==========
+
+    @Test
+    @DisplayName("updateUser — 用户名与其他用户重复应拒绝")
+    void updateUser_duplicateUsername_rejected() {
+        User existing = buildExistingUser(1L, "STUDENT", 1);
+        when(userMapper.selectById(1L)).thenReturn(existing);
+
+        User anotherUser = new User();
+        anotherUser.setId(2L);
+        anotherUser.setUsername("updated");
+        when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(anotherUser);
+
+        UpdateUserRequest req = buildUpdateRequest();
+        req.setUsername("updated"); // same as anotherUser's username
+
+        assertThatThrownBy(() -> userService.updateUser(1L, req))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("用户名已存在");
+
+        verify(userMapper, never()).updateById(any(User.class));
+    }
+
     // ========== 4. updateUser() — 角色变更时应递增 version ==========
 
     @Test
@@ -181,6 +208,8 @@ class UserServiceMockTest {
         User existing = buildExistingUser(1L, "STUDENT", 1);
         when(userMapper.selectById(1L)).thenReturn(existing);
         when(userMapper.updateById(any(User.class))).thenReturn(1);
+        // C5 fix: version 通过单独的原子 SQL 递增
+        when(userMapper.update(any(), any())).thenReturn(1);
 
         UpdateUserRequest req = buildUpdateRequest();
         req.setRoleCode("TEACHER");
@@ -190,8 +219,8 @@ class UserServiceMockTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getRoleCode()).isEqualTo("TEACHER");
-        // version: 1 → 2
-        assertThat(result.getVersion()).isEqualTo(2);
+        // C5 fix: version 通过原子 SQL 递增，验证 update(null, wrapper) 被调用
+        verify(userMapper).update(any(), any());
     }
 
     // ========== 5. updateUser() — 角色不变时不递增 version ==========
@@ -205,6 +234,7 @@ class UserServiceMockTest {
 
         UpdateUserRequest req = buildUpdateRequest();
         req.setRoleCode("STUDENT"); // 与原角色相同
+        req.setUsername("olduser"); // 与原用户名相同，不触发 version 递增
 
         User result = userService.updateUser(1L, req);
 
@@ -220,14 +250,13 @@ class UserServiceMockTest {
     void updateUserStatus_disableUser_incrementsVersion() {
         User existing = buildExistingUser(1L, "STUDENT", 1);
         when(userMapper.selectById(1L)).thenReturn(existing);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        // C5 fix: 现在使用 update(null, wrapper) 原子递增 version
+        when(userMapper.update(any(), any())).thenReturn(1);
 
         userService.updateUserStatus(1L, 0);
 
-        assertThat(existing.getStatus()).isEqualTo(0);
-        // version: 1 → 2
-        assertThat(existing.getVersion()).isEqualTo(2);
-        verify(userMapper).updateById(existing);
+        // C5 fix: version 通过原子 SQL 递增，不再修改 Java 对象
+        verify(userMapper).update(any(), any());
         verify(operationLogService).log(anyString(), anyString());
     }
 
@@ -238,16 +267,13 @@ class UserServiceMockTest {
     void resetPassword_normalSuccess_incrementsVersion() {
         User existing = buildExistingUser(1L, "STUDENT", 1);
         when(userMapper.selectById(1L)).thenReturn(existing);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        // C5 fix: 现在使用 update(null, wrapper) 原子递增 version
+        when(userMapper.update(any(), any())).thenReturn(1);
 
         userService.resetPassword(1L, "newpass123");
 
-        // 密码已被 BCrypt 加密，不再是明文
-        assertThat(existing.getPassword()).isNotNull();
-        assertThat(existing.getPassword()).isNotEqualTo("newpass123");
-        // version: 1 → 2
-        assertThat(existing.getVersion()).isEqualTo(2);
-        verify(userMapper).updateById(existing);
+        // C5 fix: 密码和 version 通过原子 SQL 更新，不再修改 Java 对象
+        verify(userMapper).update(any(), any());
         verify(operationLogService).log(anyString(), anyString());
     }
 

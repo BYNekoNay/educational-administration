@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
+import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
 import com.pzhu.eduadmin.modules.learning.entity.Homework;
 import com.pzhu.eduadmin.modules.learning.entity.LearningRecord;
 import com.pzhu.eduadmin.modules.learning.mapper.HomeworkMapper;
@@ -21,7 +23,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,6 +38,7 @@ class LearningServiceMockTest {
 
     @Mock private HomeworkMapper homeworkMapper;
     @Mock private LearningRecordMapper learningRecordMapper;
+    @Mock private AttendanceMapper attendanceMapper;
     @Mock private ClassStudentMapper classStudentMapper;
     @Mock private ScheduleLessonMapper scheduleLessonMapper;
 
@@ -48,6 +53,7 @@ class LearningServiceMockTest {
         TableInfoHelper.initTableInfo(asst, LearningRecord.class);
         TableInfoHelper.initTableInfo(asst, ClassStudent.class);
         TableInfoHelper.initTableInfo(asst, ScheduleLesson.class);
+        TableInfoHelper.initTableInfo(asst, Attendance.class);
     }
 
     // ============ Homework ============
@@ -254,5 +260,57 @@ class LearningServiceMockTest {
 
         assertThat(result).isEmpty();
         verify(learningRecordMapper, never()).insert(any(LearningRecord.class));
+    }
+
+    // ============ getStudentArchive — 出勤率分母 (Bug #20) ============
+
+    @Test
+    @DisplayName("getStudentArchive — 出勤率分母应排除缺勤(status=4)和null状态")
+    void getStudentArchive_attendanceRate_excludesAbsentAndNull() {
+        Long studentId = 1L;
+
+        // 构造出勤记录: status=1(出勤), status=3(迟到), status=4(缺勤), status=null
+        Attendance a1 = new Attendance(); a1.setStatus(1); // present
+        Attendance a2 = new Attendance(); a2.setStatus(1); // present
+        Attendance a3 = new Attendance(); a3.setStatus(3); // late (counts in denominator)
+        Attendance a4 = new Attendance(); a4.setStatus(4); // absent (excluded from denominator)
+        Attendance a5 = new Attendance(); a5.setStatus(null); // null (excluded from denominator)
+
+        when(attendanceMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(a1, a2, a3, a4, a5));
+        // 无作业、无学情记录
+        when(classStudentMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Collections.emptyList());
+        when(learningRecordMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Collections.emptyList());
+
+        Map<String, Object> archive = learningService.getStudentArchive(studentId);
+
+        // present = 2 (status 1,1), total = 3 (status 1,1,3 — excludes 4 and null)
+        // rate = 2/3 = 0.67 (rounded to 2 decimal places)
+        double rate = (double) archive.get("attendanceRate");
+        assertThat(rate).isEqualTo(0.67);
+    }
+
+    @Test
+    @DisplayName("getStudentArchive — 全部缺勤时出勤率为0")
+    void getStudentArchive_allAbsent_rateZero() {
+        Long studentId = 1L;
+
+        Attendance a1 = new Attendance(); a1.setStatus(4);
+        Attendance a2 = new Attendance(); a2.setStatus(4);
+
+        when(attendanceMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(a1, a2));
+        when(classStudentMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Collections.emptyList());
+        when(learningRecordMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Collections.emptyList());
+
+        Map<String, Object> archive = learningService.getStudentArchive(studentId);
+
+        // total = 0 (all excluded), rate = 0.0
+        double rate = (double) archive.get("attendanceRate");
+        assertThat(rate).isEqualTo(0.0);
     }
 }

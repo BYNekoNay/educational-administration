@@ -6,7 +6,9 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
+import com.pzhu.eduadmin.modules.attendance.service.AttendanceService;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
+import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
@@ -25,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,6 +52,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final UserMapper userMapper;
     private final CourseMapper courseMapper;
     private final NotificationService notificationService;
+    private final AttendanceService attendanceService;
 
     private static final Map<String, SFunction<ScheduleLesson, ?>> LESSON_SORT_MAP = Map.of(
             "id", ScheduleLesson::getId,
@@ -85,18 +89,66 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (status != null)      wrapper.eq(ScheduleLesson::getStatus, status);
         if (dateFrom != null)    wrapper.ge(ScheduleLesson::getLessonDate, dateFrom);
         if (dateTo != null)      wrapper.le(ScheduleLesson::getLessonDate, dateTo);
+
+        // Bug #9 fix: 关键字过滤下推到数据库查询，避免分页后内存过滤导致结果不正确
+        if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.trim();
+            // 按教师姓名匹配
+            List<Long> matchedTeacherIds = userMapper.selectList(
+                    new LambdaQueryWrapper<User>().like(User::getRealName, kw))
+                    .stream().map(User::getId).collect(Collectors.toList());
+            // 按班级名称匹配
+            List<Long> matchedClassIds = classGroupMapper.selectList(
+                    new LambdaQueryWrapper<ClassGroup>().like(ClassGroup::getClassName, kw))
+                    .stream().map(ClassGroup::getId).collect(Collectors.toList());
+            // 按教室名称匹配
+            List<Long> matchedRoomIds = classroomMapper.selectList(
+                    new LambdaQueryWrapper<Classroom>().like(Classroom::getName, kw))
+                    .stream().map(Classroom::getId).collect(Collectors.toList());
+            // 按课程名称匹配（通过 class_group 中转）
+            List<Long> matchedCourseIds = courseMapper.selectList(
+                    new LambdaQueryWrapper<Course>().like(Course::getName, kw))
+                    .stream().map(Course::getId).collect(Collectors.toList());
+            if (!matchedCourseIds.isEmpty()) {
+                List<Long> courseClassIds = classGroupMapper.selectList(
+                        new LambdaQueryWrapper<ClassGroup>().in(ClassGroup::getCourseId, matchedCourseIds))
+                        .stream().map(ClassGroup::getId).collect(Collectors.toList());
+                matchedClassIds.addAll(courseClassIds);
+            }
+
+            // 所有维度均无匹配时直接返回空页
+            if (matchedTeacherIds.isEmpty() && matchedClassIds.isEmpty() && matchedRoomIds.isEmpty()) {
+                Page<ScheduleLesson> emptyPage = new Page<>(pageNum, pageSize);
+                emptyPage.setRecords(new ArrayList<>());
+                emptyPage.setTotal(0);
+                return emptyPage;
+            }
+
+            // 以 OR 条件拼入主查询
+            final List<Long> teacherIds = matchedTeacherIds;
+            final List<Long> classIds2 = matchedClassIds;
+            final List<Long> roomIds = matchedRoomIds;
+            wrapper.and(w -> {
+                boolean needOr = false;
+                if (!teacherIds.isEmpty()) {
+                    w.in(ScheduleLesson::getTeacherId, teacherIds);
+                    needOr = true;
+                }
+                if (!classIds2.isEmpty()) {
+                    if (needOr) w.or();
+                    w.in(ScheduleLesson::getClassId, classIds2);
+                    needOr = true;
+                }
+                if (!roomIds.isEmpty()) {
+                    if (needOr) w.or();
+                    w.in(ScheduleLesson::getClassroomId, roomIds);
+                }
+            });
+        }
+
         QueryHelper.applySort(wrapper, sortField, sortOrder, LESSON_SORT_MAP, () -> wrapper.orderByDesc(ScheduleLesson::getLessonDate));
         Page<ScheduleLesson> page = scheduleLessonMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateScheduleNames(page.getRecords());
-        // 关键字过滤（按课程/班级/教师/教室名称，包含中文）
-        if (keyword != null && !keyword.isBlank() && !page.getRecords().isEmpty()) {
-            String kw = keyword.trim().toLowerCase();
-            List<ScheduleLesson> filtered = page.getRecords().stream()
-                    .filter(s -> matchesKeyword(s, kw))
-                    .collect(Collectors.toList());
-            page.setRecords(filtered);
-            page.setTotal(filtered.size());
-        }
         return page;
     }
 
@@ -121,7 +173,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         Map<Long, String> classNames = classGroupMapper.selectBatchIds(classIds).stream()
                 .collect(Collectors.toMap(ClassGroup::getId, ClassGroup::getClassName));
         Map<Long, String> teacherNames = userMapper.selectBatchIds(teacherIds).stream()
-                .collect(Collectors.toMap(User::getId, User::getRealName));
+                .collect(Collectors.toMap(User::getId, u -> u.getRealName() != null ? u.getRealName() : (u.getUsername() != null ? u.getUsername() : "")));
         Map<Long, String> roomNames = classroomMapper.selectBatchIds(roomIds).stream()
                 .collect(Collectors.toMap(Classroom::getId, Classroom::getName));
 
@@ -160,6 +212,14 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public ScheduleLesson createLesson(ScheduleLesson lesson) {
+        // Bug #28 fix: 关键字段为空时冲突检测会被跳过，导致插入无效课次
+        if (lesson.getLessonDate() == null || lesson.getStartTime() == null || lesson.getEndTime() == null) {
+            throw new BusinessException(400, "课次日期和起止时间不能为空");
+        }
+        // M5 fix: 校验起止时间合法性
+        if (!lesson.getEndTime().isAfter(lesson.getStartTime())) {
+            throw new BusinessException(400, "结束时间必须晚于开始时间");
+        }
         List<String> conflicts = scheduleConflictService.checkConflict(lesson);
         if (!conflicts.isEmpty()) {
             throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
@@ -186,11 +246,28 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public ScheduleLesson updateLesson(ScheduleLesson lesson) {
-        List<String> conflicts = scheduleConflictService.checkConflict(lesson);
+        // H6 fix: 加载现有记录并合并非 null 字段，确保部分更新时冲突检测使用完整数据
+        ScheduleLesson existing = scheduleLessonMapper.selectById(lesson.getId());
+        if (existing == null) throw new BusinessException(404, "课次不存在或已删除");
+        if (lesson.getLessonDate() != null) existing.setLessonDate(lesson.getLessonDate());
+        if (lesson.getStartTime() != null) existing.setStartTime(lesson.getStartTime());
+        if (lesson.getEndTime() != null) existing.setEndTime(lesson.getEndTime());
+        if (lesson.getTeacherId() != null) existing.setTeacherId(lesson.getTeacherId());
+        if (lesson.getClassroomId() != null) existing.setClassroomId(lesson.getClassroomId());
+        if (lesson.getClassId() != null) existing.setClassId(lesson.getClassId());
+        if (lesson.getStatus() != null) existing.setStatus(lesson.getStatus());
+
+        // M5 fix: 校验合并后的起止时间合法性
+        if (existing.getStartTime() != null && existing.getEndTime() != null
+                && !existing.getEndTime().isAfter(existing.getStartTime())) {
+            throw new BusinessException(400, "结束时间必须晚于开始时间");
+        }
+
+        List<String> conflicts = scheduleConflictService.checkConflict(existing);
         if (!conflicts.isEmpty()) {
             throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
         }
-        scheduleLessonMapper.updateById(lesson);
+        scheduleLessonMapper.updateById(existing);
         ScheduleLesson updated = scheduleLessonMapper.selectById(lesson.getId());
         notifyLessonTeacher(updated, "SCHEDULE_CHANGE", "课次已更新");
         return updated;
@@ -360,6 +437,13 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public boolean deleteClassroom(Long id) {
+        // Bug #27 fix: 检查该教室是否有未来排课，防止删除后产生孤立记录
+        long futureLessons = scheduleLessonMapper.selectCount(new LambdaQueryWrapper<ScheduleLesson>()
+                .eq(ScheduleLesson::getClassroomId, id)
+                .ge(ScheduleLesson::getLessonDate, LocalDate.now()));
+        if (futureLessons > 0) {
+            throw new BusinessException(409, "该教室有未来排课，无法删除");
+        }
         operationLogService.log("教室管理", "删除教室（id=" + id + "）");
         return classroomMapper.deleteById(id) > 0;
     }
@@ -370,8 +454,33 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public RoomBooking createRoomBooking(RoomBooking booking) {
+        // C3 fix: 输入校验
+        if (booking.getClassroomId() == null) throw new BusinessException(400, "教室ID不能为空");
+        if (booking.getStartTime() == null || booking.getEndTime() == null) {
+            throw new BusinessException(400, "预约开始/结束时间不能为空");
+        }
+        if (!booking.getEndTime().isAfter(booking.getStartTime())) {
+            throw new BusinessException(400, "结束时间必须晚于开始时间");
+        }
+        // Bug #26 fix: 检查同一教室是否存在时间段重叠的预约
+        long conflicts = roomBookingMapper.selectCount(new LambdaQueryWrapper<RoomBooking>()
+                .eq(RoomBooking::getClassroomId, booking.getClassroomId())
+                .lt(RoomBooking::getStartTime, booking.getEndTime())
+                .gt(RoomBooking::getEndTime, booking.getStartTime()));
+        if (conflicts > 0) {
+            throw new BusinessException(409, "该时段教室已被预约");
+        }
         roomBookingMapper.insert(booking);
+        // C3 fix: 插入后二次校验（防止并发 TOCTOU），若冲突则回滚
+        long postConflicts = roomBookingMapper.selectCount(new LambdaQueryWrapper<RoomBooking>()
+                .eq(RoomBooking::getClassroomId, booking.getClassroomId())
+                .lt(RoomBooking::getStartTime, booking.getEndTime())
+                .gt(RoomBooking::getEndTime, booking.getStartTime()));
+        if (postConflicts > 1) {
+            throw new BusinessException(409, "该时段教室已被预约（并发冲突）");
+        }
         return booking;
     }
 
@@ -388,6 +497,14 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public ScheduleAdjustRequest createAdjustRequest(ScheduleAdjustRequest request) {
+        // M9 fix: 校验课次存在
+        if (request.getLessonId() == null) {
+            throw new BusinessException(400, "课次ID不能为空");
+        }
+        ScheduleLesson lesson = scheduleLessonMapper.selectById(request.getLessonId());
+        if (lesson == null) {
+            throw new BusinessException(404, "课次不存在");
+        }
         scheduleAdjustRequestMapper.insert(request);
         return request;
     }
@@ -395,6 +512,10 @@ public class ScheduleServiceImpl implements ScheduleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ScheduleAdjustRequest auditAdjustRequest(Long id, Integer status, Long auditorId, String remark) {
+        // H8 fix: 校验审核状态只接受 2（通过）或 3（驳回）
+        if (status == null || (status != 2 && status != 3)) {
+            throw new BusinessException(400, "审核状态只能为2（通过）或3（驳回）");
+        }
         ScheduleAdjustRequest request = scheduleAdjustRequestMapper.selectById(id);
         if (request == null) throw new BusinessException(404, "调课申请不存在");
         if (request.getStatus() != null && request.getStatus() != 1) {
@@ -428,16 +549,37 @@ public class ScheduleServiceImpl implements ScheduleService {
             newLesson.setTeacherId(oldLesson.getTeacherId());
             newLesson.setClassroomId(oldLesson.getClassroomId());
             newLesson.setLessonDate(request.getExpectTime().toLocalDate());
+            Duration lessonDuration = Duration.between(oldLesson.getStartTime(), oldLesson.getEndTime());
             newLesson.setStartTime(request.getExpectTime().toLocalTime());
-            newLesson.setEndTime(request.getExpectTime().toLocalTime().plusMinutes(60));
+            java.time.LocalTime newEndTime = request.getExpectTime().toLocalTime().plus(lessonDuration);
+            // H7 fix: 校验调课后不跨午夜，否则冲突检测公式失效
+            if (!newEndTime.isAfter(request.getExpectTime().toLocalTime())) {
+                throw new BusinessException(400, "调课后的课次不能跨越午夜（结束时间早于开始时间）");
+            }
+            newLesson.setEndTime(newEndTime);
             newLesson.setStatus(1);
+
+            // H1 fix: sourceLessonId 语义说明 ——
+            // sourceLessonId 始终指向被替换的原课次，但根据新旧课次的 teacherId 是否一致，
+            // 其业务含义不同：
+            //   - 调课（reschedule）：newTeacherId == oldTeacherId，同一教师换时间/教室；
+            //   - 代课（substitute）：newTeacherId != oldTeacherId，由另一位教师接替该课次。
+            // 当前实现中新课次继承原课次教师（即调课场景），若未来支持指定代课教师，
+            // 只需在此处设置不同的 teacherId，sourceLessonId 的关联逻辑无需变更。
+            boolean isSubstitute = newLesson.getTeacherId() != null
+                    && oldLesson.getTeacherId() != null
+                    && !newLesson.getTeacherId().equals(oldLesson.getTeacherId());
+            // 分类标记：isSubstitute=true 为代课，false 为调课（当前逻辑固定为调课）
             newLesson.setSourceLessonId(oldLesson.getId());
 
             List<String> conflicts = scheduleConflictService.checkConflict(newLesson);
             if (!conflicts.isEmpty()) {
-                throw new BusinessException(409, "调课冲突：" + String.join("；", conflicts));
+                throw new BusinessException(409, (isSubstitute ? "代课" : "调课") + "冲突：" + String.join("；", conflicts));
             }
             scheduleLessonMapper.insert(newLesson);
+
+            // C1 fix: 调课审批通过后，回冲原课次已扣减的考勤课时
+            attendanceService.reverseDeductByLessonId(request.getLessonId(), auditorId);
         }
 
         // 操作日志

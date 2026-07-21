@@ -15,6 +15,7 @@ import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.security.LoginUser;
 import com.pzhu.eduadmin.security.RequireRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -43,8 +44,11 @@ public class LearningController {
     @PostMapping("/edu/homeworks")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "TEACHER"})
     public Result<Homework> createHomework(@RequestBody Homework homework) {
-        if (homework.getTeacherId() == null) {
-            homework.setTeacherId(CurrentUserHolder.get().getUserId());
+        LoginUser currentUser = CurrentUserHolder.get();
+        if ("TEACHER".equals(currentUser.getRoleCode())) {
+            homework.setTeacherId(currentUser.getUserId());
+        } else if (homework.getTeacherId() == null) {
+            homework.setTeacherId(currentUser.getUserId());
         }
         return Result.success(learningService.createHomework(homework));
     }
@@ -60,6 +64,11 @@ public class LearningController {
     @GetMapping("/teacher/students/{studentId}/archive")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Map<String, Object>> studentArchive(@PathVariable Long studentId) {
+        // H13 fix: 教师角色校验学员归属，防止任意教师查看任意学员档案
+        com.pzhu.eduadmin.security.LoginUser loginUser = CurrentUserHolder.get();
+        if ("TEACHER".equals(loginUser.getRoleCode())) {
+            learningService.verifyTeacherStudentAccess(loginUser.getUserId(), studentId);
+        }
         return Result.success(learningService.getStudentArchive(studentId));
     }
 
@@ -68,6 +77,8 @@ public class LearningController {
     @GetMapping("/teacher/homeworks/{lessonId}")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<Homework>> lessonHomeworks(@PathVariable Long lessonId) {
+        // H7 fix: 教师角色校验课次归属
+        checkTeacherLessonAccess(lessonId);
         return Result.success(learningService.getHomeworksByLessonId(lessonId));
     }
 
@@ -75,6 +86,8 @@ public class LearningController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Homework> createLessonHomework(@PathVariable Long lessonId,
                                                   @RequestBody Homework homework) {
+        // H7 fix: 教师角色校验课次归属
+        checkTeacherLessonAccess(lessonId);
         homework.setLessonId(lessonId);
         homework.setTeacherId(CurrentUserHolder.get().getUserId());
         return Result.success(learningService.createHomework(homework));
@@ -83,6 +96,8 @@ public class LearningController {
     @GetMapping("/teacher/lessons/{lessonId}/learning-records")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<LearningRecord>> lessonLearningRecords(@PathVariable Long lessonId) {
+        // H7 fix: 教师角色校验课次归属
+        checkTeacherLessonAccess(lessonId);
         return Result.success(learningService.getRecordsByLessonId(lessonId));
     }
 
@@ -90,6 +105,17 @@ public class LearningController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<LearningRecord>> batchCreateRecords(@PathVariable Long lessonId,
                                                             @RequestBody List<LearningRecord> records) {
+        // M29: 教师角色校验课次归属，防止向非自己授课的课次写入记录
+        LoginUser loginUser = CurrentUserHolder.get();
+        if ("TEACHER".equals(loginUser.getRoleCode())) {
+            ScheduleLesson lesson = scheduleLessonMapper.selectById(lessonId);
+            if (lesson == null) {
+                throw new BusinessException(404, "课次不存在");
+            }
+            if (!loginUser.getUserId().equals(lesson.getTeacherId())) {
+                throw new BusinessException(403, "无权操作非自己授课的课次");
+            }
+        }
         for (LearningRecord r : records) {
             r.setLessonId(lessonId);
         }
@@ -194,6 +220,22 @@ public class LearningController {
                         .eq(ClassStudent::getStatus, 1));
         if (enrollmentCount == 0) {
             throw new BusinessException(403, "无权查看该课程节次的数据，学员未 enrolled 该班级");
+        }
+    }
+
+    /**
+     * H7 fix: 教师角色校验课次归属，防止越权访问非自己授课的课次数据
+     */
+    private void checkTeacherLessonAccess(Long lessonId) {
+        LoginUser loginUser = CurrentUserHolder.get();
+        if ("TEACHER".equals(loginUser.getRoleCode())) {
+            ScheduleLesson lesson = scheduleLessonMapper.selectById(lessonId);
+            if (lesson == null) {
+                throw new BusinessException(404, "课次不存在");
+            }
+            if (!loginUser.getUserId().equals(lesson.getTeacherId())) {
+                throw new BusinessException(403, "无权操作非自己授课的课次");
+            }
         }
     }
 }

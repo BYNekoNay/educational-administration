@@ -26,6 +26,7 @@ import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -145,16 +146,31 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (courseMapper.selectById(enrollment.getCourseId()) == null) {
             throw new BusinessException(404, "课程不存在");
         }
+        // M19: 校验 classId 归属于 courseId
+        if (enrollment.getClassId() != null) {
+            ClassGroup classGroup = classGroupMapper.selectById(enrollment.getClassId());
+            if (classGroup == null) {
+                throw new BusinessException(404, "班级不存在");
+            }
+            if (!enrollment.getCourseId().equals(classGroup.getCourseId())) {
+                throw new BusinessException(400, "该班级不属于所选课程");
+            }
+        }
 
         Long existCount = enrollmentMapper.selectCount(new LambdaQueryWrapper<Enrollment>()
                 .eq(Enrollment::getStudentId, enrollment.getStudentId())
                 .eq(Enrollment::getCourseId, enrollment.getCourseId())
-                .notIn(Enrollment::getStatus, List.of(4, 5)));  // 排除终态（已拒绝、已失效），其余均不可重复报名
+                .notIn(Enrollment::getStatus, List.of(4, 5, 6)));  // M3 fix: 排除终态（已拒绝、已失效、已退费），其余均不可重复报名
         if (existCount > 0) {
             throw new BusinessException(409, "该学员已有此课程的报名记录（含待审核），不可重复报名");
         }
 
-        enrollmentMapper.insert(enrollment);
+        // Bug #23 fix: 捕获唯一约束冲突，防止并发请求绕过重复检查（TOCTOU）
+        try {
+            enrollmentMapper.insert(enrollment);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(409, "该学员已有此课程的报名记录（含待审核），不可重复报名");
+        }
         return enrollment;
     }
 
@@ -165,7 +181,36 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     }
 
     @Override
+    public void updateClassId(Long id, Long classId) {
+        // M2 fix: 仅更新 classId，避免 updateById 覆盖并发修改的其他字段
+        enrollmentMapper.update(null, new LambdaUpdateWrapper<Enrollment>()
+                .eq(Enrollment::getId, id)
+                .set(Enrollment::getClassId, classId));
+    }
+
+    @Override
+    public void validateClassBelongsToCourse(Long classId, Long courseId) {
+        // M4 fix: 校验班级归属于课程
+        ClassGroup classGroup = classGroupMapper.selectById(classId);
+        if (classGroup == null) {
+            throw new BusinessException(404, "班级不存在");
+        }
+        if (!courseId.equals(classGroup.getCourseId())) {
+            throw new BusinessException(400, "该班级不属于所选课程");
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean delete(Long id) {
+        // L8: 先加载报名记录并校验状态
+        Enrollment enrollment = enrollmentMapper.selectById(id);
+        if (enrollment == null) {
+            throw new BusinessException(404, "报名记录不存在");
+        }
+        if (enrollment.getStatus() != null && (enrollment.getStatus() == 2 || enrollment.getStatus() == 3)) {
+            throw new BusinessException(409, "已通过/在读的报名记录不可删除，请先办理退费或退班");
+        }
         // Issue #14: 检查是否有关联的财务记录
         Long paymentCount = paymentRecordMapper.selectCount(
                 new LambdaQueryWrapper<PaymentRecord>().eq(PaymentRecord::getEnrollmentId, id));
@@ -177,9 +222,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (refundCount > 0) {
             throw new BusinessException(409, "该报名已有退费记录，无法删除");
         }
-        Enrollment enrollment = enrollmentMapper.selectById(id);
         boolean deleted = enrollmentMapper.deleteById(id) > 0;
-        if (deleted && enrollment != null && enrollment.getClassId() != null) {
+        if (deleted && enrollment.getClassId() != null) {
             // 清理关联的 ClassStudent 记录
             classStudentMapper.delete(new LambdaQueryWrapper<ClassStudent>()
                     .eq(ClassStudent::getClassId, enrollment.getClassId())
@@ -251,13 +295,17 @@ public class EnrollmentServiceImpl implements EnrollmentService {
      */
     @Scheduled(fixedRate = 60000)
     public void expirePendingEnrollments() {
-        int updated = enrollmentMapper.update(null,
-                new LambdaUpdateWrapper<Enrollment>()
-                        .eq(Enrollment::getStatus, 2)
-                        .lt(Enrollment::getHoldExpireTime, LocalDateTime.now())
-                        .set(Enrollment::getStatus, 5));
-        if (updated > 0) {
-            log.info("定时任务：过期报名记录 {} 条已标记为已失效", updated);
+        try {
+            int updated = enrollmentMapper.update(null,
+                    new LambdaUpdateWrapper<Enrollment>()
+                            .eq(Enrollment::getStatus, 2)
+                            .lt(Enrollment::getHoldExpireTime, LocalDateTime.now())
+                            .set(Enrollment::getStatus, 5));
+            if (updated > 0) {
+                log.info("定时任务：过期报名记录 {} 条已标记为已失效", updated);
+            }
+        } catch (Exception e) {
+            log.error("定时任务 expirePendingEnrollments 执行异常", e);
         }
     }
 }

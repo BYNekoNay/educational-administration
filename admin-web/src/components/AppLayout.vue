@@ -39,7 +39,7 @@
           <el-menu-item index="/edu/courses" v-if="authStore.hasPermission('menu:course')">课程管理</el-menu-item>
           <el-menu-item index="/edu/classes" v-if="authStore.hasPermission('menu:class')">班级管理</el-menu-item>
           <el-menu-item index="/edu/enrollments" v-if="authStore.hasPermission('menu:enrollment')">报名管理</el-menu-item>
-          <el-menu-item index="/edu/big-schedule" v-if="authStore.hasPermission('menu:schedule')">大课表</el-menu-item>
+          <el-menu-item index="/edu/big-schedule" v-if="authStore.hasPermission('menu:big-schedule')">大课表</el-menu-item>
           <el-menu-item index="/edu/schedules" v-if="authStore.hasPermission('menu:schedule')">排课管理</el-menu-item>
           <el-menu-item index="/edu/classrooms" v-if="authStore.hasPermission('menu:classroom')">教室管理</el-menu-item>
           <el-menu-item index="/edu/attendances" v-if="authStore.hasPermission('menu:attendance')">考勤管理</el-menu-item>
@@ -115,6 +115,7 @@ const hasEduModule = computed(() =>
   authStore.hasPermission('menu:class') ||
   authStore.hasPermission('menu:enrollment') ||
   authStore.hasPermission('menu:schedule') ||
+  authStore.hasPermission('menu:big-schedule') ||
   authStore.hasPermission('menu:classroom') ||
   authStore.hasPermission('menu:attendance') ||
   authStore.hasPermission('menu:exam')

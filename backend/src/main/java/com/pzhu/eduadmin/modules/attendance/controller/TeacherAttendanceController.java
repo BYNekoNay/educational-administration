@@ -61,6 +61,14 @@ public class TeacherAttendanceController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<Attendance>> batchSubmit(@PathVariable Long lessonId,
                                                  @RequestBody List<Attendance> list) {
+        // L3: 教师课次归属校验 + 批量大小限制
+        attendanceService.checkTeacherLessonOwnership(lessonId);
+        if (list == null || list.isEmpty()) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, "考勤列表不能为空");
+        }
+        if (list.size() > 100) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, "单次批量考勤不能超过100条");
+        }
         return Result.success(attendanceService.batchSubmit(lessonId, list));
     }
 
@@ -76,6 +84,8 @@ public class TeacherAttendanceController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<ScheduleAdjustRequest> createMyAdjustRequest(@PathVariable Long lessonId,
                                                                 @RequestBody ScheduleAdjustRequest request) {
+        // H3 fix: 校验课次归属，防止教师对非自己授课的课次提交调课申请
+        attendanceService.checkTeacherLessonOwnership(lessonId);
         request.setLessonId(lessonId);
         request.setApplicantId(CurrentUserHolder.get().getUserId());
         request.setStatus(1);
@@ -96,11 +106,19 @@ public class TeacherAttendanceController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<LeaveRequest> auditLeaveRequest(@PathVariable Long id,
                                                    @RequestBody Map<String, Object> body) {
-        Integer status = (Integer) body.get("status");
+        // L3 fix: 安全类型转换，防止客户端传入字符串类型导致 ClassCastException
+        Object statusObj = body.get("status");
+        Integer status = null;
+        if (statusObj instanceof Number) {
+            status = ((Number) statusObj).intValue();
+        } else if (statusObj instanceof String) {
+            try { status = Integer.parseInt((String) statusObj); } catch (NumberFormatException ignored) {}
+        }
         if (status == null || (status != 2 && status != 3)) {
             throw new com.pzhu.eduadmin.common.BusinessException(400, "审核状态只能为 2(通过) 或 3(驳回)");
         }
-        String remark = (String) body.getOrDefault("remark", "");
+        Object remarkObj = body.get("remark");
+        String remark = remarkObj != null ? String.valueOf(remarkObj) : "";
         return Result.success(leaveRequestService.auditByTeacher(id, status,
                 CurrentUserHolder.get().getUserId(), remark));
     }

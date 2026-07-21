@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
@@ -60,19 +61,22 @@ public class AuthService implements IAuthService {
             recordFailedAttempt(username);
             throw new BusinessException("用户名或密码错误");
         }
+        // H10 fix: 先检查账号状态再验证密码，防止攻击者确认禁用账号的密码
+        if (user.getStatus() == null || user.getStatus() != 1) {
+            throw new BusinessException("用户名或密码错误");
+        }
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             recordFailedAttempt(username);
             throw new BusinessException("用户名或密码错误");
-        }
-        if (user.getStatus() == null || user.getStatus() != 1) {
-            throw new BusinessException("账号已被禁用，请联系管理员");
         }
 
         // 登录成功，清除失败计数
         loginAttempts.remove(username);
 
-        user.setLastLoginTime(LocalDateTime.now());
-        userMapper.updateById(user);
+        // H1 fix: 仅更新 lastLoginTime，避免 updateById 将 stale status/version 写回覆盖并发操作
+        userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, user.getId())
+                .set(User::getLastLoginTime, LocalDateTime.now()));
 
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRoleCode(),
                 user.getVersion() != null ? user.getVersion() : 0);
@@ -120,8 +124,20 @@ public class AuthService implements IAuthService {
         }
     }
 
+    /**
+     * Bug #37/#38: 清理过期的登录尝试记录，防止内存无限增长。
+     * 移除超过锁定时长（15分钟）的条目，将内存限制为仅保留近期尝试。
+     */
+    private void cleanExpiredAttempts() {
+        long now = System.currentTimeMillis();
+        loginAttempts.entrySet().removeIf(entry ->
+                now - entry.getValue().getLastAttemptTime() > LOCKOUT_DURATION_MS);
+    }
+
     /** 记录登录失败，达到上限后锁定账号 */
     private void recordFailedAttempt(String username) {
+        // Bug #37/#38: 每次记录前清理过期条目，防止内存无限增长
+        cleanExpiredAttempts();
         loginAttempts.compute(username, (key, info) -> {
             if (info == null) {
                 info = new LoginAttemptInfo();
@@ -135,14 +151,21 @@ public class AuthService implements IAuthService {
     private static class LoginAttemptInfo {
         private final AtomicInteger count = new AtomicInteger(0);
         private volatile long lockTime = 0;
+        private volatile long lastAttemptTime = System.currentTimeMillis();
 
-        void increment() {
+        // H11 fix: synchronized 防止 isLocked/increment 并发竞态清除刚设置的锁
+        synchronized void increment() {
+            lastAttemptTime = System.currentTimeMillis();
             if (count.incrementAndGet() >= MAX_FAILED_ATTEMPTS) {
                 lockTime = System.currentTimeMillis();
             }
         }
 
-        boolean isLocked() {
+        long getLastAttemptTime() {
+            return lastAttemptTime;
+        }
+
+        synchronized boolean isLocked() {
             if (lockTime == 0) return false;
             if (System.currentTimeMillis() - lockTime > LOCKOUT_DURATION_MS) {
                 // 锁定过期，重置

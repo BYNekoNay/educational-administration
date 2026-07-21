@@ -165,6 +165,13 @@ public class ParentController {
 
     @PostMapping("/enrollments")
     public Result<Enrollment> createEnrollment(@RequestBody Enrollment enrollment) {
+        // H4 fix: 清除客户端不应设置的服务端控制字段
+        enrollment.setId(null);
+        enrollment.setClassId(null);
+        enrollment.setAuditorId(null);
+        enrollment.setAuditRemark(null);
+        enrollment.setHoldExpireTime(null);
+        enrollment.setIsDeleted(null);
         if (enrollment.getStudentId() == null) {
             throw new BusinessException(400, "学员ID不能为空");
         }
@@ -217,7 +224,7 @@ public class ParentController {
                 new LambdaQueryWrapper<Enrollment>()
                         .eq(Enrollment::getStudentId, studentId)
                         .eq(Enrollment::getCourseId, courseId)
-                        .notIn(Enrollment::getStatus, List.of(4, 5)));
+                        .notIn(Enrollment::getStatus, List.of(4, 5, 6)));  // M2 fix: 已退费(6)也属终态
         return Result.success(count > 0);
     }
 
@@ -251,6 +258,10 @@ public class ParentController {
         Course course = courseMapper.selectByIdIncludeDeleted(enrollment.getCourseId());
         if (course == null) {
             throw new BusinessException(404, "关联课程不存在");
+        }
+        // Bug #25 fix: 课程信息不完整时无法构造支付记录，防止 NPE
+        if (course.getTotalLessons() == null || course.getPrice() == null) {
+            throw new BusinessException(400, "课程信息不完整，无法支付");
         }
         // 构造 PaymentRecord
         PaymentRecord record = new PaymentRecord();

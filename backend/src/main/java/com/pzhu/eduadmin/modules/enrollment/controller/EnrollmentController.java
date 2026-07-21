@@ -38,13 +38,16 @@ public class EnrollmentController {
     }
 
     @PostMapping
-    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "PARENT"})
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Enrollment> create(@Valid @RequestBody Enrollment enrollment) {
+        // H4 fix: 清除客户端不应设置的服务端控制字段
+        enrollment.setId(null);
+        enrollment.setAuditorId(null);
+        enrollment.setAuditRemark(null);
+        enrollment.setHoldExpireTime(null);
+        enrollment.setIsDeleted(null);
         LoginUser loginUser = CurrentUserHolder.get();
-        // 家长角色强制绑定 parentUserId，防止伪造其他家长身份
-        if ("PARENT".equals(loginUser.getRoleCode())) {
-            enrollment.setParentUserId(loginUser.getUserId());
-        } else if (enrollment.getParentUserId() == null) {
+        if (enrollment.getParentUserId() == null) {
             enrollment.setParentUserId(loginUser.getUserId());
         }
         enrollment.setStatus(1); // 待审核
@@ -63,12 +66,19 @@ public class EnrollmentController {
             if (existing.getStatus() == 3) {
                 throw new BusinessException(409, "已缴费的报名不可变更班级");
             }
+            // M4 fix: 校验新班级归属于该课程
+            enrollmentService.validateClassBelongsToCourse(enrollment.getClassId(), existing.getCourseId());
         }
-        // 仅允许更新安全字段，防止通过 update 接口篡改 status / auditorId 等字段
+        // M2 fix: 仅更新 classId，避免 updateById 将 stale 字段写回覆盖并发审核操作
         if (enrollment.getClassId() != null) {
-            existing.setClassId(enrollment.getClassId());
+            enrollmentService.updateClassId(id, enrollment.getClassId());
         }
-        return Result.success(enrollmentService.update(existing));
+        // L1 fix: 防止并发删除后 getById 返回 null
+        Enrollment updated = enrollmentService.getById(id);
+        if (updated == null) {
+            throw new BusinessException(404, "报名记录不存在");
+        }
+        return Result.success(updated);
     }
 
     @DeleteMapping("/{id}")

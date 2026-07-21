@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.entity.Role;
@@ -12,6 +13,7 @@ import com.pzhu.eduadmin.modules.user.mapper.RolePermissionMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,7 +57,11 @@ public class RoleServiceImpl implements RoleService {
         Role role = new Role();
         role.setRoleCode(roleCode);
         role.setRoleName(roleName);
-        roleMapper.insert(role);
+        try {
+            roleMapper.insert(role);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(400, "角色编码 " + roleCode + " 已存在");
+        }
 
         // 操作日志
         operationLogService.log("权限管理", "新增角色 " + roleCode + "(" + roleName + ")");
@@ -129,6 +135,24 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateRolePermissions(String roleCode, List<String> permissionCodes) {
+        // M1 fix: 防止 null 导致后续 for 循环 NPE
+        if (permissionCodes == null) {
+            permissionCodes = java.util.Collections.emptyList();
+        }
+        // M14: 校验角色是否存在
+        Long roleCount = roleMapper.selectCount(
+                new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, roleCode));
+        if (roleCount == 0) {
+            throw new BusinessException(404, "角色 " + roleCode + " 不存在");
+        }
+        // L7: 校验权限码是否存在于 permission 表
+        if (permissionCodes != null && !permissionCodes.isEmpty()) {
+            Long validCount = permissionMapper.selectCount(
+                    new LambdaQueryWrapper<Permission>().in(Permission::getPermissionCode, permissionCodes));
+            if (validCount < permissionCodes.size()) {
+                throw new BusinessException(400, "部分权限码不存在");
+            }
+        }
         // 先物理删除旧权限（绕过 @TableLogic，避免逻辑删除行持续占用唯一键导致重建时 409）
         rolePermissionMapper.realDeleteByRoleCode(roleCode);
         // 再批量插入新权限
@@ -138,6 +162,11 @@ public class RoleServiceImpl implements RoleService {
             rp.setPermissionCode(code);
             rolePermissionMapper.insert(rp);
         }
+
+        // Bug #45: 权限变更后递增该角色所有用户的 version，使旧 Token 失效
+        userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getRoleCode, roleCode)
+                .setSql("version = version + 1"));
 
         // 操作日志：修改角色权限
         operationLogService.log("权限管理", "修改角色" + roleCode + "权限，权限数量：" + permissionCodes.size());

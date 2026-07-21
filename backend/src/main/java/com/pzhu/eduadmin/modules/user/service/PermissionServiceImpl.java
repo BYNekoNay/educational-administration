@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.entity.RolePermission;
@@ -62,6 +63,10 @@ public class PermissionServiceImpl implements PermissionService {
             if (count > 0) {
                 throw new BusinessException(400, "权限码已存在：" + permission.getPermissionCode());
             }
+            // H2 fix: 级联更新 role_permission 中的旧权限码，防止关联孤立
+            rolePermissionMapper.update(null, new LambdaUpdateWrapper<RolePermission>()
+                    .eq(RolePermission::getPermissionCode, existing.getPermissionCode())
+                    .set(RolePermission::getPermissionCode, permission.getPermissionCode()));
         }
         permissionMapper.updateById(permission);
 

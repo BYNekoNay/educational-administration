@@ -29,15 +29,16 @@ public class NotificationServiceImpl implements NotificationService {
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L); // 30分钟超时
         emitters.put(userId, emitter);
 
-        emitter.onCompletion(() -> emitters.remove(userId));
-        emitter.onTimeout(() -> emitters.remove(userId));
-        emitter.onError(e -> emitters.remove(userId));
+        // M15 fix: 条件移除，防止旧 emitter 超时回调误删新 emitter
+        emitter.onCompletion(() -> emitters.remove(userId, emitter));
+        emitter.onTimeout(() -> emitters.remove(userId, emitter));
+        emitter.onError(e -> emitters.remove(userId, emitter));
 
         // 发送一条连接成功事件（可选）
         try {
             emitter.send(SseEmitter.event().name("connected").data("ok"));
         } catch (IOException e) {
-            emitters.remove(userId);
+            emitters.remove(userId, emitter);
         }
         return emitter;
     }
@@ -72,7 +73,7 @@ public class NotificationServiceImpl implements NotificationService {
             try {
                 emitter.send(SseEmitter.event().name("notification").data(notification));
             } catch (IOException e) {
-                emitters.remove(userId);
+                emitters.remove(userId, emitter);
                 log.debug("SSE send failed for user {}, removed emitter", userId);
             }
         }
@@ -82,15 +83,21 @@ public class NotificationServiceImpl implements NotificationService {
     @Async("sseExecutor")
     public void sendToUsers(List<Long> userIds, Notification notification) {
         for (Long userId : userIds) {
-            // 为每个用户创建独立的通知记录
-            Notification copy = new Notification();
-            copy.setUserId(userId);
-            copy.setType(notification.getType());
-            copy.setTitle(notification.getTitle());
-            copy.setContent(notification.getContent());
-            copy.setRelatedId(notification.getRelatedId());
-            copy.setDedupeKey(notification.getDedupeKey());
-            send(userId, copy);
+            try {
+                // 为每个用户创建独立的通知记录
+                Notification copy = new Notification();
+                copy.setUserId(userId);
+                copy.setType(notification.getType());
+                copy.setTitle(notification.getTitle());
+                copy.setContent(notification.getContent());
+                copy.setRelatedId(notification.getRelatedId());
+                // M16 fix: 为每个用户追加 userId，防止共享 dedupeKey 导致后续用户通知丢失
+                String baseKey = notification.getDedupeKey();
+                copy.setDedupeKey(baseKey != null ? baseKey + ":" + userId : null);
+                send(userId, copy);
+            } catch (Exception e) {
+                log.error("通知发送失败, userId={}", userId, e);
+            }
         }
     }
 

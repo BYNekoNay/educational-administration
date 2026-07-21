@@ -69,7 +69,7 @@ public class JwtInterceptor implements HandlerInterceptor {
         // Token 吊销检查：比对 User.version
         User currentUser = userMapper.selectOne(
                 new LambdaQueryWrapper<User>()
-                        .select(User::getVersion, User::getStatus)
+                        .select(User::getVersion, User::getStatus, User::getRoleCode)
                         .eq(User::getId, userId));
         if (currentUser == null) {
             writeUnauthorized(response, "用户不存在，请重新登录");
@@ -86,13 +86,15 @@ public class JwtInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        CurrentUserHolder.set(new LoginUser(userId, username, roleCode));
+        // Bug #46: 使用数据库中的 roleCode 而非 Token 中的，确保角色变更后立即生效
+        String dbRoleCode = currentUser.getRoleCode();
+        CurrentUserHolder.set(new LoginUser(userId, username, dbRoleCode));
 
         RequireRole requireRole = handlerMethod.getMethodAnnotation(RequireRole.class);
         if (requireRole == null) {
             requireRole = handlerMethod.getBeanType().getAnnotation(RequireRole.class);
         }
-        if (requireRole != null && (roleCode == null || Arrays.stream(requireRole.value()).noneMatch(roleCode::equals))) {
+        if (requireRole != null && (dbRoleCode == null || Arrays.stream(requireRole.value()).noneMatch(dbRoleCode::equals))) {
             writeForbidden(response, "无权访问该接口");
             return false;
         }

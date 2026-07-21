@@ -77,7 +77,7 @@ class LeaveRequestServiceMockTest {
                 .when(leaveRequestMapper).insert(any(LeaveRequest.class));
 
         LeaveRequest result = leaveRequestService.submitLeaveRequest(1L, 10L,
-                LocalDate.of(2026, 7, 20), "身体不适");
+                LocalDate.now().plusDays(7), "身体不适");
 
         assertThat(result.getId()).isEqualTo(100L);
         assertThat(result.getStudentId()).isEqualTo(10L);
@@ -92,7 +92,7 @@ class LeaveRequestServiceMockTest {
         when(studentMapper.selectById(999L)).thenReturn(null);
 
         assertThatThrownBy(() -> leaveRequestService.submitLeaveRequest(1L, 999L,
-                LocalDate.of(2026, 7, 20), "原因"))
+                LocalDate.now().plusDays(7), "原因"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("学员不存在");
     }
@@ -106,7 +106,7 @@ class LeaveRequestServiceMockTest {
         when(parentStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
 
         assertThatThrownBy(() -> leaveRequestService.submitLeaveRequest(1L, 10L,
-                LocalDate.of(2026, 7, 20), "原因"))
+                LocalDate.now().plusDays(7), "原因"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("没有绑定关系");
     }
@@ -121,7 +121,7 @@ class LeaveRequestServiceMockTest {
         when(leaveRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 
         assertThatThrownBy(() -> leaveRequestService.submitLeaveRequest(1L, 10L,
-                LocalDate.of(2026, 7, 20), "原因"))
+                LocalDate.now().plusDays(7), "原因"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("已有请假申请");
     }
@@ -137,7 +137,7 @@ class LeaveRequestServiceMockTest {
         when(leaveRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 
         assertThatThrownBy(() -> leaveRequestService.submitLeaveRequest(1L, 10L,
-                LocalDate.of(2026, 7, 20), "原因"))
+                LocalDate.now().plusDays(7), "原因"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("已有请假申请");
     }
@@ -227,7 +227,7 @@ class LeaveRequestServiceMockTest {
         LeaveRequest lr = new LeaveRequest();
         lr.setId(1L);
         lr.setStudentId(10L);
-        lr.setLessonDate(LocalDate.of(2026, 7, 20));
+        lr.setLessonDate(LocalDate.now().plusDays(7));
         lr.setStatus(1);
         when(leaveRequestMapper.selectById(1L)).thenReturn(lr);
         when(leaveRequestMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
@@ -311,7 +311,7 @@ class LeaveRequestServiceMockTest {
         LeaveRequest lr = new LeaveRequest();
         lr.setId(1L);
         lr.setStudentId(10L);
-        lr.setLessonDate(LocalDate.of(2026, 7, 20));
+        lr.setLessonDate(LocalDate.now().plusDays(7));
         lr.setStatus(1);
         when(leaveRequestMapper.selectById(1L)).thenReturn(lr);
         when(leaveRequestMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
@@ -331,7 +331,7 @@ class LeaveRequestServiceMockTest {
         LeaveRequest lr = new LeaveRequest();
         lr.setId(1L);
         lr.setStudentId(10L);
-        lr.setLessonDate(LocalDate.of(2026, 7, 20));
+        lr.setLessonDate(LocalDate.now().plusDays(7));
         lr.setStatus(1);
         when(leaveRequestMapper.selectById(1L)).thenReturn(lr);
         when(leaveRequestMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);

@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.salary.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -24,6 +25,7 @@ public class SalaryAdjustment {
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
+    @JsonIgnore
     @TableLogic
     private Integer isDeleted;
 }

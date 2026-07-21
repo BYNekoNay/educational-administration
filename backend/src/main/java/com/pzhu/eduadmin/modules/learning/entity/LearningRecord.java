@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.learning.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -26,6 +27,7 @@ public class LearningRecord {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
+    @JsonIgnore
     @TableLogic
     private Integer isDeleted;
 }

@@ -104,6 +104,17 @@ public class ScheduleController {
         if (lessons == null || lessons.isEmpty()) {
             throw new BusinessException(400, "排课列表不能为空");
         }
+        // M8 fix: 限制批量大小，防止 O(n²) 冲突检测耗尽资源
+        if (lessons.size() > 200) {
+            throw new BusinessException(400, "单次批量排课不能超过200条");
+        }
+        // Mass assignment protection: strip server-controlled fields
+        lessons.forEach(lesson -> {
+            lesson.setId(null);
+            lesson.setIsDeleted(null);
+            lesson.setCreateTime(null);
+            lesson.setUpdateTime(null);
+        });
         scheduleService.batchCreate(lessons);
         return Result.success();
     }
@@ -117,6 +128,11 @@ public class ScheduleController {
     @PostMapping("/schedules")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<ScheduleLesson> createLesson(@Valid @RequestBody ScheduleLesson lesson) {
+        // Mass assignment protection: strip server-controlled fields
+        lesson.setId(null);
+        lesson.setIsDeleted(null);
+        lesson.setCreateTime(null);
+        lesson.setUpdateTime(null);
         List<String> conflicts = scheduleService.checkConflict(lesson);
         if (!conflicts.isEmpty()) {
             return Result.fail(409, String.join("；", conflicts));
@@ -128,6 +144,10 @@ public class ScheduleController {
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<ScheduleLesson> updateLesson(@PathVariable Long id, @RequestBody ScheduleLesson lesson) {
         lesson.setId(id);
+        // Mass assignment protection: strip server-controlled fields
+        lesson.setIsDeleted(null);
+        lesson.setCreateTime(null);
+        lesson.setUpdateTime(null);
         return Result.success(scheduleService.updateLesson(lesson));
     }
 
@@ -156,6 +176,11 @@ public class ScheduleController {
     @PostMapping("/classrooms")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Classroom> createClassroom(@Valid @RequestBody Classroom classroom) {
+        // Mass assignment protection: strip server-controlled fields
+        classroom.setId(null);
+        classroom.setIsDeleted(null);
+        classroom.setCreateTime(null);
+        classroom.setUpdateTime(null);
         return Result.success(scheduleService.createClassroom(classroom));
     }
 
@@ -163,6 +188,10 @@ public class ScheduleController {
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Classroom> updateClassroom(@PathVariable Long id, @RequestBody Classroom classroom) {
         classroom.setId(id);
+        // Mass assignment protection: strip server-controlled fields
+        classroom.setIsDeleted(null);
+        classroom.setCreateTime(null);
+        classroom.setUpdateTime(null);
         return Result.success(scheduleService.updateClassroom(classroom));
     }
 
@@ -184,6 +213,11 @@ public class ScheduleController {
     @PostMapping("/room-bookings")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<RoomBooking> createRoomBooking(@RequestBody RoomBooking booking) {
+        // Mass assignment protection: strip server-controlled fields
+        booking.setId(null);
+        booking.setIsDeleted(null);
+        booking.setCreateTime(null);
+        booking.setUpdateTime(null);
         booking.setApplicantId(CurrentUserHolder.get().getUserId());
         return Result.success(scheduleService.createRoomBooking(booking));
     }
@@ -199,6 +233,13 @@ public class ScheduleController {
     @PostMapping("/schedule-adjust-requests")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "TEACHER"})
     public Result<ScheduleAdjustRequest> createAdjustRequest(@RequestBody ScheduleAdjustRequest request) {
+        // Mass assignment protection: strip server-controlled fields
+        request.setId(null);
+        request.setIsDeleted(null);
+        request.setCreateTime(null);
+        request.setUpdateTime(null);
+        request.setAuditorId(null);
+        request.setAuditRemark(null);
         request.setApplicantId(CurrentUserHolder.get().getUserId());
         request.setStatus(1);
         return Result.success(scheduleService.createAdjustRequest(request));

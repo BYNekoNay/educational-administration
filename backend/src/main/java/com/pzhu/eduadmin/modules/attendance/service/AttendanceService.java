@@ -22,6 +22,9 @@ public interface AttendanceService {
     /** 按课次查询已考勤记录 */
     List<Attendance> getByLessonId(Long lessonId);
 
+    /** 按课次回冲所有已扣减的考勤课时（调课审批通过后调用） */
+    void reverseDeductByLessonId(Long lessonId, Long operatorId);
+
     /** 批量提交考勤 */
     List<Attendance> batchSubmit(Long lessonId, List<Attendance> list);
 

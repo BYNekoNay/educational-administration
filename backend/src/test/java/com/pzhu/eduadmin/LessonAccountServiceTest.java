@@ -17,7 +17,11 @@ import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +56,11 @@ class LessonAccountServiceTest {
 
     @InjectMocks
     private AttendanceServiceImpl attendanceService;
+
+    @BeforeAll
+    static void initLambdaCache() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), LessonAccount.class);
+    }
 
     @BeforeEach
     void setUp() {
@@ -89,7 +98,7 @@ class LessonAccountServiceTest {
         account.setRemainingLessons(BigDecimal.valueOf(10));
         account.setVersion(0);
         when(lessonAccountMapper.selectOne(any())).thenReturn(account);
-        when(lessonAccountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
+        when(lessonAccountMapper.update(any(), any())).thenReturn(1);
 
         Attendance result = attendanceService.submit(attendance);
         assertThat(result.getStatus()).isEqualTo(1);
@@ -119,7 +128,7 @@ class LessonAccountServiceTest {
         account.setRemainingLessons(BigDecimal.valueOf(5));
         account.setVersion(0);
         when(lessonAccountMapper.selectOne(any())).thenReturn(account);
-        when(lessonAccountMapper.updateById(any(LessonAccount.class))).thenReturn(0);
+        when(lessonAccountMapper.update(any(), any())).thenReturn(0);
 
         assertThatThrownBy(() -> attendanceService.submit(attendance))
                 .isInstanceOf(BusinessException.class)

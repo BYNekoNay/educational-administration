@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.student.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
@@ -26,6 +27,7 @@ import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -152,6 +154,7 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteStudent(Long id) {
         // 前置条件检查：不允许删除仍有在班记录或待处理报名的学员
         Long activeClassCount = classStudentMapper.selectCount(
@@ -188,6 +191,10 @@ public class StudentServiceImpl implements StudentService {
         }
 
         Student student = studentMapper.selectById(id);
+        // H5 fix: 防止学员不存在时 NPE
+        if (student == null) {
+            throw new BusinessException(404, "学员不存在");
+        }
         operationLogService.log("学员管理", "删除学员（学员=" + student.getName() + "）");
         return studentMapper.deleteById(id) > 0;
     }
@@ -207,8 +214,16 @@ public class StudentServiceImpl implements StudentService {
     @Transactional(rollbackFor = Exception.class)
     public boolean bindParent(ParentStudent parentStudent) {
         // 校验家长和学员是否存在
-        if (userMapper.selectById(parentStudent.getParentUserId()) == null) {
+        User parentUser = userMapper.selectById(parentStudent.getParentUserId());
+        if (parentUser == null) {
             throw new BusinessException(404, "家长用户不存在");
+        }
+        // Bug #35: 校验用户确实是家长角色且未被禁用
+        if (!"PARENT".equals(parentUser.getRoleCode())) {
+            throw new BusinessException(400, "只能绑定家长角色的用户");
+        }
+        if (parentUser.getStatus() != null && parentUser.getStatus() != 1) {
+            throw new BusinessException(400, "该用户已被禁用");
         }
         if (studentMapper.selectById(parentStudent.getStudentId()) == null) {
             throw new BusinessException(404, "学员不存在");
@@ -230,7 +245,11 @@ public class StudentServiceImpl implements StudentService {
         }
         operationLogService.log("学员管理", "绑定家长（学员=" + nameResolver.getStudentName(parentStudent.getStudentId())
                 + "，家长=" + nameResolver.getUserDisplayName(parentStudent.getParentUserId()) + "）");
-        return parentStudentMapper.insert(parentStudent) > 0;
+        try {
+            return parentStudentMapper.insert(parentStudent) > 0;
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(409, "该家长已绑定此学员，请勿重复绑定");
+        }
     }
 
     @Override
@@ -345,6 +364,17 @@ public class StudentServiceImpl implements StudentService {
         newRecord.setJoinTime(LocalDateTime.now());
         classStudentMapper.insert(newRecord);
 
+        // M13 fix: 插入后再次校验容量，防止并发转班超出上限
+        if (maxCount > 0) {
+            Long newCount = classStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getClassId, targetClassId)
+                            .eq(ClassStudent::getStatus, 1));
+            if (newCount > maxCount) {
+                throw new BusinessException(409, "目标班级已满，无法转入");
+            }
+        }
+
         Map<String, Object> result = new HashMap<>();
         result.put("studentId", studentId);
         result.put("fromClassId", sourceRecord.getClassId());
@@ -384,6 +414,15 @@ public class StudentServiceImpl implements StudentService {
         student.setStatus(4);
         studentMapper.updateById(student);
 
+        // H2 fix: 退班后同步将关联的报名记录状态更新为 6（已退班/终止），
+        // 避免报名记录仍显示为有效状态（待审核/待缴费/已完成）。
+        // 仅更新非终态记录，已处于终态（4=已拒绝, 5=已失效, 6=已退班）的不重复处理。
+        enrollmentMapper.update(null,
+                new LambdaUpdateWrapper<Enrollment>()
+                        .eq(Enrollment::getStudentId, studentId)
+                        .notIn(Enrollment::getStatus, List.of(4, 5, 6))
+                        .set(Enrollment::getStatus, 6));
+
         // 4. 查找该学员最近的报名和缴费记录，生成退费申请
         PaymentRecord latestPayment = paymentRecordMapper.selectPage(
                 new Page<PaymentRecord>(1, 1),
@@ -392,26 +431,29 @@ public class StudentServiceImpl implements StudentService {
                         .orderByDesc(PaymentRecord::getPayTime))
                 .getRecords().stream().findFirst().orElse(null);
 
-        RefundRecord refund = new RefundRecord();
-        com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-        refund.setStudentId(studentId);
-        refund.setApplicantId(operator != null ? operator.getUserId() : 0L);
-        refund.setApplicantRole(operator != null ? operator.getRoleCode() : "SYSTEM");
-        refund.setStatus(1); // 待审核
-        refund.setAmount(BigDecimal.ZERO); // 退费金额由财务审核时确定
-        refund.setLessonCount(BigDecimal.ZERO);
-
-        if (latestPayment != null) {
+        // L9: 仅有缴费记录时才创建退费申请，避免无意义的零元退费单
+        Long refundRecordId = null;
+        // M5 fix: enrollmentId 为空时退费单无法被财务审核，跳过创建
+        if (latestPayment != null && latestPayment.getEnrollmentId() != null) {
+            RefundRecord refund = new RefundRecord();
+            com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
+            refund.setStudentId(studentId);
+            refund.setApplicantId(operator != null ? operator.getUserId() : 0L);
+            refund.setApplicantRole(operator != null ? operator.getRoleCode() : "SYSTEM");
+            refund.setStatus(1); // 待审核
+            refund.setAmount(BigDecimal.ZERO); // 退费金额由财务审核时确定
+            refund.setLessonCount(BigDecimal.ZERO);
             refund.setPaymentRecordId(latestPayment.getId());
             refund.setEnrollmentId(latestPayment.getEnrollmentId());
+            refundRecordMapper.insert(refund);
+            refundRecordId = refund.getId();
         }
-        refundRecordMapper.insert(refund);
 
         Map<String, Object> result = new HashMap<>();
         result.put("studentId", studentId);
         result.put("withdrawnClassIds", currentRecords.stream().map(ClassStudent::getClassId).toList());
-        result.put("refundRecordId", refund.getId());
-        result.put("message", "退班申请已提交，待财务审核退费");
+        result.put("refundRecordId", refundRecordId);
+        result.put("message", latestPayment != null ? "退班申请已提交，待财务审核退费" : "退班完成，该学员无缴费记录");
         return result;
     }
 

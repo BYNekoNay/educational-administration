@@ -85,6 +85,25 @@ class NotificationServiceTest {
     }
 
     @Test
+    @DisplayName("sendToUsers — 单个用户发送失败不影响其余用户")
+    void sendToUsers_errorIsolation() {
+        Notification n = new Notification();
+        n.setType("ANNOUNCEMENT");
+        n.setTitle("公告");
+
+        // 第2个用户插入时抛异常，其余正常
+        when(notificationMapper.insert(any(Notification.class)))
+                .thenReturn(1)
+                .thenThrow(new RuntimeException("DB error"))
+                .thenReturn(1);
+
+        notificationService.sendToUsers(List.of(1L, 2L, 3L), n);
+
+        // 所有3个用户都应尝试插入（错误被隔离）
+        verify(notificationMapper, times(3)).insert(any(Notification.class));
+    }
+
+    @Test
     @DisplayName("countUnread — 应返回未读通知数")
     void countUnread_returnsCount() {
         when(notificationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(5L);

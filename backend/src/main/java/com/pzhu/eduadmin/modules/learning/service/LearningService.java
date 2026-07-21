@@ -34,4 +34,7 @@ public interface LearningService {
 
     /** 学员成长档案（出勤率+作业列表+老师点评总汇） */
     Map<String, Object> getStudentArchive(Long studentId);
+
+    /** H13 fix: 校验教师是否有权访问指定学员（学员在教师所教班级中） */
+    void verifyTeacherStudentAccess(Long teacherId, Long studentId);
 }

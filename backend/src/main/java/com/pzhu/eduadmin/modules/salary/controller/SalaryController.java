@@ -67,7 +67,9 @@ public class SalaryController {
         if (teacherIdObj == null) throw new BusinessException(400, "teacherId不能为空");
         Long teacherId = Long.valueOf(teacherIdObj.toString());
 
-        String salaryMonth = (String) body.get("salaryMonth");
+        // M12 fix: 安全类型转换，防止客户端传入数字类型导致 ClassCastException
+        Object salaryMonthObj = body.get("salaryMonth");
+        String salaryMonth = salaryMonthObj != null ? String.valueOf(salaryMonthObj) : null;
         if (salaryMonth == null || salaryMonth.isBlank()) throw new BusinessException(400, "salaryMonth不能为空");
 
         BigDecimal bonusAmount = BigDecimal.ZERO;
@@ -116,7 +118,12 @@ public class SalaryController {
             throw new BusinessException(400, "adjustAmount格式不正确");
         }
 
-        String reason = (String) body.get("reason");
+        // M11 fix: 校验 reason 非空（DB 列为 NOT NULL），并安全转换类型
+        Object reasonObj = body.get("reason");
+        String reason = reasonObj != null ? String.valueOf(reasonObj) : null;
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(400, "调整原因不能为空");
+        }
         Long operatorId = CurrentUserHolder.get().getUserId();
         return Result.success(salaryService.createAdjustment(salaryId, adjustAmount, reason, operatorId));
     }

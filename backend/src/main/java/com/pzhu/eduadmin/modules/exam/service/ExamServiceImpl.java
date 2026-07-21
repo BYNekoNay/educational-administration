@@ -12,6 +12,7 @@ import com.pzhu.eduadmin.modules.exam.mapper.ExamSignupMapper;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -137,12 +138,29 @@ public class ExamServiceImpl implements ExamService {
         if (existCount > 0) {
             throw new BusinessException(409, "该学员已报名此考级项目");
         }
-        examSignupMapper.insert(signup);
+        try {
+            examSignupMapper.insert(signup);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(409, "该学员已报名此考级项目");
+        }
         return signup;
     }
 
     @Override
     public ExamSignup updateExamSignup(ExamSignup signup) {
+        // Bug#41: 校验记录存在性及状态变更合法性
+        ExamSignup existing = examSignupMapper.selectById(signup.getId());
+        if (existing == null) {
+            throw new BusinessException(404, "报名记录不存在");
+        }
+        // 有效状态变更: 1→2(通过), 1→3(未通过)，不允许其他变更
+        if (signup.getStatus() != null && !signup.getStatus().equals(existing.getStatus())) {
+            // M14 fix: 使用 Integer.equals 防止 null 自动拆箱 NPE
+            if (!Integer.valueOf(1).equals(existing.getStatus())
+                    || (!Integer.valueOf(2).equals(signup.getStatus()) && !Integer.valueOf(3).equals(signup.getStatus()))) {
+                throw new BusinessException(400, "无效的状态变更");
+            }
+        }
         examSignupMapper.updateById(signup);
         return examSignupMapper.selectById(signup.getId());
     }

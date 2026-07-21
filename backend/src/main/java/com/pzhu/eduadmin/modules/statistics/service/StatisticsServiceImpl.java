@@ -207,8 +207,12 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         // 3. 到课率趋势（近6月）
         List<Map<String, Object>> attendanceTrend = new ArrayList<>();
+        // Bug#43: 限制查询范围为近6个月，避免加载全量历史数据导致内存溢出
+        LocalDate sixMonthsAgo = LocalDate.now().minusMonths(6).withDayOfMonth(1);
         List<ScheduleLesson> allLessons = scheduleLessonMapper.selectList(
-                new LambdaQueryWrapper<ScheduleLesson>().eq(ScheduleLesson::getStatus, 2));
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .eq(ScheduleLesson::getStatus, 2)
+                        .ge(ScheduleLesson::getLessonDate, sixMonthsAgo));
         Set<Long> allLessonIds = allLessons.stream().map(ScheduleLesson::getId).collect(Collectors.toSet());
         // S4: 空集合 IN 防护 — 无已完成课次时跳过考勤查询，避免全表扫描
         List<Attendance> allAttendances;
@@ -228,8 +232,8 @@ public class StatisticsServiceImpl implements StatisticsService {
                 LocalDate d = l.getLessonDate();
                 return d != null && YearMonth.from(d).equals(ym);
             }).map(ScheduleLesson::getId).collect(Collectors.toSet());
-            long attended = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && (a.getStatus() == 1 || a.getStatus() == 2)).count();
-            long total = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && (a.getStatus() == 1 || a.getStatus() == 2 || a.getStatus() == 3)).count();
+            long attended = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2)).count();
+            long total = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2 || a.getStatus() == 3)).count();
             BigDecimal rate = total > 0
                     ? BigDecimal.valueOf(attended).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(total), 1, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
@@ -282,8 +286,9 @@ public class StatisticsServiceImpl implements StatisticsService {
                         .le(ScheduleLesson::getLessonDate, monthEnd)
                         .eq(ScheduleLesson::getStatus, 2));
 
-        // 按教师聚合统计
+        // 按教师聚合统计（过滤掉未分配教师的课次，避免 NPE）
         Map<Long, Long> teacherCountMap = lessons.stream()
+                .filter(l -> l.getTeacherId() != null)
                 .collect(Collectors.groupingBy(ScheduleLesson::getTeacherId, Collectors.counting()));
 
         // 获取教师姓名
@@ -320,16 +325,20 @@ public class StatisticsServiceImpl implements StatisticsService {
             LocalDate monthStart = ym.atDay(1);
             LocalDate monthEnd = ym.atEndOfMonth();
 
-            // M4 修复: 月初在班人数 = 月初之前入班且仍活跃的学员
+            // Bug#4 修复: 使用时间逻辑代替当前状态过滤，避免历史月份数据偏低
+            // 月初在班人数 = 月初之前入班 且 在月初时仍在班（当前仍活跃，或离班时间>=月初）
             long beginCount = classStudentMapper.selectCount(
                     new LambdaQueryWrapper<ClassStudent>()
-                            .eq(ClassStudent::getStatus, 1)
-                            .lt(ClassStudent::getJoinTime, monthStart.atStartOfDay()));
+                            .lt(ClassStudent::getJoinTime, monthStart.atStartOfDay())
+                            .and(w -> w
+                                    .eq(ClassStudent::getStatus, 1)
+                                    .or(o -> o
+                                            .ne(ClassStudent::getStatus, 1)
+                                            .ge(ClassStudent::getUpdateTime, monthStart.atStartOfDay()))));
 
-            // 本月新入班人数
+            // 本月新入班人数（不论当前状态，只要入班时间在本月内）
             long newJoinCount = classStudentMapper.selectCount(
                     new LambdaQueryWrapper<ClassStudent>()
-                            .eq(ClassStudent::getStatus, 1)
                             .ge(ClassStudent::getJoinTime, monthStart.atStartOfDay())
                             .lt(ClassStudent::getJoinTime, monthEnd.plusDays(1).atStartOfDay()));
 
@@ -387,14 +396,17 @@ public class StatisticsServiceImpl implements StatisticsService {
         Map<Long, Long> attendancePresent = new HashMap<>();
         Map<Long, Long> attendanceTotal = new HashMap<>();
         if (!allLessonIds.isEmpty()) {
+            // L4 fix: 构建 Map 替代 O(n×m) 线性扫描
+            Map<Long, ScheduleLesson> lessonMap = lessons.stream()
+                    .collect(Collectors.toMap(ScheduleLesson::getId, l -> l));
             List<Attendance> attendances = attendanceMapper.selectList(
                     new LambdaQueryWrapper<Attendance>().in(Attendance::getLessonId, allLessonIds));
             for (Attendance a : attendances) {
-                ScheduleLesson sl = lessons.stream().filter(l -> l.getId().equals(a.getLessonId())).findFirst().orElse(null);
+                ScheduleLesson sl = lessonMap.get(a.getLessonId());
                 if (sl == null) continue;
                 Long cid = sl.getClassId();
                 attendanceTotal.merge(cid, 1L, Long::sum);
-                if (a.getStatus() == 1 || a.getStatus() == 2) {
+                if (a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2)) {
                     attendancePresent.merge(cid, 1L, Long::sum);
                 }
             }
@@ -433,7 +445,10 @@ public class StatisticsServiceImpl implements StatisticsService {
                 new LambdaQueryWrapper<Course>().orderByDesc(Course::getId));
         if (courses.isEmpty()) return Collections.emptyList();
 
-        List<PaymentRecord> payments = paymentRecordMapper.selectList(new LambdaQueryWrapper<>());
+        // M27: 仅加载现有课程的缴费记录，避免全表加载 OOM
+        Set<Long> courseIds = courses.stream().map(Course::getId).collect(Collectors.toSet());
+        List<PaymentRecord> payments = paymentRecordMapper.selectList(
+                new LambdaQueryWrapper<PaymentRecord>().in(PaymentRecord::getCourseId, courseIds));
         List<RefundRecord> refunds = refundRecordMapper.selectList(
                 new LambdaQueryWrapper<RefundRecord>().eq(RefundRecord::getStatus, 2));
 
@@ -486,39 +501,44 @@ public class StatisticsServiceImpl implements StatisticsService {
                 new LambdaQueryWrapper<Course>().orderByDesc(Course::getId));
         if (courses.isEmpty()) return Collections.emptyList();
 
-        // 实收
-        List<PaymentRecord> payments = paymentRecordMapper.selectList(new LambdaQueryWrapper<>());
-        Map<Long, BigDecimal> paidMap = new HashMap<>();
-        for (PaymentRecord p : payments) {
-            if (p.getCourseId() != null) {
-                paidMap.merge(p.getCourseId(), p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO, BigDecimal::add);
-            }
-        }
+        // Bug#39: 使用报名数量比率代替金额比率，避免课程调价导致历史数据不准确
+        // M27: 仅加载现有课程的缴费记录，避免全表加载 OOM
+        Set<Long> courseIds = courses.stream().map(Course::getId).collect(Collectors.toSet());
+        List<PaymentRecord> payments = paymentRecordMapper.selectList(
+                new LambdaQueryWrapper<PaymentRecord>().in(PaymentRecord::getCourseId, courseIds));
+        Set<Long> paidEnrollmentIds = payments.stream()
+                .map(PaymentRecord::getEnrollmentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
 
-        // 应收：enrollment × price（仅审核通过/已缴费状态）
+        // 报名记录（仅审核通过/已缴费状态）
         List<Enrollment> enrollments = enrollmentMapper.selectList(
                 new LambdaQueryWrapper<Enrollment>().in(Enrollment::getStatus, 2, 3));
-        Map<Long, BigDecimal> expectedMap = new HashMap<>();
+
+        // 按课程统计：总报名数 vs 已缴费报名数
+        Map<Long, Long> totalMap = new HashMap<>();
+        Map<Long, Long> paidCountMap = new HashMap<>();
         for (Enrollment e : enrollments) {
             if (e.getCourseId() != null) {
-                Course c = courses.stream().filter(x -> x.getId().equals(e.getCourseId())).findFirst().orElse(null);
-                BigDecimal price = (c != null && c.getPrice() != null) ? c.getPrice() : BigDecimal.ZERO;
-                expectedMap.merge(e.getCourseId(), price, BigDecimal::add);
+                totalMap.merge(e.getCourseId(), 1L, Long::sum);
+                if (paidEnrollmentIds.contains(e.getId())) {
+                    paidCountMap.merge(e.getCourseId(), 1L, Long::sum);
+                }
             }
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (Course c : courses) {
-            BigDecimal paid = paidMap.getOrDefault(c.getId(), BigDecimal.ZERO);
-            BigDecimal expected = expectedMap.getOrDefault(c.getId(), BigDecimal.ZERO);
-            double rate = expected.compareTo(BigDecimal.ZERO) > 0
-                    ? paid.divide(expected, 2, RoundingMode.HALF_UP).doubleValue()
+            long total = totalMap.getOrDefault(c.getId(), 0L);
+            long paid = paidCountMap.getOrDefault(c.getId(), 0L);
+            double rate = total > 0
+                    ? BigDecimal.valueOf(paid).divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP).doubleValue()
                     : 0.0;
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("courseId", c.getId());
             item.put("courseName", c.getName());
-            item.put("expected", expected.setScale(2, RoundingMode.HALF_UP));
-            item.put("paid", paid.setScale(2, RoundingMode.HALF_UP));
+            item.put("expected", total);
+            item.put("paid", paid);
             item.put("rate", rate);
             result.add(item);
         }

@@ -36,12 +36,21 @@ public class StudentController {
 
     @PostMapping
     public Result<Student> create(@Valid @RequestBody Student student) {
+        // Mass assignment protection: strip server-controlled fields
+        student.setId(null);
+        student.setIsDeleted(null);
+        student.setCreateTime(null);
+        student.setUpdateTime(null);
         return Result.success(studentService.createStudent(student));
     }
 
     @PutMapping("/{id}")
     public Result<Student> update(@PathVariable Long id, @RequestBody Student student) {
         student.setId(id);
+        // Mass assignment protection: strip server-controlled fields
+        student.setIsDeleted(null);
+        student.setCreateTime(null);
+        student.setUpdateTime(null);
         return Result.success(studentService.updateStudent(student));
     }
 

@@ -249,6 +249,10 @@ class EnrollmentServiceMockTest {
     @Test
     @DisplayName("delete - 有缴费记录时拒绝删除")
     void delete_hasPaymentRecords_shouldReject() {
+        Enrollment enrollment = new Enrollment();
+        enrollment.setId(6L);
+        enrollment.setStatus(1); // 待审核，允许进入后续检查
+        when(enrollmentMapper.selectById(6L)).thenReturn(enrollment);
         when(paymentRecordMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 
         assertThatThrownBy(() -> enrollmentService.delete(6L))
@@ -262,6 +266,10 @@ class EnrollmentServiceMockTest {
     @Test
     @DisplayName("delete - 有退费记录时拒绝删除")
     void delete_hasRefundRecords_shouldReject() {
+        Enrollment enrollment = new Enrollment();
+        enrollment.setId(7L);
+        enrollment.setStatus(1); // 待审核，允许进入后续检查
+        when(enrollmentMapper.selectById(7L)).thenReturn(enrollment);
         when(paymentRecordMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(refundRecordMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 

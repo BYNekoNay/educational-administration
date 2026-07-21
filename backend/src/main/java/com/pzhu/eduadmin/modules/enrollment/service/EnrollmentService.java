@@ -13,6 +13,10 @@ public interface EnrollmentService {
 
     Enrollment update(Enrollment enrollment);
 
+    void updateClassId(Long id, Long classId);
+
+    void validateClassBelongsToCourse(Long classId, Long courseId);
+
     boolean delete(Long id);
 
     Enrollment audit(Long id, Integer status, Long auditorId, String remark);

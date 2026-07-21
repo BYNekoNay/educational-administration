@@ -33,6 +33,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -74,6 +75,7 @@ class FinanceServiceMockTest {
         TableInfoHelper.initTableInfo(assistant, PaymentRecord.class);
         TableInfoHelper.initTableInfo(assistant, ClassStudent.class);
         TableInfoHelper.initTableInfo(assistant, ClassGroup.class);
+        TableInfoHelper.initTableInfo(assistant, Enrollment.class);
     }
 
     @BeforeEach
@@ -225,7 +227,8 @@ class FinanceServiceMockTest {
             doReturn(1).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
             when(classGroupMapper.selectById(5L)).thenReturn(classGroup);
             when(classStudentMapper.selectCount(any())).thenReturn(0L);
-            when(classStudentMapper.selectOne(any())).thenReturn(refundedRecord);
+            // H2 fix: 第一次 selectOne 查活跃记录返回 null，第二次查退费记录返回 refundedRecord
+            when(classStudentMapper.selectOne(any())).thenReturn(null).thenReturn(refundedRecord);
             when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
             when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
 
@@ -349,7 +352,7 @@ class FinanceServiceMockTest {
 
             assertThatThrownBy(() -> financeService.createPayment(record))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("缴费金额不能为负数");
+                    .hasMessageContaining("缴费金额必须大于零");
         }
 
         @Test
@@ -403,6 +406,61 @@ class FinanceServiceMockTest {
             assertThat(result).isNotNull();
             assertThat(result.getId()).isEqualTo(200L);
             assertThat(existingAccount.getRemainingLessons()).isEqualByComparingTo(new BigDecimal("13"));
+        }
+
+        @Test
+        @DisplayName("Bug#10/#14 - 并发缴费CAS失败应抛异常（报名状态已变更）")
+        void shouldThrowWhenCasUpdateFails() {
+            Enrollment enrollment = buildEnrollment(1L, 10L, 20L, 2, null);
+            PaymentRecord record = buildPaymentRecord(1L, new BigDecimal("10"), new BigDecimal("1000"));
+
+            when(enrollmentMapper.selectById(1L)).thenReturn(enrollment);
+            // CAS update returns 0 → concurrent modification detected
+            doReturn(0).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
+
+            assertThatThrownBy(() -> financeService.createPayment(record))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("该报名状态已变更");
+
+            // Payment record should NOT be inserted
+            verify(paymentMapper, never()).insert(any(PaymentRecord.class));
+        }
+
+        @Test
+        @DisplayName("Bug#11 - 课时账户并发插入冲突时回退到更新路径")
+        void shouldFallbackToUpdateOnDuplicateKey() {
+            Enrollment enrollment = buildEnrollment(1L, 10L, 20L, 2, null);
+            PaymentRecord record = buildPaymentRecord(1L, new BigDecimal("10"), new BigDecimal("1000"));
+
+            LessonAccount existingAccount = new LessonAccount();
+            existingAccount.setId(50L);
+            existingAccount.setStudentId(10L);
+            existingAccount.setCourseId(20L);
+            existingAccount.setTotalLessons(new BigDecimal("20"));
+            existingAccount.setRemainingLessons(new BigDecimal("15"));
+
+            when(enrollmentMapper.selectById(1L)).thenReturn(enrollment);
+            doReturn(1).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
+            doAnswer(inv -> { inv.getArgument(0, PaymentRecord.class).setId(100L); return 1; })
+                    .when(paymentMapper).insert(any(PaymentRecord.class));
+            // First selectOne returns null (account doesn't exist yet)
+            // After DuplicateKeyException, second selectOne returns the account created by another thread
+            when(accountMapper.selectOne(any())).thenReturn(null).thenReturn(existingAccount);
+            // Insert throws DuplicateKeyException (another thread created it first)
+            doThrow(new DuplicateKeyException("Duplicate entry"))
+                    .when(accountMapper).insert(any(LessonAccount.class));
+            when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
+            doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
+
+            PaymentRecord result = financeService.createPayment(record);
+
+            assertThat(result).isNotNull();
+            assertThat(result.getId()).isEqualTo(100L);
+            // Should have fallen through to update path: 15 + 10 = 25
+            assertThat(existingAccount.getRemainingLessons()).isEqualByComparingTo(new BigDecimal("25"));
+            assertThat(existingAccount.getTotalLessons()).isEqualByComparingTo(new BigDecimal("30"));
+            verify(accountMapper).updateById(any(LessonAccount.class));
         }
     }
 
@@ -563,7 +621,7 @@ class FinanceServiceMockTest {
             account.setRemainingLessons(new BigDecimal("20"));
 
             when(refundMapper.selectById(1L)).thenReturn(record);
-            when(refundMapper.update(any(), any())).thenReturn(1);
+            // Bug #3 fix: validation now runs BEFORE CAS update, so refundMapper.update is never reached
             when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2400"));
             when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
             when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(1L);
@@ -609,12 +667,25 @@ class FinanceServiceMockTest {
             record.setId(5L);
             record.setStatus(1);
             record.setApplicantId(2L);
+            record.setEnrollmentId(1L);
+            record.setStudentId(10L);
+
+            LessonAccount account = new LessonAccount();
+            account.setId(50L);
+            account.setTotalLessons(new BigDecimal("20"));
+            account.setRemainingLessons(new BigDecimal("10"));
 
             when(refundMapper.selectById(5L)).thenReturn(record);
+            // Bug #3 fix: validation runs before CAS, so provide validation mocks
+            when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
+            when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2000"));
+            when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
+            when(accountMapper.selectOne(any())).thenReturn(account);
+            // CAS update returns 0 → concurrent audit detected
             when(refundMapper.update(any(), any())).thenReturn(0);
 
             assertThatThrownBy(() ->
-                    financeService.auditRefund(5L, 2, 4L, BigDecimal.ZERO))
+                    financeService.auditRefund(5L, 2, 4L, new BigDecimal("500")))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("已被处理");
         }
@@ -678,6 +749,89 @@ class FinanceServiceMockTest {
             // Remaining: 10 - 10 = 0, should trigger class removal
             assertThat(account.getRemainingLessons()).isEqualByComparingTo(BigDecimal.ZERO);
             verify(classStudentMapper).update(any(), any());
+        }
+
+        @Test
+        @DisplayName("Bug#2 - 自动计算的退费金额必须持久化到DB（审核人未指定金额时）")
+        void shouldPersistAutoCalculatedAmount() {
+            RefundRecord record = new RefundRecord();
+            record.setId(20L);
+            record.setStatus(1);
+            record.setEnrollmentId(1L);
+            record.setStudentId(10L);
+            record.setApplicantId(2L);
+            record.setLessonCount(new BigDecimal("5"));
+
+            LessonAccount account = new LessonAccount();
+            account.setId(50L);
+            account.setStudentId(10L);
+            account.setTotalLessons(new BigDecimal("20"));
+            account.setRemainingLessons(new BigDecimal("10"));
+
+            when(refundMapper.selectById(20L)).thenReturn(record);
+            when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
+            // totalPaid=2000, totalLessons=20 → pricePerLesson=100
+            when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2000"));
+            when(paymentMapper.sumLessonCountByEnrollmentId(1L)).thenReturn(new BigDecimal("20"));
+            when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
+            when(accountMapper.selectOne(any())).thenReturn(account);
+            when(refundMapper.update(any(), any())).thenReturn(1);
+            when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
+            doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
+            lenient().when(classGroupMapper.selectList(any())).thenReturn(Collections.emptyList());
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
+
+            // Auditor passes BigDecimal.ZERO → auto-calculate: remainingLessons(10) * pricePerLesson(100) = 1000
+            RefundRecord result = financeService.auditRefund(20L, 2, 4L, BigDecimal.ZERO);
+
+            // Bug #2 fix: auto-calculated amount (1000) must be set on record and persisted
+            assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("1000.00"));
+            // Verify amount persistence update was called (CAS update + amount update = 2 calls)
+            verify(refundMapper, times(2)).update(any(), any());
+        }
+
+        @Test
+        @DisplayName("Bug#3 - 全额退费不被当前记录重复计入所阻塞")
+        void shouldAllowFullRefund_withoutDoubleCounting() {
+            // Scenario: totalPaid=2000, no prior approved refunds.
+            // The current record's amount should NOT be included in totalRefunded
+            // because validation runs while record is still status=1.
+            RefundRecord record = new RefundRecord();
+            record.setId(30L);
+            record.setStatus(1);
+            record.setEnrollmentId(1L);
+            record.setStudentId(10L);
+            record.setApplicantId(2L);
+            record.setLessonCount(new BigDecimal("20"));
+
+            LessonAccount account = new LessonAccount();
+            account.setId(50L);
+            account.setStudentId(10L);
+            account.setTotalLessons(new BigDecimal("20"));
+            account.setRemainingLessons(new BigDecimal("20"));
+
+            when(refundMapper.selectById(30L)).thenReturn(record);
+            when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
+            when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2000"));
+            when(paymentMapper.sumLessonCountByEnrollmentId(1L)).thenReturn(new BigDecimal("20"));
+            // Bug #3: sumApprovedByEnrollmentId returns 0 because current record is still status=1
+            // (validation runs BEFORE CAS update). If it incorrectly returned 2000 (including
+            // the current record), maxRefundable would be 0 and the refund would be blocked.
+            when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
+            when(accountMapper.selectOne(any())).thenReturn(account);
+            when(refundMapper.update(any(), any())).thenReturn(1);
+            when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
+            doReturn(1).when(flowMapper).insert(any(LessonFlow.class));
+            lenient().when(classGroupMapper.selectList(any())).thenReturn(Collections.emptyList());
+            when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
+
+            // Full refund of 2000 should succeed (maxRefundable = 2000 - 0 = 2000)
+            RefundRecord result = financeService.auditRefund(30L, 2, 4L, new BigDecimal("2000"));
+
+            assertThat(result).isNotNull();
+            assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("2000"));
+            assertThat(account.getRemainingLessons()).isEqualByComparingTo(BigDecimal.ZERO);
+            verify(flowMapper).insert(any(LessonFlow.class));
         }
     }
 

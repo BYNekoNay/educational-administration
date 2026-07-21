@@ -252,14 +252,18 @@ class SalaryServiceMockTest {
     // ==================== createAdjustment ====================
 
     @Test
-    @DisplayName("创建薪资调整 - 已确认薪资可调整")
+    @DisplayName("创建薪资调整 - 已确认薪资可调整，且totalAmount被更新")
     void createAdjustment_shouldSucceedOnConfirmedSalary() {
         TeacherSalary confirmed = new TeacherSalary();
         confirmed.setId(1L);
         confirmed.setStatus(2); // 已确认
+        confirmed.setBaseAmount(new BigDecimal("3000"));
+        confirmed.setBonusAmount(new BigDecimal("200"));
 
         when(salaryMapper.selectById(1L)).thenReturn(confirmed);
         when(adjustMapper.insert(any(SalaryAdjustment.class))).thenReturn(1);
+        // H12 fix: 现在使用原子 SQL 递增 totalAmount
+        when(salaryMapper.update(any(), any())).thenReturn(1);
 
         SalaryAdjustment result = salaryService.createAdjustment(
                 1L, new BigDecimal("500"), "绩效奖金", 1L);
@@ -270,7 +274,9 @@ class SalaryServiceMockTest {
         assertThat(result.getReason()).isEqualTo("绩效奖金");
         assertThat(result.getOperatorId()).isEqualTo(1L);
 
+        // H12 fix: totalAmount 通过原子 SQL 递增，验证 update(null, wrapper) 被调用
         verify(adjustMapper).insert(any(SalaryAdjustment.class));
+        verify(salaryMapper).update(any(), any());
     }
 
     @Test

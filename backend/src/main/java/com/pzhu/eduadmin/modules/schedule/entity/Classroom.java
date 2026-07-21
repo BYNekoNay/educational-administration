@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.schedule.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -32,6 +33,7 @@ public class Classroom {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
+    @JsonIgnore
     @TableLogic
     private Integer isDeleted;
 }

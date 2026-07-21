@@ -47,3 +47,19 @@ CREATE TABLE IF NOT EXISTS schedule_lock (
   lock_name VARCHAR(50) NOT NULL UNIQUE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='排课事务互斥锁';
 INSERT IGNORE INTO schedule_lock (id, lock_name) VALUES (1, 'auto_schedule');
+
+-- Bug #32: teacher_salary 增加 substitute_amount 列（代课金额单独持久化）
+SET @substitute_amount_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'teacher_salary'
+    AND COLUMN_NAME = 'substitute_amount'
+);
+SET @substitute_amount_sql = IF(
+  @substitute_amount_exists = 0,
+  'ALTER TABLE teacher_salary ADD COLUMN substitute_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT ''代课金额'' AFTER base_amount',
+  'SELECT 1'
+);
+PREPARE substitute_amount_stmt FROM @substitute_amount_sql;
+EXECUTE substitute_amount_stmt;
+DEALLOCATE PREPARE substitute_amount_stmt;

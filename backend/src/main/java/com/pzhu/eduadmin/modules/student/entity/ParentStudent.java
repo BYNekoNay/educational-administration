@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.student.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ public class ParentStudent {
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
+    @JsonIgnore
     @TableLogic
     private Integer isDeleted;
 }

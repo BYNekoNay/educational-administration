@@ -95,19 +95,22 @@ public class ScheduleConflictServiceImpl implements ScheduleConflictService {
      */
     private void detectStudentConflicts(ScheduleLesson lesson, List<ScheduleLesson> existingLessons,
                                          LocalTime newStart, LocalTime newEnd, List<String> conflicts) {
-        // 获取本班级学员列表
+        // 获取本班级学员列表（仅活跃学员，避免已退费/毕业学员产生误报冲突）
         List<ClassStudent> classStudents = classStudentMapper.selectList(
-                new LambdaQueryWrapper<ClassStudent>().eq(ClassStudent::getClassId, lesson.getClassId()));
+                new LambdaQueryWrapper<ClassStudent>()
+                        .eq(ClassStudent::getClassId, lesson.getClassId())
+                        .eq(ClassStudent::getStatus, 1));
         if (classStudents.isEmpty()) return;
 
         Set<Long> studentIds = classStudents.stream()
                 .map(ClassStudent::getStudentId).collect(Collectors.toSet());
 
-        // 获取这些学员在其他班级的报名记录
+        // 获取这些学员在其他班级的活跃报名记录
         List<ClassStudent> otherEnrollments = classStudentMapper.selectList(
                 new LambdaQueryWrapper<ClassStudent>()
                         .in(ClassStudent::getStudentId, studentIds)
-                        .ne(ClassStudent::getClassId, lesson.getClassId()));
+                        .ne(ClassStudent::getClassId, lesson.getClassId())
+                        .eq(ClassStudent::getStatus, 1));
         if (otherEnrollments.isEmpty()) return;
 
         Set<Long> otherClassIds = otherEnrollments.stream()

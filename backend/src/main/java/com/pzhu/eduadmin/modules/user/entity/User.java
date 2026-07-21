@@ -37,9 +37,11 @@ public class User {
     private LocalDateTime updateTime;
 
     @TableLogic
+    @JsonIgnore
     private Integer isDeleted;
 
     /** Token 版本号：禁用用户或变更角色时递增，使旧 Token 失效 */
+    @JsonIgnore
     private Integer version;
 
     // ---- 关联数据（不持久化） ----

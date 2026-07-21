@@ -416,6 +416,7 @@ CREATE TABLE `teacher_salary` (
   lesson_count DECIMAL(6,2) NOT NULL DEFAULT 0,
   substitute_count DECIMAL(6,2) NOT NULL DEFAULT 0,
   base_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  substitute_amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '代课金额',
   bonus_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
   status TINYINT NOT NULL DEFAULT 1 COMMENT '1-待确认，2-已确认，3-已发放，4-已撤销',

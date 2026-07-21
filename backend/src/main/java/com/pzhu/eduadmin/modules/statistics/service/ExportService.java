@@ -33,7 +33,7 @@ public class ExportService {
         List<PaymentRecord> records = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>()
                         .ge(startDate != null, PaymentRecord::getPayTime, startDate != null ? startDate + " 00:00:00" : null)
-                        .le(endDate != null, PaymentRecord::getPayTime, endDate != null ? endDate + " 23:59:59" : null)
+                        .lt(endDate != null, PaymentRecord::getPayTime, endDate != null ? java.time.LocalDate.parse(endDate).plusDays(1) + " 00:00:00" : null)
                         .orderByDesc(PaymentRecord::getPayTime));
 
         setResponseHeader(response, "收费台账.xlsx");
@@ -56,7 +56,9 @@ public class ExportService {
                 row.createCell(3).setCellValue(r.getCourseId());
                 row.createCell(4).setCellValue(r.getLessonCount() != null ? r.getLessonCount().doubleValue() : 0);
                 row.createCell(5).setCellValue(r.getAmount() != null ? r.getAmount().doubleValue() : 0);
-                row.createCell(6).setCellValue(r.getPayType() == 1 ? "现金" : r.getPayType() == 2 ? "模拟支付" : "其他");
+                // H15 fix: 防止 payType 为 null 时自动拆箱 NPE
+                Integer pt = r.getPayType();
+                row.createCell(6).setCellValue(pt != null && pt == 1 ? "现金" : pt != null && pt == 2 ? "模拟支付" : "其他");
                 row.createCell(7).setCellValue(r.getPayTime() != null ? r.getPayTime().toString() : "");
                 row.createCell(8).setCellValue(r.getRemark() != null ? r.getRemark() : "");
             }
@@ -71,7 +73,7 @@ public class ExportService {
         List<LessonFlow> records = lessonFlowMapper.selectList(
                 new LambdaQueryWrapper<LessonFlow>()
                         .ge(startDate != null, LessonFlow::getCreateTime, startDate != null ? startDate + " 00:00:00" : null)
-                        .le(endDate != null, LessonFlow::getCreateTime, endDate != null ? endDate + " 23:59:59" : null)
+                        .lt(endDate != null, LessonFlow::getCreateTime, endDate != null ? java.time.LocalDate.parse(endDate).plusDays(1) + " 00:00:00" : null)
                         .orderByDesc(LessonFlow::getCreateTime));
 
         setResponseHeader(response, "课时消耗报表.xlsx");

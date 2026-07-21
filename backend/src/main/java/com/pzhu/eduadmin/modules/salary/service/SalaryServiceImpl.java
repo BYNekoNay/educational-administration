@@ -25,6 +25,7 @@ import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -102,6 +103,9 @@ public class SalaryServiceImpl implements SalaryService {
             throw new BusinessException(400, "课时单价必须大于0");
         }
         if (rule.getSubstituteRate() == null) rule.setSubstituteRate(BigDecimal.ONE);
+        if (rule.getSubstituteRate().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(400, "代课系数必须大于0");
+        }
         // Issue #19: 检查教师+课程唯一性
         Long existCount = salaryRuleMapper.selectCount(
                 new LambdaQueryWrapper<SalaryRule>()
@@ -110,7 +114,12 @@ public class SalaryServiceImpl implements SalaryService {
         if (existCount > 0) {
             throw new BusinessException(409, "该教师在此课程已有薪资规则，不可重复创建");
         }
-        salaryRuleMapper.insert(rule);
+        // H6 fix: 软删除行仍占用物理唯一键，捕获 DuplicateKeyException
+        try {
+            salaryRuleMapper.insert(rule);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(409, "该教师在此课程已有薪资规则（含已删除），不可重复创建");
+        }
         return rule;
     }
 
@@ -123,6 +132,12 @@ public class SalaryServiceImpl implements SalaryService {
         if (rule.getLessonUnitPrice() != null && rule.getLessonUnitPrice().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(400, "课时单价必须大于0");
         }
+        if (rule.getSubstituteRate() != null && rule.getSubstituteRate().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(400, "代课系数必须大于0");
+        }
+        // M24: 禁止修改 teacherId/courseId，防止历史薪资重算使用错误费率
+        rule.setTeacherId(null);
+        rule.setCourseId(null);
         salaryRuleMapper.updateById(rule);
         return salaryRuleMapper.selectById(rule.getId());
     }
@@ -299,6 +314,7 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setLessonCount(mainLessonCount);
         salary.setSubstituteCount(substituteCount);
         salary.setBaseAmount(baseAmount);
+        salary.setSubstituteAmount(substituteAmount); // Bug #32 fix: 代课金额单独持久化
         salary.setBonusAmount(bonusAmount);
         salary.setTotalAmount(totalAmount);
         salary.setStatus(1); // 待确认
@@ -307,7 +323,11 @@ public class SalaryServiceImpl implements SalaryService {
         if (existing != null) {
             teacherSalaryMapper.updateById(salary);
         } else {
-            teacherSalaryMapper.insert(salary);
+            try {
+                teacherSalaryMapper.insert(salary);
+            } catch (DuplicateKeyException e) {
+                throw new BusinessException(409, "该月薪资正在被其他操作核算，请稍后重试");
+            }
         }
         return salary;
     }
@@ -362,6 +382,7 @@ public class SalaryServiceImpl implements SalaryService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public SalaryAdjustment createAdjustment(Long salaryId, BigDecimal adjustAmount, String reason, Long operatorId) {
         TeacherSalary salary = teacherSalaryMapper.selectById(salaryId);
         if (salary == null) throw new BusinessException(404, "薪资记录不存在");
@@ -376,6 +397,14 @@ public class SalaryServiceImpl implements SalaryService {
         adj.setReason(reason);
         adj.setOperatorId(operatorId);
         salaryAdjustmentMapper.insert(adj);
+
+        // H12 fix: 原子 SQL 递增 totalAmount，防止并发调整丢失更新
+        // （原 read-sum-write 在 REPEATABLE_READ 下并发时 SUM 仅见自身插入）
+        teacherSalaryMapper.update(null,
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<TeacherSalary>()
+                        .eq(TeacherSalary::getId, salaryId)
+                        .setSql("total_amount = total_amount + " + adjustAmount.toPlainString()));
+
         return adj;
     }
 

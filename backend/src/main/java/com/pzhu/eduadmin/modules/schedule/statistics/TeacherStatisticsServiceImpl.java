@@ -54,7 +54,7 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("month", e.getKey());
             item.put("lessonCount", e.getValue().lessonCount);
-            item.put("totalHours", e.getValue().totalHours);
+            item.put("totalHours", e.getValue().totalMinutes / 60.0);
             item.put("substituteCount", e.getValue().substituteCount);
             item.put("studentCount", countDistinctStudents(e.getValue().lessonIds));
             result.add(item);
@@ -75,12 +75,12 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
                         .le(ScheduleLesson::getLessonDate, to));
 
         long lessonCount = lessons.size();
-        long totalHours = lessons.stream()
+        double totalHours = lessons.stream()
                 .mapToLong(l -> {
                     try {
                         return java.time.Duration.between(l.getStartTime(), l.getEndTime()).toMinutes();
                     } catch (Exception ex) { return 60; } // 默认1小时
-                }).sum() / 60;
+                }).sum() / 60.0;
 
         long studentCount = countDistinctStudents(
                 lessons.stream().map(ScheduleLesson::getId).collect(java.util.stream.Collectors.toSet()));
@@ -140,7 +140,7 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
 
     private static class MonthAccum {
         long lessonCount = 0;
-        long totalHours = 0;
+        long totalMinutes = 0;
         long substituteCount = 0;
         Set<Long> lessonIds = new HashSet<>();
         void add(ScheduleLesson l) {
@@ -148,7 +148,7 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
             if (l.getSourceLessonId() != null) substituteCount++;
             long dur = 60;
             try { dur = java.time.Duration.between(l.getStartTime(), l.getEndTime()).toMinutes(); } catch (Exception ignored) {}
-            totalHours += dur;
+            totalMinutes += dur;
             if (l.getId() != null) lessonIds.add(l.getId());
         }
     }

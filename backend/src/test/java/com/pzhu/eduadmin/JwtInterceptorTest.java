@@ -165,6 +165,7 @@ class JwtInterceptorTest {
         User u = new User();
         u.setVersion(0);
         u.setStatus(1);
+        u.setRoleCode("SUPER_ADMIN");
         when(userMapper.selectOne(any())).thenReturn(u);
 
         // 模拟 @RequireRole({"SUPER_ADMIN"})
@@ -183,6 +184,7 @@ class JwtInterceptorTest {
         User u = new User();
         u.setVersion(0);
         u.setStatus(1);
+        u.setRoleCode("TEACHER");
         when(userMapper.selectOne(any())).thenReturn(u);
 
         when(handlerMethod.getMethodAnnotation(RequireRole.class))
@@ -226,6 +228,7 @@ class JwtInterceptorTest {
         User u = new User();
         u.setVersion(0);
         u.setStatus(1);
+        u.setRoleCode("TEACHER");
         when(userMapper.selectOne(any())).thenReturn(u);
         when(handlerMethod.getMethodAnnotation(RequireRole.class))
                 .thenReturn(createRequireRole("SUPER_ADMIN"));

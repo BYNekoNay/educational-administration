@@ -279,6 +279,8 @@ class StudentServiceMockTest {
         User parentUser = new User();
         parentUser.setId(10L);
         parentUser.setRealName("张父");
+        parentUser.setRoleCode("PARENT");
+        parentUser.setStatus(1);
 
         Student student = new Student();
         student.setId(20L);
@@ -309,6 +311,8 @@ class StudentServiceMockTest {
 
         User parentUser = new User();
         parentUser.setId(10L);
+        parentUser.setRoleCode("PARENT");
+        parentUser.setStatus(1);
         Student student = new Student();
         student.setId(20L);
 
@@ -337,6 +341,8 @@ class StudentServiceMockTest {
 
         User parentUser = new User();
         parentUser.setId(10L);
+        parentUser.setRoleCode("PARENT");
+        parentUser.setStatus(1);
         Student student = new Student();
         student.setId(20L);
 
@@ -378,6 +384,8 @@ class StudentServiceMockTest {
 
         User parentUser = new User();
         parentUser.setId(10L);
+        parentUser.setRoleCode("PARENT");
+        parentUser.setStatus(1);
 
         when(userMapper.selectById(10L)).thenReturn(parentUser);
         when(studentMapper.selectById(999L)).thenReturn(null);
@@ -683,19 +691,13 @@ class StudentServiceMockTest {
         Page<PaymentRecord> emptyPage = new Page<>(1, 1);
         emptyPage.setRecords(Collections.emptyList());
         when(paymentRecordMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(emptyPage);
-        when(refundRecordMapper.insert(any(RefundRecord.class))).thenReturn(1);
 
         Map<String, Object> result = studentService.withdrawStudent(1L);
 
-        assertThat(result).containsEntry("message", "退班申请已提交，待财务审核退费");
-
-        // 无缴费记录时，退费申请不应关联 paymentRecordId 和 enrollmentId
-        ArgumentCaptor<RefundRecord> refundCaptor = ArgumentCaptor.forClass(RefundRecord.class);
-        verify(refundRecordMapper).insert(refundCaptor.capture());
-        RefundRecord refund = refundCaptor.getValue();
-        assertThat(refund.getPaymentRecordId()).isNull();
-        assertThat(refund.getEnrollmentId()).isNull();
-        assertThat(refund.getAmount()).isEqualTo(BigDecimal.ZERO);
+        // L9: 无缴费记录时不创建退费申请
+        assertThat(result).containsEntry("message", "退班完成，该学员无缴费记录");
+        assertThat(result).containsEntry("refundRecordId", null);
+        verify(refundRecordMapper, never()).insert(any(RefundRecord.class));
     }
 
     @Test

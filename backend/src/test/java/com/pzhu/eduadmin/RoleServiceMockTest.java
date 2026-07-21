@@ -224,6 +224,10 @@ class RoleServiceMockTest {
     @Test
     @DisplayName("更新角色权限 — 先清后建")
     void updateRolePermissions_Success() {
+        // M14: mock 角色存在性校验
+        when(roleMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        // L7: mock 权限码存在性校验（2个权限码）
+        when(permissionMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(2L);
         when(rolePermissionMapper.realDeleteByRoleCode("CUSTOM")).thenReturn(1);
         when(rolePermissionMapper.insert(any(RolePermission.class))).thenReturn(1);
 
@@ -238,6 +242,8 @@ class RoleServiceMockTest {
     @Test
     @DisplayName("更新角色权限为空列表 — 只删不建")
     void updateRolePermissions_EmptyList() {
+        // M14: mock 角色存在性校验
+        when(roleMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
         when(rolePermissionMapper.realDeleteByRoleCode("CUSTOM")).thenReturn(1);
 
 

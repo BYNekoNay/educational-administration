@@ -26,4 +26,10 @@ public interface ClassGroupMapper extends BaseMapper<ClassGroup> {
      */
     @Select("<script>SELECT cg.id AS id, c.name AS name FROM class_group cg JOIN course c ON c.id = cg.course_id WHERE cg.id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
     List<Map<String, Object>> selectCourseNamesByIdsIncludeDeleted(@Param("ids") Collection<Long> ids);
+
+    /**
+     * M1 fix: 绕过 @TableLogic 查询班级的 courseId（含已软删班级）
+     */
+    @Select("SELECT course_id FROM class_group WHERE id = #{classId}")
+    Long selectCourseIdByIdIncludeDeleted(@Param("classId") Long classId);
 }

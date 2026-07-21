@@ -9,7 +9,9 @@ import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.IpUtil;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
+import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
+import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.*;
 import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
@@ -56,7 +58,9 @@ class ScheduleServiceMockTest {
     @Mock private EntityNameResolver nameResolver;
     @Mock private ClassGroupMapper classGroupMapper;
     @Mock private UserMapper userMapper;
+    @Mock private CourseMapper courseMapper;
     @Mock private NotificationService notificationService;
+    @Mock private com.pzhu.eduadmin.modules.attendance.service.AttendanceService attendanceService;
 
     @InjectMocks
     private ScheduleServiceImpl scheduleService;
@@ -74,6 +78,7 @@ class ScheduleServiceMockTest {
         TableInfoHelper.initTableInfo(asst, ScheduleAdjustRequest.class);
         TableInfoHelper.initTableInfo(asst, ClassGroup.class);
         TableInfoHelper.initTableInfo(asst, User.class);
+        TableInfoHelper.initTableInfo(asst, Course.class);
     }
 
     @BeforeEach
@@ -186,6 +191,8 @@ class ScheduleServiceMockTest {
     void createLesson_NoConflict() {
         ScheduleLesson sl = new ScheduleLesson();
         sl.setLessonDate(LocalDate.of(2026, 7, 20));
+        sl.setStartTime(LocalTime.of(14, 0));
+        sl.setEndTime(LocalTime.of(15, 30));
         when(scheduleConflictService.checkConflict(any(ScheduleLesson.class))).thenReturn(Collections.emptyList());
         doAnswer(inv -> { inv.getArgument(0, ScheduleLesson.class).setId(100L); return 1; })
                 .when(scheduleLessonMapper).insert(any(ScheduleLesson.class));
@@ -199,6 +206,9 @@ class ScheduleServiceMockTest {
     @DisplayName("创建课次有冲突 — 抛出 409")
     void createLesson_HasConflict() {
         ScheduleLesson sl = new ScheduleLesson();
+        sl.setLessonDate(LocalDate.of(2026, 7, 20));
+        sl.setStartTime(LocalTime.of(14, 0));
+        sl.setEndTime(LocalTime.of(15, 30));
         when(scheduleConflictService.checkConflict(any(ScheduleLesson.class)))
                 .thenReturn(List.of("教师时间冲突"));
 
@@ -239,6 +249,12 @@ class ScheduleServiceMockTest {
     void updateLesson_HasConflict() {
         ScheduleLesson sl = new ScheduleLesson();
         sl.setId(100L);
+        // H6 fix: updateLesson 现在先加载现有记录再合并
+        ScheduleLesson existing = new ScheduleLesson();
+        existing.setId(100L);
+        existing.setTeacherId(1L);
+        existing.setClassId(1L);
+        when(scheduleLessonMapper.selectById(100L)).thenReturn(existing);
         when(scheduleConflictService.checkConflict(any(ScheduleLesson.class)))
                 .thenReturn(List.of("教室时间冲突"));
 
@@ -363,6 +379,12 @@ class ScheduleServiceMockTest {
     @DisplayName("创建教室预约")
     void createRoomBooking_Success() {
         RoomBooking rb = new RoomBooking();
+        // C3 fix: 必须提供 classroomId、startTime、endTime
+        rb.setClassroomId(1L);
+        rb.setStartTime(java.time.LocalDateTime.of(2026, 7, 21, 9, 0));
+        rb.setEndTime(java.time.LocalDateTime.of(2026, 7, 21, 10, 0));
+        // C3 fix: 冲突检查 + 插入后二次校验
+        when(roomBookingMapper.selectCount(any())).thenReturn(0L);
         doAnswer(inv -> { inv.getArgument(0, RoomBooking.class).setId(1L); return 1; })
                 .when(roomBookingMapper).insert(any(RoomBooking.class));
 
@@ -416,6 +438,9 @@ class ScheduleServiceMockTest {
     @DisplayName("创建调课申请")
     void createAdjustRequest_Success() {
         ScheduleAdjustRequest req = new ScheduleAdjustRequest();
+        req.setLessonId(10L);
+        // M9 fix: 需要校验课次存在
+        when(scheduleLessonMapper.selectById(10L)).thenReturn(new ScheduleLesson());
         doAnswer(inv -> { inv.getArgument(0, ScheduleAdjustRequest.class).setId(1L); return 1; })
                 .when(scheduleAdjustRequestMapper).insert(any(ScheduleAdjustRequest.class));
 
@@ -484,6 +509,8 @@ class ScheduleServiceMockTest {
         oldLesson.setClassId(5L);
         oldLesson.setTeacherId(3L);
         oldLesson.setClassroomId(2L);
+        oldLesson.setStartTime(LocalTime.of(14, 0));
+        oldLesson.setEndTime(LocalTime.of(15, 30));
         when(scheduleLessonMapper.selectById(oldLessonId)).thenReturn(oldLesson);
         when(scheduleLessonMapper.updateById(any(ScheduleLesson.class))).thenReturn(1);
 
@@ -538,6 +565,8 @@ class ScheduleServiceMockTest {
         oldLesson.setClassId(5L);
         oldLesson.setTeacherId(3L);
         oldLesson.setClassroomId(2L);
+        oldLesson.setStartTime(LocalTime.of(14, 0));
+        oldLesson.setEndTime(LocalTime.of(15, 30));
         when(scheduleLessonMapper.selectById(10L)).thenReturn(oldLesson);
         when(scheduleLessonMapper.updateById(any(ScheduleLesson.class))).thenReturn(1);
         when(scheduleConflictService.checkConflict(any(ScheduleLesson.class)))

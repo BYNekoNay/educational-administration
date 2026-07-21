@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.user.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.Result;
 import com.pzhu.eduadmin.modules.user.entity.Menu;
 import com.pzhu.eduadmin.modules.user.service.MenuService;
@@ -30,7 +31,9 @@ public class MenuController {
 
         for (Menu m : all) {
             Map<String, Object> node = toMap(m);
-            childrenMap.computeIfAbsent(m.getParentId(), k -> new ArrayList<>()).add(node);
+            // L1 fix: null parentId 归入顶层（0）
+            Long pid = m.getParentId() == null ? 0L : m.getParentId();
+            childrenMap.computeIfAbsent(pid, k -> new ArrayList<>()).add(node);
         }
 
         for (Map.Entry<Long, List<Map<String, Object>>> entry : childrenMap.entrySet()) {
@@ -48,17 +51,31 @@ public class MenuController {
 
     @GetMapping("/{id}")
     public Result<Menu> getById(@PathVariable Long id) {
-        return Result.success(menuService.getById(id));
+        // L6 fix: 不存在时返回 404 而非 200/null
+        Menu menu = menuService.getById(id);
+        if (menu == null) {
+            throw new BusinessException(404, "菜单不存在");
+        }
+        return Result.success(menu);
     }
 
     @PostMapping
     public Result<Menu> create(@RequestBody Menu menu) {
+        // Mass assignment protection: strip server-controlled fields
+        menu.setId(null);
+        menu.setIsDeleted(null);
+        menu.setCreateTime(null);
+        menu.setUpdateTime(null);
         return Result.success(menuService.create(menu));
     }
 
     @PutMapping("/{id}")
     public Result<Menu> update(@PathVariable Long id, @RequestBody Menu menu) {
         menu.setId(id);
+        // Mass assignment protection: strip server-controlled fields
+        menu.setIsDeleted(null);
+        menu.setCreateTime(null);
+        menu.setUpdateTime(null);
         return Result.success(menuService.update(menu));
     }
 

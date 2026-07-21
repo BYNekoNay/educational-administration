@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.auth.service.AuthService;
@@ -79,7 +80,7 @@ class AuthServiceMockTest {
     void login_Success() {
         User user = buildUser(1L, "admin", "SUPER_ADMIN", 1, 0);
         when(userMapper.selectOne(any())).thenReturn(user);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        when(userMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         when(jwtUtil.generateToken(1L, "admin", "SUPER_ADMIN", 0)).thenReturn("mock-jwt-token");
         when(roleService.getRolePermissions("SUPER_ADMIN")).thenReturn(List.of("menu:dashboard", "menu:user"));
 
@@ -95,7 +96,7 @@ class AuthServiceMockTest {
         assertThat(response.getRealName()).isEqualTo("测试用户");
         assertThat(response.getRoleCode()).isEqualTo("SUPER_ADMIN");
         assertThat(response.getPermissions()).containsExactly("menu:dashboard", "menu:user");
-        verify(userMapper).updateById(any(User.class));
+        verify(userMapper).update(any(), any(LambdaUpdateWrapper.class));
     }
 
     @Test
@@ -139,7 +140,7 @@ class AuthServiceMockTest {
 
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("账号已被禁用");
+                .hasMessageContaining("用户名或密码错误");
     }
 
     @Test
@@ -154,7 +155,7 @@ class AuthServiceMockTest {
 
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("账号已被禁用");
+                .hasMessageContaining("用户名或密码错误");
     }
 
     @Test
@@ -204,7 +205,7 @@ class AuthServiceMockTest {
         // 现在应该可以登录了（锁定已过期）
         User user = buildUser(1L, "admin", "SUPER_ADMIN", 1, 0);
         when(userMapper.selectOne(any())).thenReturn(user);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        when(userMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         when(jwtUtil.generateToken(anyLong(), anyString(), anyString(), anyInt())).thenReturn("token");
         when(roleService.getRolePermissions("SUPER_ADMIN")).thenReturn(List.of());
 
@@ -232,7 +233,7 @@ class AuthServiceMockTest {
 
         // 成功登录一次 — 计数器清零
         when(userMapper.selectOne(any())).thenReturn(admin);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        when(userMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         when(jwtUtil.generateToken(anyLong(), anyString(), anyString(), anyInt())).thenReturn("token");
         when(roleService.getRolePermissions(anyString())).thenReturn(List.of());
 
@@ -257,7 +258,7 @@ class AuthServiceMockTest {
     void login_VersionNullDefaultZero() {
         User user = buildUser(1L, "admin", "SUPER_ADMIN", 1, null);
         when(userMapper.selectOne(any())).thenReturn(user);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        when(userMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         when(roleService.getRolePermissions("SUPER_ADMIN")).thenReturn(List.of());
 
         LoginRequest request = new LoginRequest();
@@ -274,7 +275,7 @@ class AuthServiceMockTest {
     void login_UpdateLastLoginTime() {
         User user = buildUser(1L, "admin", "SUPER_ADMIN", 1, 0);
         when(userMapper.selectOne(any())).thenReturn(user);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        when(userMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         when(jwtUtil.generateToken(anyLong(), anyString(), anyString(), anyInt())).thenReturn("token");
         when(roleService.getRolePermissions("SUPER_ADMIN")).thenReturn(List.of());
 
@@ -284,9 +285,8 @@ class AuthServiceMockTest {
 
         authService.login(request);
 
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getLastLoginTime()).isNotNull();
+        // H1 fix 后使用 LambdaUpdateWrapper 仅更新 lastLoginTime，验证 update 被调用
+        verify(userMapper).update(any(), any(LambdaUpdateWrapper.class));
     }
 
     @Test
@@ -294,7 +294,7 @@ class AuthServiceMockTest {
     void login_PermissionsLoadFailedReturnsEmpty() {
         User user = buildUser(1L, "admin", "SUPER_ADMIN", 1, 0);
         when(userMapper.selectOne(any())).thenReturn(user);
-        when(userMapper.updateById(any(User.class))).thenReturn(1);
+        when(userMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         when(jwtUtil.generateToken(anyLong(), anyString(), anyString(), anyInt())).thenReturn("token");
         when(roleService.getRolePermissions("SUPER_ADMIN")).thenThrow(new RuntimeException("DB error"));
 

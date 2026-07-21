@@ -65,6 +65,7 @@ class StatisticsServiceTest {
         TableInfoHelper.initTableInfo(asst, Course.class);
         TableInfoHelper.initTableInfo(asst, ClassGroup.class);
         TableInfoHelper.initTableInfo(asst, Organization.class);
+        TableInfoHelper.initTableInfo(asst, Enrollment.class);
     }
 
     @Test
@@ -108,15 +109,17 @@ class StatisticsServiceTest {
     }
 
     @Test
-    @DisplayName("收费率 — 应返回应收/实收/比率")
+    @DisplayName("收费率 — 全部已缴费应返回 1.0")
     void getPaymentRate_withData() {
-        Course c1 = new Course(); c1.setId(1L); c1.setName("钢琴"); c1.setPrice(new BigDecimal("5000"));
+        Course c1 = new Course(); c1.setId(1L); c1.setName("钢琴");
         when(courseMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(c1));
 
-        PaymentRecord p = new PaymentRecord(); p.setCourseId(1L); p.setAmount(new BigDecimal("5000"));
-        Enrollment e = new Enrollment(); e.setCourseId(1L);
-        when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(p));
+        // 新逻辑：按报名数比率计算，缴费记录通过 enrollmentId 关联
+        Enrollment e = new Enrollment(); e.setId(100L); e.setCourseId(1L); e.setStatus(2);
         when(enrollmentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(e));
+
+        PaymentRecord p = new PaymentRecord(); p.setEnrollmentId(100L);
+        when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(p));
 
         List<Map<String, Object>> result = statisticsService.getPaymentRate();
         assertThat(result).hasSize(1);
@@ -126,13 +129,23 @@ class StatisticsServiceTest {
     @Test
     @DisplayName("收费率 — 未收满")
     void getPaymentRate_notFull() {
-        Course c1 = new Course(); c1.setId(1L); c1.setName("钢琴"); c1.setPrice(new BigDecimal("5000"));
+        Course c1 = new Course(); c1.setId(1L); c1.setName("钢琴");
         when(courseMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(c1));
 
-        PaymentRecord p = new PaymentRecord(); p.setCourseId(1L); p.setAmount(new BigDecimal("3000"));
-        Enrollment e = new Enrollment(); e.setCourseId(1L);
-        when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(p));
-        when(enrollmentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(e));
+        // 5 个报名，其中 3 个已缴费 → rate = 3/5 = 0.6
+        List<Enrollment> enrollments = new ArrayList<>();
+        for (long i = 100; i < 105; i++) {
+            Enrollment e = new Enrollment(); e.setId(i); e.setCourseId(1L); e.setStatus(2);
+            enrollments.add(e);
+        }
+        when(enrollmentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(enrollments);
+
+        List<PaymentRecord> payments = new ArrayList<>();
+        for (long i = 100; i < 103; i++) {
+            PaymentRecord p = new PaymentRecord(); p.setEnrollmentId(i);
+            payments.add(p);
+        }
+        when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(payments);
 
         List<Map<String, Object>> result = statisticsService.getPaymentRate();
         assertThat(result.get(0).get("rate")).isEqualTo(0.6);

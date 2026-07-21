@@ -11,11 +11,14 @@ import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.UpdateUserRequest;
+import com.pzhu.eduadmin.modules.user.entity.Role;
 import com.pzhu.eduadmin.modules.user.entity.TeacherCourse;
 import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.RoleMapper;
 import com.pzhu.eduadmin.modules.user.mapper.TeacherCourseMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,7 @@ import java.util.stream.Collectors;
 public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
+    private final RoleMapper roleMapper;
     private final OperationLogService operationLogService;
     private final EntityNameResolver nameResolver;
     private final TeacherCourseMapper teacherCourseMapper;
@@ -69,6 +73,11 @@ public class UserServiceImpl implements UserService {
                 .eq(User::getUsername, request.getUsername())) != null) {
             throw new BusinessException("用户名已存在");
         }
+        // Bug #34: 校验角色编码是否存在
+        if (roleMapper.selectCount(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, request.getRoleCode())) == 0) {
+            throw new BusinessException(400, "角色编码不存在: " + request.getRoleCode());
+        }
+
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(new BCryptPasswordEncoder().encode(request.getPassword()));
@@ -76,7 +85,13 @@ public class UserServiceImpl implements UserService {
         user.setPhone(request.getPhone());
         user.setRoleCode(request.getRoleCode());
         user.setStatus(1);
-        userMapper.insert(user);
+
+        // Bug #36: 捕获唯一键冲突，防止并发注册 TOCTOU 竞态
+        try {
+            userMapper.insert(user);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(409, "用户名已存在");
+        }
 
         // 若角色为教师，保存教学特长
         if ("TEACHER".equals(request.getRoleCode())) {
@@ -98,16 +113,32 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException("用户不存在");
         }
         boolean roleChanged = false;
-        if (request.getUsername() != null) user.setUsername(request.getUsername());
+        boolean usernameChanged = request.getUsername() != null && !request.getUsername().equals(user.getUsername());
+        if (usernameChanged) {
+            User existing = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername()));
+            if (existing != null && !existing.getId().equals(id)) {
+                throw new BusinessException(409, "用户名已存在");
+            }
+            user.setUsername(request.getUsername());
+        }
         if (request.getRealName() != null) user.setRealName(request.getRealName());
         if (request.getPhone() != null) user.setPhone(request.getPhone());
         if (request.getRoleCode() != null && !request.getRoleCode().equals(user.getRoleCode())) {
+            // Bug #34: 校验角色编码是否存在
+            if (roleMapper.selectCount(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, request.getRoleCode())) == 0) {
+                throw new BusinessException(400, "角色编码不存在: " + request.getRoleCode());
+            }
             user.setRoleCode(request.getRoleCode());
             roleChanged = true;
         }
-        // 角色变更时递增 version 使旧 Token 失效
-        if (roleChanged) {
-            user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
+        // Bug #47: 角色或用户名变更时递增 version 使旧 Token 失效
+        // C5 fix: 原子 SQL 递增，防止并发操作丢失递增
+        if (roleChanged || usernameChanged) {
+            userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
+                    .eq(User::getId, id)
+                    .setSql("version = version + 1"));
+            // C1 fix: 置空 version 防止 updateById 将旧值写回覆盖原子递增
+            user.setVersion(null);
         }
         userMapper.updateById(user);
 
@@ -129,20 +160,34 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateUserStatus(Long id, Integer status) {
         User user = userMapper.selectById(id);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        user.setStatus(status);
-        // 递增 version 使旧 Token 失效（禁用/启用时）
-        user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
-        userMapper.updateById(user);
+        // M16: 保护最后一个 SUPER_ADMIN，防止系统永久不可管理
+        if (status != 1 && "SUPER_ADMIN".equals(user.getRoleCode())) {
+            Long activeSuperAdminCount = userMapper.selectCount(
+                    new LambdaQueryWrapper<User>()
+                            .eq(User::getRoleCode, "SUPER_ADMIN")
+                            .eq(User::getStatus, 1)
+                            .ne(User::getId, id));
+            if (activeSuperAdminCount == 0) {
+                throw new BusinessException(400, "不能禁用最后一个超级管理员");
+            }
+        }
+        // C5 fix: 原子 SQL 递增 version，防止并发操作丢失递增导致 Token 失效机制被绕过
+        userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
+                .eq(User::getId, id)
+                .set(User::getStatus, status)
+                .setSql("version = version + 1"));
 
         operationLogService.log("用户管理", (status == 1 ? "启用用户" : "禁用用户") + "（用户=" + nameResolver.getUserDisplayName(id) + "）");
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void resetPassword(Long id, String newPassword) {
         if (newPassword == null || newPassword.isBlank()) {
             throw new BusinessException(400, "新密码不能为空");
@@ -150,13 +195,19 @@ public class UserServiceImpl implements UserService {
         if (newPassword.length() < 6) {
             throw new BusinessException(400, "新密码长度不能少于6位");
         }
+        // H6 fix: BCrypt 有效上限 72 字节，超长密码会导致 CPU 密集型哈希（DoS 风险）
+        if (newPassword.length() > 72) {
+            throw new BusinessException(400, "新密码长度不能超过72位");
+        }
         User user = userMapper.selectById(id);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        user.setPassword(new BCryptPasswordEncoder().encode(newPassword));
-        user.setVersion((user.getVersion() != null ? user.getVersion() : 0) + 1);
-        userMapper.updateById(user);
+        // C5 fix: 原子 SQL 递增 version，防止并发操作丢失递增
+        userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
+                .eq(User::getId, id)
+                .set(User::getPassword, new BCryptPasswordEncoder().encode(newPassword))
+                .setSql("version = version + 1"));
         operationLogService.log("用户管理", "重置密码（用户=" + user.getUsername() + "）");
     }
 
