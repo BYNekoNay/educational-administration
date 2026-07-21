@@ -10,6 +10,7 @@ import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.enrollment.dto.ParentClassVO;
+import com.pzhu.eduadmin.modules.enrollment.dto.ClassConflictVO;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.enrollment.service.EnrollmentService;
@@ -196,10 +197,11 @@ public class ParentController {
     }
 
     @GetMapping("/enrollments")
-    public Result<PageResult<Enrollment>> listMyEnrollments(PageQuery query) {
+    public Result<PageResult<Enrollment>> listMyEnrollments(PageQuery query,
+            @RequestParam(required = false) Long studentId) {
         LoginUser loginUser = CurrentUserHolder.get();
         return Result.success(PageResult.of(
-                enrollmentService.pageByParentUserId(loginUser.getUserId(),
+                enrollmentService.pageByParentUserId(loginUser.getUserId(), studentId,
                         (int) query.getPageNum(), (int) query.getPageSize())));
     }
 
@@ -226,6 +228,42 @@ public class ParentController {
                         .eq(Enrollment::getCourseId, courseId)
                         .notIn(Enrollment::getStatus, List.of(4, 5, 6)));  // M2 fix: 已退费(6)也属终态
         return Result.success(count > 0);
+    }
+
+    /**
+     * 检测学员在当前课程的各开班中是否存在时间冲突。
+     * 前端用于班级列表灰显 + 冲突标记。
+     * 返回：冲突班级的 classId → ClassConflictVO 列表
+     */
+    @GetMapping("/enrollments/conflicts/{studentId}")
+    public Result<List<ClassConflictVO>> checkConflicts(
+            @PathVariable Long studentId,
+            @RequestParam Long courseId) {
+        LoginUser loginUser = CurrentUserHolder.get();
+        // 验证家长与学员的绑定关系
+        Long bindingCount = parentStudentMapper.selectCount(
+                new LambdaQueryWrapper<ParentStudent>()
+                        .eq(ParentStudent::getParentUserId, loginUser.getUserId())
+                        .eq(ParentStudent::getStudentId, studentId));
+        if (bindingCount == 0) {
+            throw new BusinessException(403, "无权查看该学员信息");
+        }
+
+        List<ClassGroup> classes = courseMapper.selectClassGroupsByCourseId(courseId);
+        if (classes.isEmpty()) return Result.success(Collections.emptyList());
+
+        List<ClassConflictVO> conflicts = new ArrayList<>();
+        for (ClassGroup cg : classes) {
+            Map<String, Object> conflictInfo = enrollmentService.detectTimeConflict(studentId, cg.getId());
+            if (conflictInfo != null) {
+                conflicts.add(new ClassConflictVO(
+                        cg.getId(),
+                        cg.getClassName(),
+                        (String) conflictInfo.get("conflictClassName"),
+                        (String) conflictInfo.get("conflictDetail")));
+            }
+        }
+        return Result.success(conflicts);
     }
 
     /**

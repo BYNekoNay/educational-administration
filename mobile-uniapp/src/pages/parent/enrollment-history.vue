@@ -73,6 +73,7 @@ const activeTab = ref(0)
 const tabs = ['全部', '待审核', '待缴费', '已完成', '已拒绝']
 const statusMap = { 1: '待审核', 2: '待缴费', 3: '已完成', 4: '已拒绝', 5: '已失效' }
 const payingId = ref(null)
+const studentId = ref(getCurrentStudentId())
 
 const statusColors = {
   1: { bg: '#FFFBEB', color: '#F59E0B' },
@@ -89,38 +90,42 @@ function statusStyle(status) {
 }
 
 const filteredList = computed(() => {
-  if (activeTab.value === 0) return list.value
-  return list.value.filter(e => e.status === activeTab.value)
+  // 统一转 Number 防止 uni storage 字符串化导致 === 失败
+  const sid = studentId.value != null ? Number(studentId.value) : null
+  let result = sid ? list.value.filter(e => e.studentId != null && Number(e.studentId) === sid) : list.value
+  if (activeTab.value === 0) return result
+  return result.filter(e => e.status === activeTab.value)
 })
 
-function onStudentChange() {
+function onStudentChange(id) {
+  studentId.value = id
   fetchData()
 }
 
 async function fetchData() {
   try {
-    const res = await api({ url: '/api/parent/enrollments?pageNum=1&pageSize=100' })
+    const sid = studentId.value
+    const url = sid
+      ? `/api/parent/enrollments?pageNum=1&pageSize=100&studentId=${sid}`
+      : '/api/parent/enrollments?pageNum=1&pageSize=100'
+    const res = await api({ url })
     list.value = res.data?.records || res.data || []
-    // 取每个待缴费课程的价格（如果后端有返回则无需再查）
     await ensureAmounts()
   } catch {
     uni.showToast({ title: '加载失败', icon: 'none' })
   }
 }
 
-/** 报名记录不带 amount，这里按需查课程价补全 */
+/** 报名记录不带 amount，这里按需查课程价补全（一次性拉取所有课程，避免 N+1） */
 async function ensureAmounts() {
   const ids = [...new Set(list.value.filter(e => e.status === 2).map(e => e.courseId).filter(Boolean))]
-  for (const id of ids) {
-    try {
-      const r = await api({ url: `/api/parent/courses` })
-      const arr = r.data || []
-      const c = arr.find(x => x.id === id)
-      if (c) {
-        list.value.forEach(e => { if (e.courseId === id) e.amount = c.price })
-      }
-    } catch { /* skip */ }
-  }
+  if (ids.length === 0) return
+  try {
+    const r = await api({ url: `/api/parent/courses` })
+    const arr = r.data || []
+    const priceMap = new Map(arr.map(c => [c.id, c.price]))
+    list.value.forEach(e => { if (priceMap.has(e.courseId)) e.amount = priceMap.get(e.courseId) })
+  } catch { /* skip */ }
 }
 
 async function handlePay(enrollment) {

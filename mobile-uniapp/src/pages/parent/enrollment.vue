@@ -51,13 +51,13 @@
             v-for="cls in classList"
             :key="cls.id"
             class="class-item"
-            :class="{ 'class-item-full': isClassFull(cls) }"
+            :class="{ 'class-item-full': isClassFull(cls), 'class-item-conflict': isClassConflict(cls) }"
             @click="selectClass(cls)"
           >
             <view class="class-row1">
               <text class="class-name">{{ cls.className }}</text>
-              <text class="class-spots" :class="{ 'class-spots-full': isClassFull(cls) }">
-                {{ cls.currentStudentCount }}/{{ cls.maxStudentCount }}
+              <text class="class-spots" :class="{ 'class-spots-full': isClassFull(cls), 'class-spots-conflict': isClassConflict(cls) }">
+                {{ isClassConflict(cls) ? '⛔ 冲突' : `${cls.currentStudentCount}/${cls.maxStudentCount}` }}
               </text>
             </view>
             <view class="class-row2">
@@ -67,6 +67,7 @@
             <view class="class-row3">
               <text v-if="cls.startDate" class="class-start">📅 {{ formatDate(cls.startDate) }} 开课</text>
               <text v-if="isClassFull(cls)" class="class-full-tip">已满</text>
+              <text v-else-if="isClassConflict(cls)" class="class-conflict-desc">{{ getConflictText(cls) }}</text>
               <text v-else class="class-remaining">剩 {{ cls.maxStudentCount - cls.currentStudentCount }} 个名额</text>
             </view>
           </view>
@@ -99,6 +100,9 @@
           <text class="sheet-label">课次</text>
           <text class="sheet-value">{{ selectedClass.scheduleSummary }}</text>
         </view>
+        <view v-if="selectedClass && isClassConflict(selectedClass)" class="sheet-warning">
+          <text class="sheet-warning-text">⚠️ {{ getConflictText(selectedClass) }}，报名将被拦截</text>
+        </view>
         <view class="sheet-info">
           <text class="sheet-label">课时/价格</text>
           <text class="sheet-value">{{ selectedCourse?.totalLessons }}节 · ¥{{ selectedCourse?.price }}</text>
@@ -129,6 +133,8 @@ const submitting = ref(false)
 const showSheet = ref(false)
 const studentId = ref(getCurrentStudentId())
 const studentName = ref('')
+/** classId → { className, conflictClassName, description } 时间冲突信息 */
+const conflictMap = ref({})
 
 const CATEGORY_DESC = {
   '美术': '培养绘画与审美能力，激发艺术创造力',
@@ -145,6 +151,17 @@ function getCategoryDesc(cat) {
 
 function isClassFull(cls) {
   return cls.maxStudentCount > 0 && cls.currentStudentCount >= cls.maxStudentCount
+}
+
+/** 班级是否与已报名班级有时间冲突 */
+function isClassConflict(cls) {
+  return !!conflictMap.value[cls.id]
+}
+
+/** 获取冲突描述文本 */
+function getConflictText(cls) {
+  const c = conflictMap.value[cls.id]
+  return c ? `⛔ 与[${c.conflictClassName}]时间冲突：${c.description}` : ''
 }
 
 function formatDate(d) {
@@ -213,9 +230,13 @@ async function toggleCourse(course) {
   expandedCourseId.value = course.id
   loadingClasses.value = true
   classList.value = []
+  conflictMap.value = {}
   try {
-    const res = await api({ url: `/api/parent/courses/${course.id}/classes` })
-    classList.value = res.data || []
+    const [classRes] = await Promise.all([
+      api({ url: `/api/parent/courses/${course.id}/classes` }),
+      fetchConflictsForCourse(course.id),
+    ])
+    classList.value = classRes.data || []
   } catch {
     uni.showToast({ title: '班级加载失败', icon: 'none' })
   } finally {
@@ -223,9 +244,25 @@ async function toggleCourse(course) {
   }
 }
 
+/** 拉取当前课程下所有班级的时间冲突信息 */
+async function fetchConflictsForCourse(courseId) {
+  const sid = studentId.value
+  if (!sid) return
+  try {
+    const r = await api({ url: `/api/parent/enrollments/conflicts/${sid}?courseId=${courseId}` })
+    const map = {}
+    ;(r.data || []).forEach(c => { map[c.classId] = c })
+    conflictMap.value = map
+  } catch { /* 接口失败不影响班级展示 */ }
+}
+
 function selectClass(cls) {
   if (isClassFull(cls)) {
     uni.showToast({ title: '该班级已满，请选择其他班级', icon: 'none' })
+    return
+  }
+  if (isClassConflict(cls)) {
+    uni.showToast({ title: getConflictText(cls), icon: 'none', duration: 3000 })
     return
   }
   selectedCourse.value = courses.value.find(c => c.id === expandedCourseId.value)
@@ -486,6 +523,32 @@ onMounted(() => {
   color: #999;
 }
 
+/* ====== 时间冲突标记样式 ====== */
+.class-item-conflict {
+  opacity: 0.65;
+  background: #FFF5F5;
+  border: 2rpx solid #FECACA;
+}
+
+.class-item-conflict:active {
+  border-color: #EF4444;
+  background: #FEF2F2;
+}
+
+.class-spots-conflict {
+  color: #DC2626;
+  background: #FEE2E2;
+  border: 1rpx solid #FECACA;
+}
+
+.class-conflict-desc {
+  font-size: 22rpx;
+  color: #DC2626;
+  line-height: 1.5;
+  flex: 1;
+  margin-right: 8rpx;
+}
+
 .sheet-body {
   background: #FFF;
   padding: 32rpx;
@@ -502,6 +565,20 @@ onMounted(() => {
 
 .sheet-info:last-of-type {
   border-bottom: none;
+}
+
+.sheet-warning {
+  margin-bottom: 16rpx;
+  padding: 16rpx 24rpx;
+  background: #FEF2F2;
+  border: 2rpx solid #FECACA;
+  border-radius: 12rpx;
+}
+
+.sheet-warning-text {
+  font-size: 24rpx;
+  color: #DC2626;
+  line-height: 1.6;
 }
 
 .sheet-label {

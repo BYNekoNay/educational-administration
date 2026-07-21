@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
+import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
@@ -16,6 +17,8 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
+import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
@@ -35,10 +38,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("报名管理单元测试")
@@ -54,6 +59,7 @@ class EnrollmentServiceMockTest {
     @Mock private ClassStudentMapper classStudentMapper;
     @Mock private PaymentRecordMapper paymentRecordMapper;
     @Mock private RefundRecordMapper refundRecordMapper;
+    @Mock private ScheduleLessonMapper scheduleLessonMapper;
 
     @InjectMocks
     private EnrollmentServiceImpl enrollmentService;
@@ -66,6 +72,7 @@ class EnrollmentServiceMockTest {
         TableInfoHelper.initTableInfo(assistant, PaymentRecord.class);
         TableInfoHelper.initTableInfo(assistant, RefundRecord.class);
         TableInfoHelper.initTableInfo(assistant, ClassStudent.class);
+        TableInfoHelper.initTableInfo(assistant, ScheduleLesson.class);
     }
 
     @BeforeEach
@@ -134,6 +141,167 @@ class EnrollmentServiceMockTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verify(enrollmentMapper, never()).insert(any(Enrollment.class));
+    }
+
+    // ========== 时间冲突检测 ==========
+
+    @Test
+    @DisplayName("时间冲突-TC1: 完全相同时间段应抛 409")
+    void create_timeConflict_exactOverlap_shouldReject() {
+        // 学员已报名班级 1（周一 09:00-10:00）
+        Enrollment activeEnrollment = new Enrollment();
+        activeEnrollment.setClassId(1L);
+        activeEnrollment.setStudentId(10L);
+        activeEnrollment.setStatus(3);
+
+        LocalDate monday = LocalDate.of(2026, 7, 20); // 周一
+        ScheduleLesson existing = buildScheduleLesson(1L, monday, "09:00", "10:00");
+        ScheduleLesson target = buildScheduleLesson(2L, monday, "09:00", "10:00"); // 完全相同
+
+        when(enrollmentMapper.selectList(argThat(q -> true))).thenReturn(
+                List.of(activeEnrollment), // 第一次：活跃报名
+                List.of(activeEnrollment)  // 第二次：detectTimeConflict 内部
+        );
+        when(scheduleLessonMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(existing, target));
+        when(classGroupMapper.selectClassNamesByIdsIncludeDeleted(any()))
+                .thenReturn(List.of(Map.of("id", 1L, "class_name", "硬笔书法A班")));
+        when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
+        when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
+        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+
+        Enrollment enrollment = new Enrollment();
+        enrollment.setStudentId(10L);
+        enrollment.setCourseId(20L);
+        enrollment.setClassId(2L);
+
+        assertThatThrownBy(() -> enrollmentService.create(enrollment))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("上课时间冲突")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(enrollmentMapper, never()).insert(any(Enrollment.class));
+    }
+
+    @Test
+    @DisplayName("时间冲突-TC2: 部分重叠应抛 409（09:00-10:00 vs 09:30-10:30）")
+    void create_timeConflict_partialOverlap_shouldReject() {
+        Enrollment activeEnrollment = new Enrollment();
+        activeEnrollment.setClassId(1L);
+        activeEnrollment.setStudentId(10L);
+        activeEnrollment.setStatus(3);
+
+        LocalDate monday = LocalDate.of(2026, 7, 20);
+        ScheduleLesson existing = buildScheduleLesson(1L, monday, "09:00", "10:00");
+        ScheduleLesson target = buildScheduleLesson(2L, monday, "09:30", "10:30");
+
+        when(enrollmentMapper.selectList(argThat(q -> true))).thenReturn(
+                List.of(activeEnrollment), List.of(activeEnrollment));
+        when(scheduleLessonMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(existing, target));
+        when(classGroupMapper.selectClassNamesByIdsIncludeDeleted(any()))
+                .thenReturn(List.of(Map.of("id", 1L, "class_name", "硬笔书法A班")));
+        when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
+        when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
+        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+
+        Enrollment enrollment = new Enrollment();
+        enrollment.setStudentId(10L);
+        enrollment.setCourseId(20L);
+        enrollment.setClassId(2L);
+
+        assertThatThrownBy(() -> enrollmentService.create(enrollment))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("上课时间冲突")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(enrollmentMapper, never()).insert(any(Enrollment.class));
+    }
+
+    @Test
+    @DisplayName("时间冲突-TC3: 相邻不重叠（09:00-10:00 vs 10:00-11:00）应通过")
+    void create_timeConflict_adjacentNoOverlap_shouldPass() {
+        Enrollment activeEnrollment = new Enrollment();
+        activeEnrollment.setClassId(1L);
+        activeEnrollment.setStudentId(10L);
+        activeEnrollment.setStatus(3);
+
+        LocalDate monday = LocalDate.of(2026, 7, 20);
+        ScheduleLesson existing = buildScheduleLesson(1L, monday, "09:00", "10:00");
+        ScheduleLesson target = buildScheduleLesson(2L, monday, "10:00", "11:00");
+
+        when(enrollmentMapper.selectList(argThat(q -> true))).thenReturn(
+                List.of(activeEnrollment), List.of(activeEnrollment));
+        when(scheduleLessonMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(existing, target));
+        when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
+        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
+        // 重复报名检查返回 0
+        when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(enrollmentMapper.insert(any(Enrollment.class))).thenReturn(1);
+
+        Enrollment enrollment = new Enrollment();
+        enrollment.setStudentId(10L);
+        enrollment.setCourseId(20L);
+        enrollment.setClassId(2L);
+
+        Enrollment result = enrollmentService.create(enrollment);
+        assertThat(result).isNotNull();
+        verify(enrollmentMapper).insert(enrollment);
+    }
+
+    @Test
+    @DisplayName("时间冲突-TC4: 不同日期无重叠应通过")
+    void create_timeConflict_differentDate_shouldPass() {
+        Enrollment activeEnrollment = new Enrollment();
+        activeEnrollment.setClassId(1L);
+        activeEnrollment.setStudentId(10L);
+        activeEnrollment.setStatus(3);
+
+        LocalDate monday = LocalDate.of(2026, 7, 20);
+        LocalDate tuesday = LocalDate.of(2026, 7, 21);
+        ScheduleLesson existing = buildScheduleLesson(1L, monday, "09:00", "10:00");
+        ScheduleLesson target = buildScheduleLesson(2L, tuesday, "09:00", "10:00");
+
+        when(enrollmentMapper.selectList(argThat(q -> true))).thenReturn(
+                List.of(activeEnrollment), List.of(activeEnrollment));
+        when(scheduleLessonMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(existing, target));
+        when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
+        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
+        when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(enrollmentMapper.insert(any(Enrollment.class))).thenReturn(1);
+
+        Enrollment enrollment = new Enrollment();
+        enrollment.setStudentId(10L);
+        enrollment.setCourseId(20L);
+        enrollment.setClassId(2L);
+
+        Enrollment result = enrollmentService.create(enrollment);
+        assertThat(result).isNotNull();
+        verify(enrollmentMapper).insert(enrollment);
+    }
+
+    @Test
+    @DisplayName("时间冲突-TC5: classId=null 应跳过冲突检测")
+    void create_timeConflict_nullClassId_shouldSkip() {
+        when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
+        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(enrollmentMapper.insert(any(Enrollment.class))).thenReturn(1);
+
+        Enrollment enrollment = new Enrollment();
+        enrollment.setStudentId(10L);
+        enrollment.setCourseId(20L);
+        enrollment.setClassId(null); // 自由排课
+
+        Enrollment result = enrollmentService.create(enrollment);
+        assertThat(result).isNotNull();
+        verify(enrollmentMapper).insert(enrollment);
+        // scheduleLessonMapper 不应被调用
+        verify(scheduleLessonMapper, never()).selectList(any(LambdaQueryWrapper.class));
     }
 
     // ========== audit() ==========
@@ -301,5 +469,25 @@ class EnrollmentServiceMockTest {
         enrollmentService.expirePendingEnrollments();
 
         verify(enrollmentMapper).update(isNull(), any(LambdaUpdateWrapper.class));
+    }
+
+    // ========== 测试辅助方法 ==========
+
+    private ScheduleLesson buildScheduleLesson(Long classId, LocalDate date, String startTime, String endTime) {
+        ScheduleLesson sl = new ScheduleLesson();
+        sl.setClassId(classId);
+        sl.setLessonDate(date);
+        sl.setStartTime(LocalTime.parse(startTime));
+        sl.setEndTime(LocalTime.parse(endTime));
+        sl.setStatus(1);
+        return sl;
+    }
+
+    private ClassGroup buildClassGroup(Long classId, Long courseId) {
+        ClassGroup cg = new ClassGroup();
+        cg.setId(classId);
+        cg.setCourseId(courseId);
+        cg.setClassName("测试班级");
+        return cg;
     }
 }

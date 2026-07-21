@@ -19,6 +19,8 @@ import com.pzhu.eduadmin.modules.finance.entity.RefundRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
@@ -31,11 +33,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -54,6 +56,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private final ClassStudentMapper classStudentMapper;
     private final PaymentRecordMapper paymentRecordMapper;
     private final RefundRecordMapper refundRecordMapper;
+    private final ScheduleLessonMapper scheduleLessonMapper;
 
     private static final Map<String, SFunction<Enrollment, ?>> ENROLLMENT_SORT_MAP = Map.of(
             "id", Enrollment::getId,
@@ -157,6 +160,11 @@ public class EnrollmentServiceImpl implements EnrollmentService {
             }
         }
 
+        // 时间冲突检测：检查学员已报名班级与目标班级是否存在排课时间重叠
+        if (enrollment.getClassId() != null) {
+            checkTimeConflict(enrollment.getStudentId(), enrollment.getClassId());
+        }
+
         Long existCount = enrollmentMapper.selectCount(new LambdaQueryWrapper<Enrollment>()
                 .eq(Enrollment::getStudentId, enrollment.getStudentId())
                 .eq(Enrollment::getCourseId, enrollment.getCourseId())
@@ -247,6 +255,19 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     }
 
     @Override
+    public Page<Enrollment> pageByParentUserId(Long parentUserId, Long studentId, int pageNum, int pageSize) {
+        LambdaQueryWrapper<Enrollment> wrapper = new LambdaQueryWrapper<Enrollment>()
+                .eq(Enrollment::getParentUserId, parentUserId)
+                .orderByDesc(Enrollment::getCreateTime);
+        if (studentId != null) {
+            wrapper.eq(Enrollment::getStudentId, studentId);
+        }
+        Page<Enrollment> page = enrollmentMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        populateNames(page.getRecords());
+        return page;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public Enrollment audit(Long id, Integer status, Long auditorId, String remark) {
         Enrollment enrollment = enrollmentMapper.selectById(id);
@@ -307,5 +328,124 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         } catch (Exception e) {
             log.error("定时任务 expirePendingEnrollments 执行异常", e);
         }
+    }
+
+    // ======================== 时间冲突检测 ========================
+
+    /**
+     * 检测学员已报名班级与目标班级是否存在排课时间冲突（用于报名准入校验）。
+     * 基于 schedule_lesson 的未来具体日期+时间段进行比对。
+     * 若有冲突则直接抛 BusinessException(409)。
+     */
+    public void checkTimeConflict(Long studentId, Long targetClassId) {
+        Map<String, Object> conflict = detectTimeConflict(studentId, targetClassId);
+        if (conflict != null) {
+            throw new BusinessException(409, (String) conflict.get("description"));
+        }
+    }
+
+    /**
+     * 检测时间冲突（返回详情 Map，供报名校验和前端预览共用）。
+     * @return null=无冲突，否则返回 {description, conflictClassName, conflictDetail} 的 Map
+     */
+    public Map<String, Object> detectTimeConflict(Long studentId, Long targetClassId) {
+        if (targetClassId == null) return null;
+
+        // 1. 取学员所有活跃报名（排除终态：已拒绝/已失效/已退费）
+        List<Enrollment> activeList = enrollmentMapper.selectList(
+                new LambdaQueryWrapper<Enrollment>()
+                        .eq(Enrollment::getStudentId, studentId)
+                        .in(Enrollment::getStatus, List.of(1, 2, 3))
+                        .isNotNull(Enrollment::getClassId));
+
+        Set<Long> enrolledClassIds = activeList.stream()
+                .map(Enrollment::getClassId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (enrolledClassIds.isEmpty()) return null;
+
+        // 2. 把 targetClassId 也纳入批量查询
+        Set<Long> allClassIds = new HashSet<>(enrolledClassIds);
+        allClassIds.add(targetClassId);
+
+        LocalDate today = LocalDate.now();
+        LocalDate horizon = today.plusWeeks(8);
+
+        List<ScheduleLesson> lessons = scheduleLessonMapper.selectList(
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .in(ScheduleLesson::getClassId, allClassIds)
+                        .eq(ScheduleLesson::getStatus, 1)
+                        .between(ScheduleLesson::getLessonDate, today, horizon));
+
+        // 3. 按 classId → lessonDate 分组
+        Map<Long, Map<LocalDate, List<ScheduleLesson>>> grouped = lessons.stream()
+                .collect(Collectors.groupingBy(ScheduleLesson::getClassId,
+                        Collectors.groupingBy(ScheduleLesson::getLessonDate)));
+
+        Map<Long, String> classNames = loadClassNames(allClassIds);
+
+        // 目标班级的课次
+        Map<LocalDate, List<ScheduleLesson>> targetSlots =
+                grouped.getOrDefault(targetClassId, Collections.emptyMap());
+
+        // 4. 逐一比对已报名班级
+        for (Long enrolledClassId : enrolledClassIds) {
+            Map<LocalDate, List<ScheduleLesson>> existingSlots = grouped.get(enrolledClassId);
+            if (existingSlots == null) continue;
+
+            for (Map.Entry<LocalDate, List<ScheduleLesson>> targetEntry : targetSlots.entrySet()) {
+                LocalDate date = targetEntry.getKey();
+                List<ScheduleLesson> existingLessons = existingSlots.get(date);
+                if (existingLessons == null) continue;
+
+                for (ScheduleLesson ns : targetEntry.getValue()) {
+                    for (ScheduleLesson es : existingLessons) {
+                        if (overlap(ns.getStartTime(), ns.getEndTime(),
+                                    es.getStartTime(), es.getEndTime())) {
+                            String conflictName = classNames.getOrDefault(enrolledClassId, "未知班级");
+                            String detail = dayOfWeekLabel(date.getDayOfWeek()) + " "
+                                    + es.getStartTime() + "-" + es.getEndTime()
+                                    + " 与 " + ns.getStartTime() + "-" + ns.getEndTime() + " 重叠";
+                            String description = "该学员已报名[" + conflictName + "]，上课时间冲突：" + detail;
+                            Map<String, Object> result = new HashMap<>();
+                            result.put("description", description);
+                            result.put("conflictClassName", conflictName);
+                            result.put("conflictDetail", detail);
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 批量加载班级名称，无 classId 报名时跳过
+     */
+    private Map<Long, String> loadClassNames(Set<Long> classIds) {
+        if (classIds.isEmpty()) return Collections.emptyMap();
+        List<Map<String, Object>> raw = classGroupMapper.selectClassNamesByIdsIncludeDeleted(classIds);
+        return raw.stream()
+                .collect(Collectors.toMap(
+                        m -> ((Number) m.get("id")).longValue(),
+                        m -> (String) m.get("class_name"),
+                        (a, b) -> a));
+    }
+
+    /** 两个时间段是否重叠（不含端点相接，即 10:00 结束 vs 10:00 开始不算冲突） */
+    private boolean overlap(LocalTime s1, LocalTime e1, LocalTime s2, LocalTime e2) {
+        return s1.isBefore(e2) && s2.isBefore(e1);
+    }
+
+    private static String dayOfWeekLabel(DayOfWeek dow) {
+        return switch (dow) {
+            case MONDAY -> "周一";
+            case TUESDAY -> "周二";
+            case WEDNESDAY -> "周三";
+            case THURSDAY -> "周四";
+            case FRIDAY -> "周五";
+            case SATURDAY -> "周六";
+            case SUNDAY -> "周日";
+        };
     }
 }
