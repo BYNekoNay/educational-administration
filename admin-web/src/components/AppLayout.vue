@@ -12,51 +12,13 @@
         router
         style="border-right: none"
       >
-        <el-menu-item index="/admin/dashboard">
-          <el-icon><Monitor /></el-icon>
-          <span>运营看板</span>
-        </el-menu-item>
-
-        <el-sub-menu index="admin" v-if="hasSystemAdmin">
-          <template #title>
-            <el-icon><Setting /></el-icon>
-            <span>系统管理</span>
-          </template>
-          <el-menu-item index="/admin/users" v-if="authStore.hasPermission('menu:user')">用户管理</el-menu-item>
-          <el-menu-item index="/admin/roles" v-if="authStore.hasPermission('menu:role')">角色管理</el-menu-item>
-          <el-menu-item index="/admin/menus" v-if="authStore.hasPermission('menu:menu')">菜单管理</el-menu-item>
-          <el-menu-item index="/admin/organization" v-if="authStore.hasPermission('menu:organization')">机构配置</el-menu-item>
-          <el-menu-item index="/admin/notices" v-if="authStore.hasPermission('menu:notice')">公告管理</el-menu-item>
-          <el-menu-item index="/admin/logs" v-if="authStore.hasPermission('menu:log')">操作日志</el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu index="edu" v-if="hasEduModule">
-          <template #title>
-            <el-icon><Document /></el-icon>
-            <span>教务管理</span>
-          </template>
-          <el-menu-item index="/edu/students" v-if="authStore.hasPermission('menu:student')">学员管理</el-menu-item>
-          <el-menu-item index="/edu/courses" v-if="authStore.hasPermission('menu:course')">课程管理</el-menu-item>
-          <el-menu-item index="/edu/classes" v-if="authStore.hasPermission('menu:class')">班级管理</el-menu-item>
-          <el-menu-item index="/edu/enrollments" v-if="authStore.hasPermission('menu:enrollment')">报名管理</el-menu-item>
-          <el-menu-item index="/edu/big-schedule" v-if="authStore.hasPermission('menu:big-schedule')">大课表</el-menu-item>
-          <el-menu-item index="/edu/schedules" v-if="authStore.hasPermission('menu:schedule')">排课管理</el-menu-item>
-          <el-menu-item index="/edu/classrooms" v-if="authStore.hasPermission('menu:classroom')">教室管理</el-menu-item>
-          <el-menu-item index="/edu/attendances" v-if="authStore.hasPermission('menu:attendance')">考勤管理</el-menu-item>
-          <el-menu-item index="/edu/exams" v-if="authStore.hasPermission('menu:exam')">考级管理</el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu index="finance" v-if="hasFinanceModule">
-          <template #title>
-            <el-icon><Money /></el-icon>
-            <span>财务管理</span>
-          </template>
-          <el-menu-item index="/finance/payments" v-if="authStore.hasPermission('menu:payment')">收费管理</el-menu-item>
-          <el-menu-item index="/finance/refunds" v-if="authStore.hasPermission('menu:refund')">退费管理</el-menu-item>
-          <el-menu-item index="/finance/lesson-accounts" v-if="authStore.hasPermission('menu:lesson-flow')">课时账户</el-menu-item>
-          <el-menu-item index="/finance/lesson-flows" v-if="authStore.hasPermission('menu:lesson-flow')">课时流水</el-menu-item>
-          <el-menu-item index="/finance/salaries" v-if="authStore.hasPermission('menu:salary')">薪资管理</el-menu-item>
-        </el-sub-menu>
+        <!-- 菜单：完全从后端按权限拉取（运营看板也在内，id=1） -->
+        <MenuItem
+          v-for="node in authStore.menuTree"
+          :key="node.id"
+          :item="node"
+          :icon-map="iconMap"
+        />
       </el-menu>
     </el-aside>
 
@@ -82,16 +44,25 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import { Monitor, Setting, Document, Money } from '@element-plus/icons-vue'
 import NotificationBell from '@/components/NotificationBell.vue'
+import MenuItem from '@/components/MenuItem.vue'
+import type { Component } from 'vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 
-onMounted(() => {
+/** 图标名 → Vue 组件映射，上线有新图标时维护此表即可 */
+const iconMap: Record<string, Component> = {
+  Monitor, Setting, Document, Money,
+}
+
+onMounted(async () => {
   notificationStore.requestPermission()
   notificationStore.connect()
   notificationStore.fetchUnreadCount()
+  // 首次加载动态菜单树
+  await authStore.fetchMyMenus()
 })
 
 onUnmounted(() => {
@@ -99,34 +70,6 @@ onUnmounted(() => {
 })
 
 const activeMenu = computed(() => route.path)
-
-const hasSystemAdmin = computed(() =>
-  authStore.hasPermission('menu:user') ||
-  authStore.hasPermission('menu:role') ||
-  authStore.hasPermission('menu:menu') ||
-  authStore.hasPermission('menu:organization') ||
-  authStore.hasPermission('menu:notice') ||
-  authStore.hasPermission('menu:log')
-)
-
-const hasEduModule = computed(() =>
-  authStore.hasPermission('menu:student') ||
-  authStore.hasPermission('menu:course') ||
-  authStore.hasPermission('menu:class') ||
-  authStore.hasPermission('menu:enrollment') ||
-  authStore.hasPermission('menu:schedule') ||
-  authStore.hasPermission('menu:big-schedule') ||
-  authStore.hasPermission('menu:classroom') ||
-  authStore.hasPermission('menu:attendance') ||
-  authStore.hasPermission('menu:exam')
-)
-
-const hasFinanceModule = computed(() =>
-  authStore.hasPermission('menu:payment') ||
-  authStore.hasPermission('menu:refund') ||
-  authStore.hasPermission('menu:lesson-flow') ||
-  authStore.hasPermission('menu:salary')
-)
 
 const roleNameMap: Record<string, string> = {
   SUPER_ADMIN: '超级管理员',

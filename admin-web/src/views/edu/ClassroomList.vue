@@ -17,14 +17,16 @@
       <el-table-column prop="status" label="状态" width="80">
         <template #default="{row}"><el-tag :type="row.status===1?'success':'warning'">{{row.status===1?'启用':'停用'}}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="150">
+      <el-table-column label="操作" width="130">
         <template #default="{row}">
-          <el-button size="small" @click="openDialog(row)">编辑</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+            <el-button size="small" @click="openDialog(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
-    <el-pagination style="margin-top:16px;justify-content:flex-end" v-model:current-page="pageNum" v-model:page-size="pageSize" :total="total" layout="total,prev,pager,next" @change="loadData" />
+    <el-pagination style="margin-top:16px;justify-content:flex-end" v-model:current-page="pageNum" v-model:page-size="pageSize" :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]" @change="loadData" />
 
     <el-dialog :title="isEdit?'编辑教室':'新增教室'" v-model="dialogVisible" width="400px">
       <el-form :model="form" label-width="80px">

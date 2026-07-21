@@ -34,15 +34,17 @@
             <template #default="{ row }">¥ {{ row.lessonUnitPrice || 0 }}</template>
           </el-table-column>
           <el-table-column prop="substituteRate" label="代课系数" width="100" sortable="custom" align="right" />
-          <el-table-column label="操作" width="100" fixed="right">
+          <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" link type="primary" @click="showRuleDialog(row)">编辑</el-button>
+              <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+                <el-button size="small" link type="primary" @click="showRuleDialog(row)">编辑</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
         <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
           v-model:current-page="rulesPage" v-model:page-size="rulesPageSize"
-          :total="rulesTotal" layout="total, prev, pager, next, jumper" @change="loadRules" />
+          :total="rulesTotal" layout="sizes, total, prev, pager, next, jumper" :page-sizes="[10, 20, 50, 100]" @change="loadRules" />
 
         <el-dialog :title="editingRule?.id ? '编辑规则' : '新增规则'" v-model="ruleVisible" width="420px">
           <el-form :model="ruleForm" label-width="90px">
@@ -177,19 +179,21 @@
                 <span class="time-text">{{ formatTime(row.calcSnapshotTime) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right" align="center">
+            <el-table-column label="操作" width="220" fixed="right" align="center">
               <template #default="{ row }">
-                <el-button v-if="row.status === 1" size="small" type="success" link @click="handleConfirm(row.id)">确认</el-button>
-                <el-button v-if="row.status === 1 || row.status === 2" size="small" type="warning" link @click="handleVoid(row.id)">作废</el-button>
-                <el-button v-if="row.status === 2" size="small" type="primary" link @click="showAdjust(row.id)">调整</el-button>
-                <span v-if="row.status === 3" class="muted-tip">已发放 · 不可操作</span>
-                <span v-if="row.status === 4" class="muted-tip">已撤销</span>
+                <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center; justify-content: center">
+                  <el-button v-if="row.status === 1" size="small" type="success" link @click="handleConfirm(row.id)">确认</el-button>
+                  <el-button v-if="row.status === 1 || row.status === 2" size="small" type="warning" link @click="handleVoid(row.id)">作废</el-button>
+                  <el-button v-if="row.status === 2" size="small" type="primary" link @click="showAdjust(row.id)">调整</el-button>
+                  <span v-if="row.status === 3" class="muted-tip">已发放 · 不可操作</span>
+                  <span v-if="row.status === 4" class="muted-tip">已撤销</span>
+                </div>
               </template>
             </el-table-column>
           </el-table>
           <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
             v-model:current-page="salariesPage" v-model:page-size="salariesPageSize"
-            :total="filteredSalaries.length" layout="total, prev, pager, next, jumper" @change="loadSalaries" />
+            :total="filteredSalaries.length" layout="sizes, total, prev, pager, next, jumper" :page-sizes="[10, 20, 50, 100]" @change="loadSalaries" />
         </el-card>
 
         <el-dialog title="薪资调整" v-model="adjustVisible" width="420px">

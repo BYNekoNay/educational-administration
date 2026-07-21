@@ -1,6 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+interface MenuNode {
+  id: number
+  parentId: number
+  menuName: string
+  icon: string | null
+  path: string | null
+  permissionCode: string | null
+  sortOrder: number
+  visible: number
+  children?: MenuNode[]
+}
+
 interface UserInfo {
   userId: number
   username: string
@@ -67,6 +79,20 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** 当前用户可见菜单树（数据驱动侧栏） */
+  const menuTree = ref<MenuNode[]>([])
+
+  /** 从后端拉取当前用户可见菜单树 */
+  async function fetchMyMenus() {
+    try {
+      const { authApi } = await import('@/api/auth')
+      const res = await authApi.myMenus()
+      menuTree.value = res.data || []
+    } catch {
+      menuTree.value = []
+    }
+  }
+
   function setLogin(tokenValue: string, info: UserInfo, userPermissions: string[] = []) {
     token.value = tokenValue
     userInfo.value = info
@@ -87,5 +113,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('permissions')
   }
 
-  return { token, userInfo, roleCode, permissions, setLogin, logout, hasPermission, fetchPermissions }
+  return { token, userInfo, roleCode, permissions, menuTree, setLogin, logout, hasPermission, fetchPermissions, fetchMyMenus }
 })

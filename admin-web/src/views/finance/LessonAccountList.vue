@@ -21,7 +21,7 @@
     </el-table>
     <el-pagination style="margin-top: 16px; justify-content: flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
-      :total="total" layout="total, prev, pager, next" @change="loadData" />
+      :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]" @change="loadData" />
   </div>
 </template>
 

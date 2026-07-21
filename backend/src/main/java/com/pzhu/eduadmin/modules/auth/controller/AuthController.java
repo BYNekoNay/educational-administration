@@ -3,10 +3,7 @@ package com.pzhu.eduadmin.modules.auth.controller;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.Result;
 import com.pzhu.eduadmin.modules.auth.service.IAuthService;
-import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
-import com.pzhu.eduadmin.modules.user.dto.LoginRequest;
-import com.pzhu.eduadmin.modules.user.dto.LoginResponse;
-import com.pzhu.eduadmin.modules.user.dto.RegisterRequest;
+import com.pzhu.eduadmin.modules.user.dto.*;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -18,6 +15,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 登录、退出、当前用户信息。对应 docs/09-接口规范.md 鉴权模块、docs/11-后端开发详细文档.md §2。
@@ -56,5 +55,12 @@ public class AuthController {
                     .setSql("version = version + 1"));
         }
         return Result.success();
+    }
+
+    /** 获取当前用户可见菜单树（按权限过滤），前端侧栏动态渲染使用 */
+    @GetMapping("/menus")
+    public Result<List<MenuTreeNode>> myMenus() {
+        LoginUser loginUser = CurrentUserHolder.get();
+        return Result.success(authService.getMyMenus(loginUser.getRoleCode()));
     }
 }

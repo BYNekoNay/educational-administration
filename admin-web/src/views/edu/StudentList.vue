@@ -31,13 +31,15 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="操作" width="420" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openDialog(row)">编辑</el-button>
-          <el-button size="small" @click="openBindDialog(row)">绑定家长</el-button>
-          <el-button size="small" type="warning" @click="openTransferDialog(row)">转班</el-button>
-          <el-button size="small" type="danger" @click="handleWithdraw(row)">退班</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+            <el-button size="small" @click="openDialog(row)">编辑</el-button>
+            <el-button size="small" @click="openBindDialog(row)">绑定家长</el-button>
+            <el-button size="small" type="warning" @click="openTransferDialog(row)">转班</el-button>
+            <el-button size="small" type="danger" @click="handleWithdraw(row)">退班</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -46,7 +48,8 @@
       v-model:current-page="pageNum"
       v-model:page-size="pageSize"
       :total="total"
-      layout="total, prev, pager, next"
+      layout="sizes, total, prev, pager, next"
+      :page-sizes="[10, 20, 50, 100]"
       @change="loadData"
     />
 

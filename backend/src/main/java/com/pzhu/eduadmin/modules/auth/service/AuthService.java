@@ -7,8 +7,11 @@ import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
 import com.pzhu.eduadmin.modules.user.dto.LoginRequest;
 import com.pzhu.eduadmin.modules.user.dto.LoginResponse;
+import com.pzhu.eduadmin.modules.user.dto.MenuTreeNode;
 import com.pzhu.eduadmin.modules.user.dto.RegisterRequest;
+import com.pzhu.eduadmin.modules.user.entity.Menu;
 import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.MenuMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.user.service.UserService;
 import com.pzhu.eduadmin.security.JwtUtil;
@@ -18,10 +21,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * 登录鉴权服务实现：密码校验、Token 签发、用户信息查询。
@@ -36,6 +39,7 @@ public class AuthService implements IAuthService {
     private final JwtUtil jwtUtil;
     private final UserService userService;
     private final com.pzhu.eduadmin.modules.user.service.RoleService roleService;
+    private final MenuMapper menuMapper;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     /** 登录失败计数（key = username），用于暴力破解防护 */
@@ -112,6 +116,67 @@ public class AuthService implements IAuthService {
             throw new BusinessException(401, "登录状态无效，请重新登录");
         }
         return new CurrentUserResponse(user.getId(), user.getUsername(), user.getRealName(), user.getRoleCode());
+    }
+
+    @Override
+    public List<MenuTreeNode> getMyMenus(String roleCode) {
+        // 1. 获取当前角色权限码集合
+        List<String> permissions = loadPermissions(roleCode);
+        Set<String> permSet = new HashSet<>(permissions);
+
+        // 2. 查询所有可见菜单（按排序）
+        List<Menu> allMenus = menuMapper.selectList(
+                new LambdaQueryWrapper<Menu>()
+                        .eq(Menu::getVisible, 1)
+                        .orderByAsc(Menu::getSortOrder));
+
+        // 3. 过滤：SUPER_ADMIN 可见全部；其余按权限码匹配
+        boolean isSuperAdmin = "SUPER_ADMIN".equals(roleCode);
+        List<Menu> visibleMenus = isSuperAdmin ? allMenus
+                : allMenus.stream()
+                        .filter(m -> m.getPermissionCode() == null || m.getPermissionCode().isBlank()
+                                || permSet.contains(m.getPermissionCode()))
+                        .collect(Collectors.toList());
+
+        // 4. 构建 parentId → children 映射
+        Map<Long, List<MenuTreeNode>> childrenMap = new HashMap<>();
+        for (Menu m : visibleMenus) {
+            Long pid = m.getParentId() == null || m.getParentId() == 0 ? 0L : m.getParentId();
+            childrenMap.computeIfAbsent(pid, k -> new ArrayList<>())
+                    .add(MenuTreeNode.builder()
+                            .id(m.getId())
+                            .parentId(m.getParentId())
+                            .menuName(m.getMenuName())
+                            .icon(m.getIcon())
+                            .path(m.getPath())
+                            .permissionCode(m.getPermissionCode())
+                            .sortOrder(m.getSortOrder())
+                            .visible(m.getVisible())
+                            .build());
+        }
+
+        // 5. 递归构建树：从顶层(parentId=0)开始
+        List<MenuTreeNode> tree = childrenMap.getOrDefault(0L, new ArrayList<>());
+        for (MenuTreeNode node : tree) {
+            buildChildren(node, childrenMap);
+        }
+
+        // 6. 过滤掉没有子节点的父节点组（无路由且无可见子菜单的空目录）
+        return tree.stream()
+                .filter(node -> node.getPath() != null && !node.getPath().isBlank()
+                        || (node.getChildren() != null && !node.getChildren().isEmpty()))
+                .collect(Collectors.toList());
+    }
+
+    /** 递归挂载子节点 */
+    private void buildChildren(MenuTreeNode parent, Map<Long, List<MenuTreeNode>> childrenMap) {
+        List<MenuTreeNode> children = childrenMap.get(parent.getId());
+        if (children != null && !children.isEmpty()) {
+            parent.setChildren(children);
+            for (MenuTreeNode child : children) {
+                buildChildren(child, childrenMap);
+            }
+        }
     }
 
     /** 根据 roleCode 查询角色拥有的权限码列表 */

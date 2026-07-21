@@ -22,15 +22,18 @@
           <el-table-column prop="deductLessons" label="扣课时" width="80" sortable="custom" />
           <el-table-column prop="checkTime" label="考勤时间" width="170" sortable="custom" />
           <el-table-column prop="remark" label="备注" min-width="120" sortable />
-          <el-table-column label="操作" width="100" fixed="right">
+          <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ row }">
-              <el-button type="danger" size="small" @click="handleDelete(row.id)">删除</el-button>
+              <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+                <el-button type="danger" size="small" @click="handleDelete(row.id)">删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
         <el-pagination
           v-model:current-page="pageNum" :total="total" :page-size="pageSize"
-          layout="total,prev,pager,next" @current-change="loadData" style="margin-top:16px"
+          layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"
+          @current-change="loadData" style="margin-top:16px"
         />
       </el-tab-pane>
 
@@ -50,19 +53,22 @@
               <el-tag :type="leaveStatusType(row.status)">{{ leaveStatusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="操作" width="130" fixed="right">
             <template #default="{ row }">
-              <template v-if="row.status === 1">
-                <el-button type="success" size="small" @click="handleApprove(row)">通过</el-button>
-                <el-button type="danger" size="small" @click="showRejectDialog(row)">拒绝</el-button>
-              </template>
-              <span v-else style="color: #999; font-size: 13px">已处理</span>
+              <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+                <template v-if="row.status === 1">
+                  <el-button type="success" size="small" @click="handleApprove(row)">通过</el-button>
+                  <el-button type="danger" size="small" @click="showRejectDialog(row)">拒绝</el-button>
+                </template>
+                <span v-else style="color: #999; font-size: 13px">已处理</span>
+              </div>
             </template>
           </el-table-column>
         </el-table>
         <el-pagination
           v-model:current-page="leavePageNum" :total="leaveTotal" :page-size="leavePageSize"
-          layout="total,prev,pager,next" @current-change="loadLeaveData" style="margin-top:16px"
+          layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"
+          @current-change="loadLeaveData" style="margin-top:16px"
         />
       </el-tab-pane>
     </el-tabs>

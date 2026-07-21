@@ -29,17 +29,20 @@
           <el-tag v-else-if="row.status===4" type="danger">已调课</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openDialog(row)">编辑</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+            <el-button size="small" @click="openDialog(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
     <el-pagination
       style="margin-top:16px;justify-content:flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
-      :total="total" layout="total,prev,pager,next" @change="loadData"
+      :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"
+      @change="loadData"
     />
 
     <!-- 新增/编辑课次弹窗 -->

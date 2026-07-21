@@ -62,27 +62,29 @@
           {{ row.createTime ? formatTime(row.createTime) : '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" type="primary" @click="openEditDialog(row)">
-            编辑
-          </el-button>
-          <el-button size="small" type="warning" @click="openPasswordDialog(row)">
-            改密
-          </el-button>
-          <el-popconfirm
-            :title="row.status === 1 ? '确认禁用该用户？' : '确认启用该用户？'"
-            @confirm="toggleStatus(row)"
-          >
-            <template #reference>
-              <el-button
-                size="small"
-                :type="row.status === 1 ? 'danger' : 'success'"
-              >
-                {{ row.status === 1 ? '禁用' : '启用' }}
-              </el-button>
-            </template>
-          </el-popconfirm>
+          <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+            <el-button size="small" type="primary" @click="openEditDialog(row)">
+              编辑
+            </el-button>
+            <el-button size="small" type="warning" @click="openPasswordDialog(row)">
+              改密
+            </el-button>
+            <el-popconfirm
+              :title="row.status === 1 ? '确认禁用该用户？' : '确认启用该用户？'"
+              @confirm="toggleStatus(row)"
+            >
+              <template #reference>
+                <el-button
+                  size="small"
+                  :type="row.status === 1 ? 'danger' : 'success'"
+                >
+                  {{ row.status === 1 ? '禁用' : '启用' }}
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -92,7 +94,7 @@
       <el-pagination
         v-model:current-page="pagination.pageNum"
         v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[10, 20, 50, 100]"
         :total="pagination.total"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="fetchData"

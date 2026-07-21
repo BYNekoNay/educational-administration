@@ -26,29 +26,31 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="260" align="center" fixed="right">
+      <el-table-column label="操作" width="220" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click="openPermDialog(row)">
-            分配权限
-          </el-button>
-          <el-button
-            v-if="!isSystemRole(row.roleCode)"
-            link
-            type="primary"
-            size="small"
-            @click="showRoleDialog(row)"
-          >
-            编辑
-          </el-button>
-          <el-popconfirm
-            v-if="!isSystemRole(row.roleCode)"
-            title="确定删除该角色？关联的权限分配也将被清除"
-            @confirm="handleRoleDelete(row.id)"
-          >
-            <template #reference>
-              <el-button link type="danger" size="small">删除</el-button>
-            </template>
-          </el-popconfirm>
+          <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center; justify-content: center">
+            <el-button link type="primary" size="small" @click="openPermDialog(row)">
+              分配权限
+            </el-button>
+            <el-button
+              v-if="!isSystemRole(row.roleCode)"
+              link
+              type="primary"
+              size="small"
+              @click="showRoleDialog(row)"
+            >
+              编辑
+            </el-button>
+            <el-popconfirm
+              v-if="!isSystemRole(row.roleCode)"
+              title="确定删除该角色？关联的权限分配也将被清除"
+              @confirm="handleRoleDelete(row.id)"
+            >
+              <template #reference>
+                <el-button link type="danger" size="small">删除</el-button>
+              </template>
+            </el-popconfirm>
+          </div>
         </template>
       </el-table-column>
     </el-table>

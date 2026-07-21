@@ -43,17 +43,19 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" align="center" fixed="right">
+      <el-table-column label="操作" width="240" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click="showDialog(row)">
-            新增子菜单
-          </el-button>
-          <el-button link type="primary" size="small" @click="showDialog(row, true)">编辑</el-button>
-          <el-popconfirm title="确定删除该菜单？所有子菜单也将被删除" @confirm="handleDelete(row.id)">
-            <template #reference>
-              <el-button link type="danger" size="small">删除</el-button>
-            </template>
-          </el-popconfirm>
+          <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+            <el-button link type="primary" size="small" @click="showDialog(row)">
+              新增子菜单
+            </el-button>
+            <el-button link type="primary" size="small" @click="showDialog(row, true)">编辑</el-button>
+            <el-popconfirm title="确定删除该菜单？所有子菜单也将被删除" @confirm="handleDelete(row.id)">
+              <template #reference>
+                <el-button link type="danger" size="small">删除</el-button>
+              </template>
+            </el-popconfirm>
+          </div>
         </template>
       </el-table-column>
     </el-table>

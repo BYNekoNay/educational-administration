@@ -17,16 +17,18 @@
           <el-table-column prop="fee" label="费用" width="80" sortable="custom">
             <template #default="{ row }">¥{{ row.fee || 0 }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="120">
+          <el-table-column label="操作" width="130">
             <template #default="{ row }">
-              <el-button size="small" @click="showLevelDialog(row)">编辑</el-button>
-              <el-button size="small" type="danger" @click="deleteLevel(row.id)">删除</el-button>
+              <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+                <el-button size="small" @click="showLevelDialog(row)">编辑</el-button>
+                <el-button size="small" type="danger" @click="deleteLevel(row.id)">删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
         <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
           v-model:current-page="levelsPage" v-model:page-size="levelsPageSize"
-          :total="levelsTotal" layout="total, prev, pager, next" @change="loadLevels" />
+          :total="levelsTotal" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]" @change="loadLevels" />
 
         <el-dialog :title="editingLevel?.id ? '编辑项目' : '新增项目'" v-model="levelVisible" width="400px">
           <el-form :model="levelForm" label-width="80px">
@@ -68,15 +70,17 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="100">
+          <el-table-column label="操作" width="80">
             <template #default="{ row }">
-              <el-button size="small" @click="showSignupDialog(row)">编辑</el-button>
+              <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+                <el-button size="small" @click="showSignupDialog(row)">编辑</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
         <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
           v-model:current-page="signupsPage" v-model:page-size="signupsPageSize"
-          :total="signupsTotal" layout="total, prev, pager, next" @change="loadSignups" />
+          :total="signupsTotal" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]" @change="loadSignups" />
 
         <el-dialog :title="editingSignup?.id ? '编辑报名' : '新增报名'" v-model="signupVisible" width="400px">
           <el-form :model="signupForm" label-width="80px">

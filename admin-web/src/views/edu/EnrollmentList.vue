@@ -26,20 +26,23 @@
       <el-table-column prop="auditorName" label="审核人" min-width="80" sortable />
       <el-table-column prop="auditRemark" label="审核备注" min-width="120" sortable />
       <el-table-column prop="createTime" label="申请时间" width="170" sortable="custom" />
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
-          <template v-if="row.status === 1">
-            <el-button size="small" type="success" @click="handleAudit(row, 2)">通过</el-button>
-            <el-button size="small" type="danger" @click="showReject(row)">拒绝</el-button>
-          </template>
-          <span v-else style="color: #999">--</span>
+          <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
+            <template v-if="row.status === 1">
+              <el-button size="small" type="success" @click="handleAudit(row, 2)">通过</el-button>
+              <el-button size="small" type="danger" @click="showReject(row)">拒绝</el-button>
+            </template>
+            <span v-else style="color: #999">--</span>
+          </div>
         </template>
       </el-table-column>
     </el-table>
     <el-pagination
       style="margin-top: 16px; justify-content: flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
-      :total="total" layout="total, prev, pager, next" @change="loadData"
+      :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"
+      @change="loadData"
     />
 
     <!-- 拒绝原因弹窗 -->
