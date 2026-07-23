@@ -102,14 +102,16 @@ const inner = reactive<Record<string, any>>({})
 
 function syncInner() {
   for (const k of Object.keys(inner)) delete inner[k]
-  Object.assign(inner, props.form || {})
+  const src = props.form || {}
+  Object.assign(inner, typeof structuredClone === 'function' ? structuredClone(src) : JSON.parse(JSON.stringify(src)))
 }
 
 watch(
   () => props.modelValue,
   (v) => {
     if (v) syncInner()
-  }
+  },
+  { immediate: true }
 )
 
 function onCancel() {

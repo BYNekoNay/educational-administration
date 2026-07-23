@@ -20,6 +20,7 @@ public class AutoScheduleRequest {
     @NotNull private LocalDate endDate;
     @NotNull private LocalTime startTime;
     @NotNull private LocalTime endTime;
+    @NotNull(message = "课时数量不能为空")
     @Positive private Integer lessonCount;
     private List<@Min(1) @Max(7) Integer> weekdays;
 }

@@ -83,7 +83,10 @@ public class ParentController {
         Map<Long, String> teacherNameMap = teacherIds.isEmpty()
                 ? Collections.emptyMap()
                 : userMapper.selectBatchIds(teacherIds).stream()
-                        .collect(Collectors.toMap(User::getId, User::getRealName));
+                        .collect(Collectors.toMap(User::getId,
+                                u -> u.getRealName() != null && !u.getRealName().isBlank()
+                                        ? u.getRealName()
+                                        : (u.getUsername() != null ? u.getUsername() : "")));
 
         // 3. 一次性统计每个班的当前人数
         List<Long> classIds = classes.stream().map(ClassGroup::getId).toList();
@@ -145,8 +148,10 @@ public class ParentController {
             String dayDesc = days.stream()
                     .map(d -> dayOfWeekLabel(d))
                     .collect(Collectors.joining("/"));
-            String timeDesc = list.get(0).getStartTime().format(timeFmt) + "-"
-                    + list.get(0).getEndTime().format(timeFmt);
+            ScheduleLesson first = list.get(0);
+            String timeDesc = (first.getStartTime() != null && first.getEndTime() != null)
+                    ? first.getStartTime().format(timeFmt) + "-" + first.getEndTime().format(timeFmt)
+                    : "时间待定";
             result.put(e.getKey(), dayDesc + " " + timeDesc);
         }
         return result;
@@ -167,12 +172,17 @@ public class ParentController {
     @PostMapping("/enrollments")
     public Result<Enrollment> createEnrollment(@RequestBody Enrollment enrollment) {
         // H4 fix: 清除客户端不应设置的服务端控制字段
+        // 注意：classId 是家长在报名页明确选择的班级，不能清空——
+        // EnrollmentServiceImpl.create 依赖 classId 做班级归属/开放/时间冲突校验，
+        // FinanceServiceImpl.createPayment 依赖 classId 在缴费后写 ClassStudent 让学员入班。
+        // 清空会导致服务端冲突校验被绕过、缴费后学员永不入班（管理端 create 不清 classId，此处应保持一致）。
         enrollment.setId(null);
-        enrollment.setClassId(null);
         enrollment.setAuditorId(null);
         enrollment.setAuditRemark(null);
         enrollment.setHoldExpireTime(null);
         enrollment.setIsDeleted(null);
+        enrollment.setCreateTime(null);
+        enrollment.setUpdateTime(null);
         if (enrollment.getStudentId() == null) {
             throw new BusinessException(400, "学员ID不能为空");
         }
@@ -292,6 +302,11 @@ public class ParentController {
         if (!Integer.valueOf(2).equals(enrollment.getStatus())) {
             throw new BusinessException(409, "仅待缴费状态的报名可支付");
         }
+        // A3#7 fix: 名额保留已过期则禁止支付，避免占用已释放的名额
+        if (enrollment.getHoldExpireTime() != null
+                && enrollment.getHoldExpireTime().isBefore(LocalDateTime.now())) {
+            throw new BusinessException(409, "名额保留已过期，无法继续支付");
+        }
         // 从课程取课时数与价格（绕过 @TableLogic 防止已软删课程拿不到）
         Course course = courseMapper.selectByIdIncludeDeleted(enrollment.getCourseId());
         if (course == null) {
@@ -332,9 +347,12 @@ public class ParentController {
 
     @GetMapping("/notices")
     public Result<List<Notice>> listNotices() {
+        Long parentUserId = CurrentUserHolder.get().getUserId();
         return Result.success(noticeMapper.selectList(
                 new LambdaQueryWrapper<Notice>()
                         .in(Notice::getReceiverType, "ALL", "PARENT")
+                        .and(w -> w.isNull(Notice::getReceiverId).or().eq(Notice::getReceiverId, parentUserId))
+                        .and(w -> w.isNull(Notice::getPublishTime).or().le(Notice::getPublishTime, LocalDateTime.now()))
                         .orderByDesc(Notice::getCreateTime)
                         .last("LIMIT 20")));
     }

@@ -146,7 +146,10 @@ public class RoleServiceImpl implements RoleService {
             throw new BusinessException(404, "角色 " + roleCode + " 不存在");
         }
         // L7: 校验权限码是否存在于 permission 表
+        // Low fix: 先去重（保序），避免重复权限码导致 validCount<size 误报"权限码不存在"，
+        // 以及插入循环产生重复 role_permission 行触发唯一键冲突
         if (permissionCodes != null && !permissionCodes.isEmpty()) {
+            permissionCodes = new java.util.ArrayList<>(new java.util.LinkedHashSet<>(permissionCodes));
             Long validCount = permissionMapper.selectCount(
                     new LambdaQueryWrapper<Permission>().in(Permission::getPermissionCode, permissionCodes));
             if (validCount < permissionCodes.size()) {

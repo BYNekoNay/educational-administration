@@ -31,8 +31,8 @@ public interface AttendanceService {
     /** 家长查子女考勤 */
     Page<Attendance> pageByStudentId(Long studentId, int pageNum, int pageSize);
 
-    /** 教师查询课次列表 */
-    Page<ScheduleLesson> pageTeacherLessons(Long teacherId, int pageNum, int pageSize);
+    /** 教师查询课次列表，支持日期范围过滤 */
+    Page<ScheduleLesson> pageTeacherLessons(Long teacherId, int pageNum, int pageSize, String dateFrom, String dateTo);
 
     /** 校验教师角色：当前课次是否属于当前登录教师（行级数据隔离） */
     void checkTeacherLessonOwnership(Long lessonId);

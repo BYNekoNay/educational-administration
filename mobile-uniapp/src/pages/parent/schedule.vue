@@ -71,6 +71,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api, getCurrentStudentId } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const rawLessons = ref([])
@@ -89,6 +90,8 @@ function toggleGroup(courseId) {
 function onStudentChange(id) {
   studentId.value = id
   collapsedGroups.clear()
+  // 先清空旧学员课表：若新学员请求失败，不能把上一个学员的课表挂在新学员名下
+  rawLessons.value = []
   fetchSchedule()
 }
 
@@ -176,14 +179,17 @@ async function fetchSchedule() {
     rawLessons.value = []
     return
   }
+  const sid = studentId.value
   loading.value = true
   try {
-    const res = await api({ url: `/api/parent/students/${studentId.value}/schedule` })
+    const res = await api({ url: `/api/parent/students/${sid}/schedule` })
+    if (sid !== studentId.value) return
     rawLessons.value = res.data || []
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+  } catch (e) {
+    // request.js 已对业务/HTTP 错误弹过提示（_handled），此处仅兜底未处理异常
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '加载课表失败'), icon: 'none' })
   } finally {
-    loading.value = false
+    if (sid === studentId.value) loading.value = false
   }
 }
 

@@ -44,6 +44,10 @@ public class FinanceController {
     @PostMapping("/payments")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PaymentRecord> createPayment(@Valid @RequestBody PaymentRecord record) {
+        // Mass assignment protection: strip server-controlled fields
+        record.setId(null);
+        record.setCreateTime(null);
+        record.setUpdateTime(null);
         record.setOperatorId(CurrentUserHolder.get().getUserId());
         record.setOperatorRole("FINANCE");
         if (record.getPayTime() == null) {
@@ -65,6 +69,8 @@ public class FinanceController {
         // M10 fix: 清除客户端不应设置的审核字段
         record.setId(null);
         record.setAuditorId(null);
+        record.setCreateTime(null);
+        record.setUpdateTime(null);
         record.setApplicantId(CurrentUserHolder.get().getUserId());
         record.setApplicantRole("FINANCE");
         record.setStatus(1);
@@ -110,7 +116,11 @@ public class FinanceController {
     @GetMapping("/lesson-accounts/{id}")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<LessonAccount> getLessonAccount(@PathVariable Long id) {
-        return Result.success(financeService.getLessonAccountById(id));
+        LessonAccount account = financeService.getLessonAccountById(id);
+        if (account == null) {
+            throw new BusinessException(404, "课时账户不存在");
+        }
+        return Result.success(account);
     }
 
     @GetMapping("/lesson-flows")
@@ -125,6 +135,10 @@ public class FinanceController {
     @PostMapping("/renewals")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PaymentRecord> createRenewal(@Valid @RequestBody PaymentRecord record) {
+        // Mass assignment protection: strip server-controlled fields
+        record.setId(null);
+        record.setCreateTime(null);
+        record.setUpdateTime(null);
         record.setOperatorId(CurrentUserHolder.get().getUserId());
         record.setOperatorRole("FINANCE");
         if (record.getPayTime() == null) {
@@ -145,6 +159,10 @@ public class FinanceController {
     @PostMapping("/salary-rules")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<SalaryRule> createSalaryRule(@Valid @RequestBody SalaryRule rule) {
+        // Mass assignment protection: strip server-controlled fields
+        rule.setId(null);
+        rule.setCreateTime(null);
+        rule.setUpdateTime(null);
         return Result.success(salaryService.createSalaryRule(rule));
     }
 

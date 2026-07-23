@@ -9,7 +9,10 @@
           v-for="lesson in lessonsByDay[i]" :key="lesson.id"
           class="sc-lesson" :style="{ borderLeftColor: hashColor(lesson.courseId) }"
         >
-          <div class="sc-title">{{ lesson.courseName || lesson.className }}</div>
+          <div class="sc-title">
+            <span>{{ lesson.courseName || lesson.className }}</span>
+            <el-tag size="small" :type="statusType(lesson.status)">{{ statusLabel(lesson.status) }}</el-tag>
+          </div>
           <div class="sc-time">{{ lesson.startTime?.slice(0,5) }} - {{ lesson.endTime?.slice(0,5) }}</div>
           <div class="sc-info">{{ lesson.teacherName }} · {{ lesson.classroomName }}</div>
         </div>
@@ -46,6 +49,16 @@ const colors = ['#0E7490','#D97706','#059669','#7C3AED','#DB2777','#2563EB','#DC
 function hashColor(id: number | null): string {
   if (!id) return colors[0]
   return colors[Math.abs(id ^ (id >> 4)) % colors.length]
+}
+
+// 与 DailyTimeline 保持一致的状态映射
+function statusLabel(status: number): string {
+  const map: Record<number, string> = { 1: '待上课', 2: '已完成', 3: '已取消', 4: '已调课' }
+  return map[status] || ''
+}
+function statusType(status: number): string {
+  const map: Record<number, string> = { 1: 'warning', 2: 'success', 3: 'info', 4: 'danger' }
+  return map[status] || ''
 }
 </script>
 

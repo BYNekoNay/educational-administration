@@ -88,6 +88,7 @@
 <script setup>
 import { ref } from 'vue'
 import { api } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 
 const statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0
 
@@ -111,22 +112,28 @@ async function handleLogin() {
       method: 'POST',
       data: { username: username.value, password: password.value }
     })
-    const { token, roleCode } = res.data
+    const data = res.data || {}
+    const { token, roleCode } = data
+
+    // 仅家长/教师允许进入移动端，校验通过后再持久化，避免残留 token
+    if (roleCode !== 'PARENT' && roleCode !== 'TEACHER') {
+      uni.showToast({ title: '请使用家长或教师账号登录移动端', icon: 'none' })
+      return
+    }
+
     uni.setStorageSync('token', token)
-    uni.setStorageSync('userInfo', res.data)
+    uni.setStorageSync('userInfo', data)
 
     // 家长登录后加载学员列表
     if (roleCode === 'PARENT') {
       await loadParentStudents()
     }
 
-    if (roleCode === 'PARENT' || roleCode === 'TEACHER') {
-      uni.switchTab({ url: '/pages/home/index' })
-    } else {
-      uni.showToast({ title: '请使用家长或教师账号登录移动端', icon: 'none' })
-    }
+    uni.switchTab({ url: '/pages/home/index' })
   } catch (e) {
-    uni.showToast({ title: (e && e.errMsg) || '网络错误', icon: 'none' })
+    if (!e || !e._handled) {
+      uni.showToast({ title: getErrorMessage(e, '登录失败'), icon: 'none' })
+    }
   } finally {
     loading.value = false
   }
@@ -139,6 +146,8 @@ async function loadParentStudents() {
   } catch (e) {
     console.warn('学员列表加载失败', e)
     uni.setStorageSync('students', [])
+    // request.js 已对业务/HTTP 错误弹过提示（_handled），避免登录成功后连弹两条
+    if (!e || !e._handled) uni.showToast({ title: '学员列表加载失败，可稍后在首页重试', icon: 'none' })
   }
 }
 </script>

@@ -12,8 +12,10 @@ export const studentApi = {
   listParents: (id: number) => request.get(`/edu/students/${id}/parents`),
   unbindParent: (id: number, parentUserId: number) =>
     request.delete(`/edu/students/${id}/parents/${parentUserId}`),
-  transfer: (id: number, targetClassId: number) =>
-    request.post(`/edu/students/${id}/transfer`, null, { params: { targetClassId } }),
+  transfer: (id: number, targetClassId: number, fromClassId?: number) =>
+    request.post(`/edu/students/${id}/transfer`, null, {
+      params: fromClassId != null ? { targetClassId, fromClassId } : { targetClassId },
+    }),
   withdraw: (id: number) => request.post(`/edu/students/${id}/withdraw`),
 }
 
@@ -54,6 +56,14 @@ export const scheduleApi = {
   autoSchedule: (data: any) => request.post('/edu/schedules/auto', data),
 }
 
+/** 课节时段 */
+export const periodApi = {
+  list: () => request.get('/edu/periods'),
+  create: (data: any) => request.post('/edu/periods', data),
+  update: (id: number, data: any) => request.put(`/edu/periods/${id}`, data),
+  delete: (id: number) => request.delete(`/edu/periods/${id}`),
+}
+
 /** 教师下拉列表 */
 export const teacherApi = {
   list: () => request.get('/edu/teachers'),
@@ -90,9 +100,9 @@ export const enrollmentApi = {
 
 /** 调课管理 */
 export const adjustApi = {
-  list: (params?: any) => request.get('/edu/adjust', { params }),
-  create: (data: any) => request.post('/edu/adjust', data),
-  audit: (id: number, data: any) => request.put(`/edu/adjust/${id}/audit`, null, { params: { status: data.status, remark: data.remark } }),
+  list: (params?: any) => request.get('/edu/schedule-adjust-requests', { params }),
+  create: (data: any) => request.post('/edu/schedule-adjust-requests', data),
+  audit: (id: number, data: any) => request.put(`/edu/schedule-adjust-requests/${id}/audit`, null, { params: { status: data.status, remark: data.remark } }),
 }
 
 /** 考级管理 */

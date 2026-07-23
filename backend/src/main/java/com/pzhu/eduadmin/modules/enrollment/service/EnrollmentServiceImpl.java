@@ -95,9 +95,14 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                             m -> (String) m.get("name"),
                             (a, b) -> a));
         }
-        Map<Long, String> userNames = userMapper.selectBatchIds(
-                java.util.stream.Stream.concat(parentIds.stream(), auditorIds.stream()).collect(Collectors.toSet()))
-                .stream().collect(Collectors.toMap(User::getId, u -> u.getRealName() != null && !u.getRealName().isBlank() ? u.getRealName() : u.getUsername(), (a, b) -> a));
+        Set<Long> userIds = java.util.stream.Stream.concat(parentIds.stream(), auditorIds.stream()).collect(Collectors.toSet());
+        // A2#6 fix: 空集合 selectBatchIds 生成非法 "IN ()"；值映射对 null 姓名降级
+        Map<Long, String> userNames = userIds.isEmpty() ? Collections.emptyMap()
+                : userMapper.selectBatchIds(userIds).stream()
+                        .collect(Collectors.toMap(User::getId,
+                                u -> u.getRealName() != null && !u.getRealName().isBlank() ? u.getRealName()
+                                        : (u.getUsername() != null ? u.getUsername() : "用户" + u.getId()),
+                                (a, b) -> a));
         // 历史报名可能引用已软删课程/班级，绕过 @TableLogic 取名
         Map<Long, String> courseNames;
         if (courseIds.isEmpty()) {
@@ -142,12 +147,22 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (enrollment.getCourseId() == null) throw new BusinessException(400, "课程ID不能为空");
 
         // 校验学员是否存在
-        if (studentMapper.selectById(enrollment.getStudentId()) == null) {
+        com.pzhu.eduadmin.modules.student.entity.Student student =
+                studentMapper.selectById(enrollment.getStudentId());
+        if (student == null) {
             throw new BusinessException(404, "学员不存在");
         }
-        // 校验课程是否存在
-        if (courseMapper.selectById(enrollment.getCourseId()) == null) {
+        // Medium fix: 已退班学员（status=4）不允许再报名
+        if (student.getStatus() != null && student.getStatus() == 4) {
+            throw new BusinessException(409, "该学员已退班，无法报名");
+        }
+        // 校验课程是否存在且启用（A2#2 fix: 与_PARENT路径对齐，禁止报名已下架课程）
+        Course course = courseMapper.selectById(enrollment.getCourseId());
+        if (course == null) {
             throw new BusinessException(404, "课程不存在");
+        }
+        if (course.getStatus() == null || course.getStatus() != 1) {
+            throw new BusinessException(409, "该课程已下架，无法报名");
         }
         // M19: 校验 classId 归属于 courseId
         if (enrollment.getClassId() != null) {
@@ -157,6 +172,10 @@ public class EnrollmentServiceImpl implements EnrollmentService {
             }
             if (!enrollment.getCourseId().equals(classGroup.getCourseId())) {
                 throw new BusinessException(400, "该班级不属于所选课程");
+            }
+            // A2#2 fix: 与 transferStudent 对齐，仅允许报入开放班级
+            if (classGroup.getStatus() == null || classGroup.getStatus() != 1) {
+                throw new BusinessException(409, "该班级未开放，无法报名");
             }
         }
 
@@ -232,14 +251,24 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         }
         boolean deleted = enrollmentMapper.deleteById(id) > 0;
         if (deleted && enrollment.getClassId() != null) {
-            // 清理关联的 ClassStudent 记录
-            classStudentMapper.delete(new LambdaQueryWrapper<ClassStudent>()
+            // M fix: 置 status=3（已退出）而非逻辑删除，保留记录供流失统计（与 removeStudentFromClass 一致）。
+            // deleteById/@TableLogic 会隐藏记录，导致按 status=3 计数的流失统计永远漏计。
+            classStudentMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ClassStudent>()
                     .eq(ClassStudent::getClassId, enrollment.getClassId())
-                    .eq(ClassStudent::getStudentId, enrollment.getStudentId()));
+                    .eq(ClassStudent::getStudentId, enrollment.getStudentId())
+                    .eq(ClassStudent::getStatus, 1)
+                    .set(ClassStudent::getStatus, 3)
+                    // update(null, wrapper) 不触发 MetaObjectHandler 自动填充，需显式刷新 update_time，
+                    // 否则流失统计按 status=3 AND update_time 区间计数时会漏计本次退班。
+                    .set(ClassStudent::getUpdateTime, LocalDateTime.now()));
         }
         if (deleted) {
-            operationLogService.log("报名管理", "删除报名记录（学员=" + nameResolver.getStudentName(enrollment.getStudentId())
-                    + "，id=" + id + "）");
+            try {
+                operationLogService.log("报名管理", "删除报名记录（学员=" + nameResolver.getStudentName(enrollment.getStudentId())
+                        + "，id=" + id + "）");
+            } catch (Exception e) {
+                log.warn("操作日志记录失败: {}", e.getMessage());
+            }
         }
         return deleted;
     }
@@ -286,7 +315,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                 .eq(Enrollment::getStatus, 1)
                 .set(Enrollment::getStatus, status)
                 .set(Enrollment::getAuditorId, auditorId)
-                .set(Enrollment::getAuditRemark, remark);
+                .set(Enrollment::getAuditRemark, remark)
+                // A2#3 fix: update(null,wrapper) 不触发自动填充，显式刷新 update_time
+                .set(Enrollment::getUpdateTime, LocalDateTime.now());
         if (status == 2) {
             updateWrapper.set(Enrollment::getHoldExpireTime, LocalDateTime.now().plusHours(24));
         }
@@ -304,9 +335,13 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         // 操作日志
         String studentName = nameResolver.getStudentName(enrollment.getStudentId());
         String courseName = nameResolver.getCourseName(enrollment.getCourseId());
-        operationLogService.log("报名管理", status == 2
-                ? "审核通过报名（学员=" + studentName + "，课程=" + courseName + "，id=" + id + "）"
-                : "驳回报名（学员=" + studentName + "，课程=" + courseName + "，id=" + id + "）");
+        try {
+            operationLogService.log("报名管理", status == 2
+                    ? "审核通过报名（学员=" + studentName + "，课程=" + courseName + "，id=" + id + "）"
+                    : "驳回报名（学员=" + studentName + "，课程=" + courseName + "，id=" + id + "）");
+        } catch (Exception e) {
+            log.warn("操作日志记录失败: {}", e.getMessage());
+        }
 
         return enrollment;
     }
@@ -389,6 +424,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
         // 4. 逐一比对已报名班级
         for (Long enrolledClassId : enrolledClassIds) {
+            // L1 fix: 跳过目标班级自身，避免学员"已报名该班级"时把自己的课次和自己比对，
+            // overlap(同一时段) 恒为 true 会误报"自我冲突"
+            if (enrolledClassId.equals(targetClassId)) continue;
             Map<LocalDate, List<ScheduleLesson>> existingSlots = grouped.get(enrolledClassId);
             if (existingSlots == null) continue;
 
@@ -434,6 +472,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
     /** 两个时间段是否重叠（不含端点相接，即 10:00 结束 vs 10:00 开始不算冲突） */
     private boolean overlap(LocalTime s1, LocalTime e1, LocalTime s2, LocalTime e2) {
+        // 任一时间缺失（历史课次可能未填时间）时视为不冲突，避免 NPE 中断家长端冲突检测
+        if (s1 == null || e1 == null || s2 == null || e2 == null) return false;
         return s1.isBefore(e2) && s2.isBefore(e1);
     }
 

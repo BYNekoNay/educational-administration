@@ -50,8 +50,17 @@ const timeSlots = computed(() => {
   dayLessons.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''))
 
   const slots: any[] = []
-  const startHour = 7
-  const endHour = 22
+  // 默认展示 7:00-22:00；若当天存在更早/更晚的课次则动态扩展时段，
+  // 避免 <07:00 或 ≥23:00 的课次匹配不到任何时段而被静默丢弃
+  let startHour = 7
+  let endHour = 22
+  for (const l of dayLessons) {
+    const h = parseInt(String(l.startTime || '').slice(0, 2), 10)
+    if (!Number.isNaN(h)) {
+      if (h < startHour) startHour = h
+      if (h > endHour) endHour = h
+    }
+  }
 
   for (let h = startHour; h <= endHour; h++) {
     const hStr = String(h).padStart(2, '0') + ':00'

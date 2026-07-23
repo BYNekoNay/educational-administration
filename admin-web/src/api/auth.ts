@@ -4,7 +4,6 @@ import request from './request'
 export const authApi = {
   login: (data: { username: string; password: string }) =>
     request.post('/auth/login', data),
-  profile: () => request.get('/auth/profile'),
   logout: () => request.post('/auth/logout'),
   /** 获取当前用户可见菜单树（按权限过滤） */
   myMenus: () => request.get('/auth/menus'),

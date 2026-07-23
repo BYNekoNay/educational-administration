@@ -33,12 +33,19 @@ public class PermissionController {
 
     @PostMapping
     public Result<Permission> create(@Valid @RequestBody Permission permission) {
+        // Mass assignment protection: strip server-controlled fields
+        permission.setId(null);
+        permission.setCreateTime(null);
+        permission.setUpdateTime(null);
         return Result.success(permissionService.create(permission));
     }
 
     @PutMapping("/{id}")
     public Result<Permission> update(@PathVariable Long id, @Valid @RequestBody Permission permission) {
         permission.setId(id);
+        // L4 fix: 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime
+        permission.setCreateTime(null);
+        permission.setUpdateTime(null);
         return Result.success(permissionService.update(permission));
     }
 

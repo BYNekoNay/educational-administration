@@ -28,12 +28,12 @@
                   style="margin-top: 12px"
                   @sort-change="(v:any) => handleSortChange(v, 'rules')">
           <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-          <el-table-column prop="teacherName" label="教师" min-width="100" sortable />
-          <el-table-column prop="courseName" label="课程" min-width="120" sortable />
-          <el-table-column prop="lessonUnitPrice" label="课时单价" width="120" sortable="custom" align="right">
+          <el-table-column prop="teacherName" label="教师" min-width="100" />
+          <el-table-column prop="courseName" label="课程" min-width="120" />
+          <el-table-column prop="lessonUnitPrice" label="课时单价" width="120" align="right">
             <template #default="{ row }">¥ {{ row.lessonUnitPrice || 0 }}</template>
           </el-table-column>
-          <el-table-column prop="substituteRate" label="代课系数" width="100" sortable="custom" align="right" />
+          <el-table-column prop="substituteRate" label="代课系数" width="100" align="right" />
           <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ row }">
               <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
@@ -49,9 +49,10 @@
         <el-dialog :title="editingRule?.id ? '编辑规则' : '新增规则'" v-model="ruleVisible" width="420px">
           <el-form :model="ruleForm" label-width="90px">
             <el-form-item label="教师" required>
-              <el-select v-model="ruleForm.teacherId" placeholder="请选择教师" filterable style="width:100%">
-                <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id">
-                  <span>{{ t.realName }}</span>
+              <!-- 后端 updateSalaryRule 强制忽略 teacherId/courseId（防止历史薪资重算错用费率），编辑态禁用 -->
+              <el-select v-model="ruleForm.teacherId" placeholder="请选择教师" filterable style="width:100%" :disabled="!!editingRule?.id">
+                <el-option v-for="t in teacherList" :key="t.id" :label="t.realName || t.username" :value="t.id">
+                  <span>{{ t.realName || t.username }}</span>
                   <el-tag v-for="sp in (t.specialties || [])" :key="sp.id"
                           size="small" type="info" style="margin-left:4px;font-size:10px">
                     {{ sp.name }}
@@ -60,15 +61,15 @@
               </el-select>
             </el-form-item>
             <el-form-item label="课程" required>
-              <el-select v-model="ruleForm.courseId" placeholder="请选择课程" filterable style="width:100%">
+              <el-select v-model="ruleForm.courseId" placeholder="请选择课程" filterable style="width:100%" :disabled="!!editingRule?.id">
                 <el-option v-for="c in courseList" :key="c.id" :label="c.name" :value="c.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="课时单价">
-              <el-input-number v-model="ruleForm.lessonUnitPrice" :min="0" :precision="2" style="width:100%" />
+              <el-input-number v-model="ruleForm.lessonUnitPrice" :min="0.01" :precision="2" style="width:100%" />
             </el-form-item>
             <el-form-item label="代课系数">
-              <el-input-number v-model="ruleForm.substituteRate" :min="0" :precision="2" :step="0.1" style="width:100%" />
+              <el-input-number v-model="ruleForm.substituteRate" :min="0.01" :precision="2" :step="0.1" style="width:100%" />
             </el-form-item>
           </el-form>
           <template #footer>
@@ -91,8 +92,8 @@
           <el-form inline @submit.prevent>
             <el-form-item label="教师" required>
               <el-select v-model="calcTeacherId" placeholder="选择教师" filterable style="width: 180px">
-                <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id">
-                  <span>{{ t.realName }}</span>
+                <el-option v-for="t in teacherList" :key="t.id" :label="t.realName || t.username" :value="t.id">
+                  <span>{{ t.realName || t.username }}</span>
                   <el-tag v-for="sp in (t.specialties || [])" :key="sp.id"
                           size="small" type="info" style="margin-left:4px;font-size:10px">
                     {{ sp.name }}
@@ -111,11 +112,12 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" :icon="Coin" :loading="calculating" @click="handleCalculate">核算薪资</el-button>
+              <el-button type="success" :icon="MagicStick" :loading="batchCalculating" @click="handleBatchCalculate">一键结算本月</el-button>
             </el-form-item>
           </el-form>
         </el-card>
 
-        <!-- 2. 概览卡片 -->
+        <!-- 2. 概览卡片（基于全量数据，不受列表筛选影响） -->
         <div class="stat-row">
           <div class="stat-card" v-for="s in statCards" :key="s.label">
             <div class="stat-label">{{ s.label }}</div>
@@ -123,6 +125,41 @@
             <div class="stat-extra" v-if="s.extra">{{ s.extra }}</div>
           </div>
         </div>
+
+        <!-- 2.5 按月统计 -->
+        <el-card v-if="monthlyStats.length" shadow="never" class="monthly-card">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title">按月统计</span>
+              <span class="card-tip">点击月份可快速筛选下方列表</span>
+            </div>
+          </template>
+          <div class="monthly-grid">
+            <div v-for="m in monthlyStats" :key="m.month"
+                 class="monthly-item"
+                 :class="{ active: filterMonth === m.month }"
+                 @click="filterMonth = filterMonth === m.month ? null : m.month">
+              <div class="m-head">
+                <span class="m-month">{{ m.month }}</span>
+                <span class="m-total">¥ {{ m.totalAmount.toFixed(2) }}</span>
+              </div>
+              <div class="m-body">
+                <div class="m-row">
+                  <span class="m-dot dot-primary"></span><span>待确认 {{ m.cntByStatus[1] }}</span>
+                </div>
+                <div class="m-row">
+                  <span class="m-dot dot-success"></span><span>已确认 {{ m.cntByStatus[2] }}</span>
+                </div>
+                <div class="m-row">
+                  <span class="m-dot dot-warning"></span><span>已发放 {{ m.cntByStatus[3] }}</span>
+                </div>
+                <div v-if="m.cntByStatus[4]" class="m-row">
+                  <span class="m-dot dot-info"></span><span>已撤销 {{ m.cntByStatus[4] }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-card>
 
         <!-- 3. 筛选 + 列表 -->
         <el-card shadow="never" class="list-card">
@@ -137,15 +174,17 @@
                   <el-option v-for="m in availableMonths" :key="m" :label="m" :value="m" />
                 </el-select>
                 <el-button :icon="Refresh" @click="resetListFilter" size="default">重置</el-button>
+                <ExportButton url="/export/salaries" :params="{ month: filterMonth || '' }"
+                              label="导出薪资" type="primary" size="default" />
               </div>
             </div>
           </template>
 
-          <el-table :data="filteredSalaries" v-loading="salariesLoading" border stripe
+          <el-table :data="salaries" v-loading="salariesLoading" border stripe
                     empty-text="暂无符合条件的薪资记录"
                     @sort-change="(v:any) => handleSortChange(v, 'salaries')">
             <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-            <el-table-column prop="teacherName" label="教师" min-width="100" sortable>
+            <el-table-column prop="teacherName" label="教师" min-width="100">
               <template #default="{ row }">
                 <el-avatar :size="22" style="vertical-align: middle; margin-right: 6px">{{ row.teacherName?.charAt(0) }}</el-avatar>
                 <span>{{ row.teacherName }}</span>
@@ -156,12 +195,12 @@
                 <el-tag effect="plain" round>{{ row.salaryMonth }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="lessonCount" label="主讲课时" width="90" sortable="custom" align="right" />
-            <el-table-column prop="substituteCount" label="代课课时" width="90" sortable="custom" align="right" />
-            <el-table-column prop="baseAmount" label="基础工资" width="110" sortable="custom" align="right">
+            <el-table-column prop="lessonCount" label="主讲课时" width="90" align="right" />
+            <el-table-column prop="substituteCount" label="代课课时" width="90" align="right" />
+            <el-table-column prop="baseAmount" label="基础工资" width="110" align="right">
               <template #default="{ row }">¥ {{ row.baseAmount || 0 }}</template>
             </el-table-column>
-            <el-table-column prop="bonusAmount" label="奖金" width="100" sortable="custom" align="right">
+            <el-table-column prop="bonusAmount" label="奖金" width="100" align="right">
               <template #default="{ row }">¥ {{ row.bonusAmount || 0 }}</template>
             </el-table-column>
             <el-table-column prop="totalAmount" label="应发工资" width="120" sortable="custom" align="right">
@@ -169,7 +208,7 @@
                 <span class="total-amount">¥ {{ row.totalAmount || 0 }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="状态" width="100" sortable="custom" align="center">
+            <el-table-column prop="status" label="状态" width="100" align="center">
               <template #default="{ row }">
                 <el-tag :type="statusTag(row.status)" effect="light" round>{{ statusLabel(row.status) }}</el-tag>
               </template>
@@ -185,7 +224,8 @@
                   <el-button v-if="row.status === 1" size="small" type="success" link @click="handleConfirm(row.id)">确认</el-button>
                   <el-button v-if="row.status === 1 || row.status === 2" size="small" type="warning" link @click="handleVoid(row.id)">作废</el-button>
                   <el-button v-if="row.status === 2" size="small" type="primary" link @click="showAdjust(row.id)">调整</el-button>
-                  <span v-if="row.status === 3" class="muted-tip">已发放 · 不可操作</span>
+                  <el-button v-if="row.status === 2" size="small" type="success" link @click="handlePay(row.id)">发放</el-button>
+                  <span v-if="row.status === 3" class="muted-tip">已发放 · 终态</span>
                   <span v-if="row.status === 4" class="muted-tip">已撤销</span>
                 </div>
               </template>
@@ -193,7 +233,7 @@
           </el-table>
           <el-pagination style="margin-top: 12px; justify-content: flex-end" size="small"
             v-model:current-page="salariesPage" v-model:page-size="salariesPageSize"
-            :total="filteredSalaries.length" layout="sizes, total, prev, pager, next, jumper" :page-sizes="[10, 20, 50, 100]" @change="loadSalaries" />
+            :total="salariesTotal" layout="sizes, total, prev, pager, next, jumper" :page-sizes="[10, 20, 50, 100]" @change="loadSalaries" />
         </el-card>
 
         <el-dialog title="薪资调整" v-model="adjustVisible" width="420px">
@@ -212,6 +252,44 @@
             <el-button type="primary" @click="saveAdjust" :loading="adjustSaving">保存</el-button>
           </template>
         </el-dialog>
+
+        <!-- 一键结算结果 -->
+        <el-dialog v-model="batchResultVisible" title="一键结算结果" width="640px">
+          <div v-if="batchResult" class="batch-summary">
+            <div class="summary-row">
+              <span class="summary-label">结算月份</span>
+              <el-tag effect="plain">{{ batchResult.salaryMonth }}</el-tag>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">教师总数</span>
+              <span>{{ batchResult.totalTeachers }}</span>
+            </div>
+            <div class="summary-stats">
+              <div class="stat-block success">
+                <div class="stat-num">{{ batchResult.successCount }}</div>
+                <div class="stat-name">成功</div>
+              </div>
+              <div class="stat-block danger">
+                <div class="stat-num">{{ batchResult.failedCount }}</div>
+                <div class="stat-name">失败</div>
+              </div>
+              <div class="stat-block primary">
+                <div class="stat-num">¥ {{ batchResult.totalAmount }}</div>
+                <div class="stat-name">合计应发</div>
+              </div>
+            </div>
+            <template v-if="batchResult.errors?.length">
+              <div class="error-title">失败明细</div>
+              <el-table :data="batchResult.errors" size="small" max-height="240">
+                <el-table-column prop="teacherName" label="教师" />
+                <el-table-column prop="message" label="失败原因" />
+              </el-table>
+            </template>
+          </div>
+          <template #footer>
+            <el-button type="primary" @click="batchResultVisible = false; loadSalaries()">关闭</el-button>
+          </template>
+        </el-dialog>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -220,7 +298,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Plus, Coin } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Coin, MagicStick } from '@element-plus/icons-vue'
+import ExportButton from '@/components/ExportButton.vue'
 import { salaryApi } from '@/api/finance'
 import { teacherApi, courseApi } from '@/api/edu'
 import { showError } from '@/utils/error'
@@ -244,7 +323,11 @@ async function loadOptions() {
     ])
     teacherList.value = tRes.data || []
     courseList.value = cRes.data?.records || []
-  } catch { /* ignore */ }
+  } catch (e) {
+    // 注意：/edu/teachers、/edu/courses 仅放行 SUPER_ADMIN/EDU_ADMIN，FINANCE 角色会 403
+    // （第八轮待办：后端为薪资页补充 FINANCE 可见的教师/课程下拉接口）
+    showError(e, '加载教师/课程下拉数据失败')
+  }
 }
 
 async function loadRules() {
@@ -291,9 +374,13 @@ async function saveRule() {
 
 // ---- 薪资 Tab ----
 const salaries = ref<any[]>([]), salariesLoading = ref(false), salariesPage = ref(1), salariesPageSize = ref(10), salariesTotal = ref(0)
+const salariesAll = ref<any[]>([])  // 全量数据，供概览卡和按月统计使用，不受分页影响
 const calculating = ref(false)
+const batchCalculating = ref(false)
+const batchResultVisible = ref(false)
+const batchResult = ref<any>(null)
 const calcTeacherId = ref<number | null>(null)
-const calcMonthDate = ref<string>('2026-07')
+const calcMonthDate = ref<string>(new Date().toISOString().slice(0, 7))
 const calcBonus = ref<number>(0)
 
 const filterStatus = ref<number | null>(null)
@@ -310,36 +397,58 @@ const statusOptions = [
 ]
 
 function statusLabel(s: number) { const map: Record<number, string> = { 1: '待确认', 2: '已确认', 3: '已发放', 4: '已撤销' }; return map[s] || s }
-function statusTag(s: number) { const map: Record<number, string> = { 1: 'primary', 2: 'success', 3: 'warning', 4: 'info' }; return map[s] || 'info' }
+function statusTag(s: number) { const map: Record<number, string> = { 1: 'primary', 2: 'success', 3: 'success', 4: 'info' }; return map[s] || 'info' }
 
 const availableMonths = computed(() => {
   const set = new Set<string>()
-  salaries.value.forEach(r => r.salaryMonth && set.add(r.salaryMonth))
+  salariesAll.value.forEach(r => r.salaryMonth && set.add(r.salaryMonth))
   return Array.from(set).sort().reverse()
 })
 
-const filteredSalaries = computed(() => {
-  return salaries.value.filter(r => {
-    if (filterStatus.value != null && r.status !== filterStatus.value) return false
-    if (filterMonth.value && r.salaryMonth !== filterMonth.value) return false
-    return true
-  })
+function resetListFilter() {
+  filterStatus.value = null
+  filterMonth.value = null
+  salariesPage.value = 1
+  loadSalaries()
+}
+
+// 状态/月份筛选变化时重置分页并重新加载（服务端过滤）
+watch([filterStatus, filterMonth], () => {
+  salariesPage.value = 1
+  loadSalaries()
 })
 
-function resetListFilter() { filterStatus.value = null; filterMonth.value = null }
-
-// 概览卡片：按状态汇总
+// 概览卡片：按全量数据汇总（不受列表筛选影响）
 const statCards = computed(() => {
-  const data = filteredSalaries.value
+  const data = salariesAll.value
   const total = data.length
   const sumBy = (st: number) => data.filter(r => r.status === st).reduce((s, r) => s + Number(r.totalAmount || 0), 0)
   const cntBy = (st: number) => data.filter(r => r.status === st).length
   return [
-    { label: '当前列表总数', value: total, color: '#303133', extra: '' },
+    { label: '全部记录', value: total, color: '#303133', extra: '' },
     { label: '待确认', value: cntBy(1), color: '#409EFF', extra: `¥ ${sumBy(1).toFixed(2)}` },
     { label: '已确认', value: cntBy(2), color: '#67C23A', extra: `¥ ${sumBy(2).toFixed(2)}` },
     { label: '已发放', value: cntBy(3), color: '#E6A23C', extra: `¥ ${sumBy(3).toFixed(2)}` },
+    { label: '已撤销', value: cntBy(4), color: '#909399', extra: `¥ ${sumBy(4).toFixed(2)}` },
   ]
+})
+
+// 按月统计：每个月一行
+const monthlyStats = computed(() => {
+  const groups = new Map<string, { totalAmount: number; cntByStatus: Record<number, number> }>()
+  for (const r of salariesAll.value) {
+    if (!r.salaryMonth) continue
+    let g = groups.get(r.salaryMonth)
+    if (!g) {
+      g = { totalAmount: 0, cntByStatus: { 1: 0, 2: 0, 3: 0, 4: 0 } }
+      groups.set(r.salaryMonth, g)
+    }
+    g.totalAmount += Number(r.totalAmount || 0)
+    g.cntByStatus[r.status] = (g.cntByStatus[r.status] || 0) + 1
+  }
+  return Array.from(groups.entries())
+    .map(([month, v]) => ({ month, ...v }))
+    .sort((a, b) => b.month.localeCompare(a.month))
 })
 
 function formatTime(t: string | undefined) {
@@ -353,10 +462,23 @@ async function loadSalaries() {
     const res = await salaryApi.list({
       pageNum: salariesPage.value, pageSize: salariesPageSize.value,
       keyword: keyword.value || undefined,
+      status: filterStatus.value ?? undefined,
+      month: filterMonth.value || undefined,
       sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined,
     })
-    salaries.value = res.data.records; salariesTotal.value = res.data.total
+    salaries.value = res.data?.records || []
+    salariesTotal.value = Number(res.data?.total || 0)
   } finally { salariesLoading.value = false }
+  // 同时拉全量数据给概览卡/按月统计（不做分页限制，但最多 500 条兜底）
+  loadAllSalaries()
+}
+
+/** 拉全量薪资记录用于统计概览，与列表分页解耦 */
+async function loadAllSalaries() {
+  try {
+    const res = await salaryApi.list({ pageNum: 1, pageSize: 500 })
+    salariesAll.value = res.data?.records || []
+  } catch { /* 非关键，统计失败不影响列表 */ }
 }
 
 async function handleCalculate() {
@@ -367,29 +489,62 @@ async function handleCalculate() {
     const res = await salaryApi.calculate({ salaryMonth: calcMonthDate.value, teacherId: calcTeacherId.value, bonusAmount: calcBonus.value || 0 })
     ElMessage.success(`核算完成：主讲${res.data.lessonCount}课时 代课${res.data.substituteCount}课时 应发¥${res.data.totalAmount}`)
     loadSalaries()
-  } catch (e: any) { ElMessage.error(e?.response?.data?.message || '核算失败') } finally { calculating.value = false }
+  } catch (e: any) { showError(e, '核算失败') } finally { calculating.value = false }
+}
+
+async function handleBatchCalculate() {
+  if (!calcMonthDate.value) { ElMessage.warning('请选择月份'); return }
+  try {
+    await ElMessageBox.confirm(
+      `将对【${calcMonthDate.value}】所有在职教师执行薪资核算，奖金¥${calcBonus.value || 0}。\n已确认的薪资单不会被覆盖，失败项将汇总显示。`,
+      '一键结算本月', { confirmButtonText: '开始结算', cancelButtonText: '取消', type: 'warning' })
+  } catch { return /* canceled */ }
+  batchCalculating.value = true
+  try {
+    const res = await salaryApi.calculateBatch({ salaryMonth: calcMonthDate.value, bonusAmount: calcBonus.value || 0 })
+    batchResult.value = res.data
+    batchResultVisible.value = true
+    loadSalaries()
+  } catch (e: any) { showError(e, '批量结算失败') } finally { batchCalculating.value = false }
 }
 
 async function handleConfirm(id: number) {
-  await salaryApi.confirm(id)
-  ElMessage.success('薪资已确认'); loadSalaries()
+  try {
+    await salaryApi.confirm(id)
+    ElMessage.success('薪资已确认'); loadSalaries()
+  } catch (e: any) { showError(e, '确认失败') }
 }
 async function handleVoid(id: number) {
   try {
     await ElMessageBox.confirm('确认作废该薪资单吗？作废后该月可重新核算。', '作废确认',
       { confirmButtonText: '确认作废', cancelButtonText: '取消', type: 'warning' })
+  } catch { return /* canceled */ }
+  try {
     await salaryApi.void(id)
     ElMessage.success('已作废，可重新核算'); loadSalaries()
-  } catch { /* canceled */ }
+  } catch (e: any) { showError(e, '作废失败') }
+}
+
+async function handlePay(id: number) {
+  try {
+    await ElMessageBox.confirm('确认将该薪资单标记为"已发放"吗？操作不可撤回。', '发放确认',
+      { confirmButtonText: '确认发放', cancelButtonText: '取消', type: 'success' })
+  } catch { return /* canceled */ }
+  try {
+    await salaryApi.pay(id)
+    ElMessage.success('薪资已发放，记入终态'); loadSalaries()
+  } catch (e: any) { showError(e, '发放失败') }
 }
 function showAdjust(salaryId: number) { adjustForm.salaryId = salaryId; adjustForm.adjustAmount = 0; adjustForm.reason = ''; adjustVisible.value = true }
 async function saveAdjust() {
   if (!adjustForm.reason?.trim()) { ElMessage.warning('请填写调整原因'); return }
+  if (!adjustForm.adjustAmount) { ElMessage.warning('调整金额不能为 0'); return }
   adjustSaving.value = true
   try {
     await salaryApi.adjustments({ ...adjustForm })
     ElMessage.success('调整已保存'); adjustVisible.value = false
-  } catch (e: any) { ElMessage.error(e?.response?.data?.message || '调整失败') } finally { adjustSaving.value = false }
+    loadSalaries()
+  } catch (e: any) { showError(e, '调整失败') } finally { adjustSaving.value = false }
 }
 
 onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
@@ -453,10 +608,76 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
 
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin: 12px 0;
 }
+
+.monthly-card {
+  margin-top: 12px;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+.monthly-card :deep(.el-card__body) { padding: 16px; }
+
+.monthly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.monthly-item {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 12px 14px;
+  background: #fafbfc;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.monthly-item:hover {
+  border-color: #409EFF;
+  background: #ecf5ff;
+}
+.monthly-item.active {
+  border-color: #409EFF;
+  background: #ecf5ff;
+  box-shadow: 0 0 0 2px rgba(64,158,255,0.15);
+}
+.m-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #e4e7ed;
+  margin-bottom: 8px;
+}
+.m-month {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.m-total {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f56c6c;
+}
+.m-body { display: flex; flex-direction: column; gap: 4px; }
+.m-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #606266;
+}
+.m-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-primary { background: #409EFF; }
+.dot-success { background: #67C23A; }
+.dot-warning { background: #E6A23C; }
+.dot-info    { background: #909399; }
 .stat-card {
   background: #f7f9fc;
   border: 1px solid #ebeef5;
@@ -501,7 +722,52 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
   margin-left: 8px;
 }
 
-@media (max-width: 900px) {
+.batch-summary .summary-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.batch-summary .summary-label {
+  color: #909399;
+  width: 80px;
+}
+.batch-summary .summary-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.batch-summary .stat-block {
+  border-radius: 6px;
+  padding: 14px;
+  text-align: center;
+  color: #fff;
+}
+.batch-summary .stat-block.success { background: #67C23A; }
+.batch-summary .stat-block.danger { background: #F56C6C; }
+.batch-summary .stat-block.primary { background: #409EFF; }
+.batch-summary .stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.batch-summary .stat-name {
+  font-size: 12px;
+  margin-top: 4px;
+  opacity: 0.9;
+}
+.batch-summary .error-title {
+  margin: 12px 0 8px;
+  font-weight: 600;
+  color: #F56C6C;
+}
+
+@media (max-width: 1100px) {
+  .stat-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 700px) {
   .stat-row { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

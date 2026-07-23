@@ -32,6 +32,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 
 const lessons = ref([])
 
@@ -40,10 +41,12 @@ function tagClass(s) { return {1:'tag-primary',2:'tag-success',3:'tag-muted',4:'
 
 async function fetchSchedule() {
   try {
-    const info = uni.getStorageSync('userInfo') || {}
     const res = await api({ url: '/api/teacher/lessons?pageNum=1&pageSize=50' })
-    lessons.value = (res.data.records || []).filter(l => l.teacherId === info.userId)
-  } catch { uni.showToast({ title: '加载失败', icon: 'none' }) }
+    // 后端已按当前教师过滤，无需客户端再按 teacherId 过滤（类型不一致时会误清空列表）
+    lessons.value = res.data?.records || []
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '加载失败'), icon: 'none' })
+  }
 }
 
 onMounted(fetchSchedule)

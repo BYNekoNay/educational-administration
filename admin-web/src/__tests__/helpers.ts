@@ -37,11 +37,12 @@ const baseStubs: Record<string, any> = {
   'el-button': { template: '<button class="el-button"><slot /></button>', props: ['type', 'size', 'loading', 'link', 'icon'], emits: ['click'] },
 }
 
-export function mountPage(component: Component, extraStubs: Record<string, any> = {}) {
+export function mountPage(component: Component, extraStubs: Record<string, any> = {}, plugins: any[] = []) {
   return mount(component, {
     global: {
       directives: { loading: loadingDirective },
       stubs: { ...baseStubs, ...extraStubs },
+      plugins,
     },
   })
 }

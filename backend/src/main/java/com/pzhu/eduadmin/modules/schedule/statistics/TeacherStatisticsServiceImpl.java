@@ -39,6 +39,7 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
         List<ScheduleLesson> allLessons = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)
+                        .in(ScheduleLesson::getStatus, 1, 2)
                         .orderByAsc(ScheduleLesson::getLessonDate));
 
         Map<String, MonthAccum> accums = new LinkedHashMap<>();
@@ -72,7 +73,8 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)
                         .ge(ScheduleLesson::getLessonDate, from)
-                        .le(ScheduleLesson::getLessonDate, to));
+                        .le(ScheduleLesson::getLessonDate, to)
+                        .in(ScheduleLesson::getStatus, 1, 2));
 
         long lessonCount = lessons.size();
         double totalHours = lessons.stream()
@@ -93,8 +95,11 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
     }
 
     private double calcCompletionRate(Long teacherId) {
+        // Medium fix: 分母仅统计有效课次（1=待上课,2=已完成），排除已取消/已调课（status=4）
         long total = scheduleLessonMapper.selectCount(
-                new LambdaQueryWrapper<ScheduleLesson>().eq(ScheduleLesson::getTeacherId, teacherId));
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .eq(ScheduleLesson::getTeacherId, teacherId)
+                        .in(ScheduleLesson::getStatus, 1, 2));
         if (total == 0) return 0.0;
         long completed = scheduleLessonMapper.selectCount(
                 new LambdaQueryWrapper<ScheduleLesson>()
@@ -104,16 +109,20 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
     }
 
     private double calcAttendanceRate(Long teacherId) {
+        // Medium fix: 仅取有效课次（1=待上课,2=已完成），排除已取消/已调课（status=4）
         java.util.List<Long> lessonIds = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)
+                        .in(ScheduleLesson::getStatus, 1, 2)
                         .select(ScheduleLesson::getId))
                 .stream().map(ScheduleLesson::getId).collect(Collectors.toList());
 
         if (lessonIds.isEmpty()) return 0.0;
 
         long total = attendanceMapper.selectCount(new LambdaQueryWrapper<com.pzhu.eduadmin.modules.attendance.entity.Attendance>()
-                .in(com.pzhu.eduadmin.modules.attendance.entity.Attendance::getLessonId, (Collection<Long>) lessonIds));
+                .in(com.pzhu.eduadmin.modules.attendance.entity.Attendance::getLessonId, (Collection<Long>) lessonIds)
+                // 与仪表盘统一口径：分母仅统计有效考勤状态 1-4，排除遗留 null/0 行
+                .in(com.pzhu.eduadmin.modules.attendance.entity.Attendance::getStatus, List.of(1, 2, 3, 4)));
         if (total == 0) return 0.0;
 
         long present = attendanceMapper.selectCount(new LambdaQueryWrapper<com.pzhu.eduadmin.modules.attendance.entity.Attendance>()
@@ -135,7 +144,8 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
         return scheduleLessonMapper.selectCount(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)
-                        .isNotNull(ScheduleLesson::getSourceLessonId));
+                        .isNotNull(ScheduleLesson::getSourceLessonId)
+                        .in(ScheduleLesson::getStatus, 1, 2));
     }
 
     private static class MonthAccum {

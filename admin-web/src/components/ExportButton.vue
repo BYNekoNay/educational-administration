@@ -9,6 +9,8 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { useAuthStore } from '@/stores/auth'
+import { getErrorMessage } from '@/utils/error'
 
 // 单独实例：仅注入鉴权头，不挂载响应拦截器，
 // 避免 blob 响应（无 code 字段）被统一拦截器误判为失败。
@@ -45,7 +47,11 @@ const loading = ref(false)
 function parseFilename(disposition?: string, fallback = 'export.xlsx'): string {
   if (disposition) {
     const m = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i)
-    if (m) return decodeURIComponent(m[1])
+    if (m) {
+      // 非法百分号编码（如裸 %）会让 decodeURIComponent 抛错，
+      // 不能因此中断下载——回退用原始文件名
+      try { return decodeURIComponent(m[1]) } catch { return m[1] }
+    }
   }
   return props.filename || fallback
 }
@@ -76,7 +82,25 @@ async function handleExport() {
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
   } catch (e: any) {
-    ElMessage.error(e?.message || '导出失败')
+    // HTTP 401：与主实例 request.ts 保持一致——清除登录态并跳登录页，
+    // 而不是弹一句 "Request failed with status code 401" 后留着失效会话
+    if (e?.response?.status === 401) {
+      const authStore = useAuthStore()
+      authStore.logout()
+      window.location.href = '/login'
+      return
+    }
+    // 导出失败时后端返回 JSON Blob（内含业务 message），但 responseType:'blob'
+    // 下 error.response.data 是 Blob，需解析文本才能拿到可读消息
+    let msg = getErrorMessage(e, '导出失败')
+    try {
+      const blob = e?.response?.data
+      if (blob instanceof Blob && blob.type.includes('application/json')) {
+        const json = JSON.parse(await blob.text())
+        if (json?.message) msg = json.message
+      }
+    } catch { /* 解析失败沿用状态码映射的默认消息 */ }
+    ElMessage.error(msg)
   } finally {
     loading.value = false
   }

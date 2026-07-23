@@ -10,10 +10,10 @@
     </div>
     <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-      <el-table-column prop="studentName" label="学员" min-width="80" sortable />
-      <el-table-column prop="parentName" label="家长" min-width="80" sortable />
-      <el-table-column prop="courseName" label="课程" min-width="100" sortable />
-      <el-table-column prop="className" label="意向班级" min-width="120" sortable />
+      <el-table-column prop="studentName" label="学员" min-width="80" />
+      <el-table-column prop="parentName" label="家长" min-width="80" />
+      <el-table-column prop="courseName" label="课程" min-width="100" />
+      <el-table-column prop="className" label="意向班级" min-width="120" />
       <el-table-column prop="status" label="状态" width="100" sortable="custom">
         <template #default="{ row }">
           <el-tag v-if="row.status === 1" type="warning">待审核</el-tag>
@@ -21,16 +21,18 @@
           <el-tag v-else-if="row.status === 3" type="success">已完成</el-tag>
           <el-tag v-else-if="row.status === 4" type="danger">已拒绝</el-tag>
           <el-tag v-else-if="row.status === 5" type="info">已失效</el-tag>
+          <el-tag v-else-if="row.status === 6" type="info">已退费</el-tag>
+          <el-tag v-else type="info">未知</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="auditorName" label="审核人" min-width="80" sortable />
-      <el-table-column prop="auditRemark" label="审核备注" min-width="120" sortable />
+      <el-table-column prop="auditorName" label="审核人" min-width="80" />
+      <el-table-column prop="auditRemark" label="审核备注" min-width="120" />
       <el-table-column prop="createTime" label="申请时间" width="170" sortable="custom" />
       <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
           <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
             <template v-if="row.status === 1">
-              <el-button size="small" type="success" @click="handleAudit(row, 2)">通过</el-button>
+              <el-button size="small" type="success" @click="handleAudit(row, 2)" :loading="auditing">通过</el-button>
               <el-button size="small" type="danger" @click="showReject(row)">拒绝</el-button>
             </template>
             <span v-else style="color: #999">--</span>
@@ -60,6 +62,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { enrollmentApi } from '@/api/edu'
+import { showError } from '@/utils/error'
 
 const loading = ref(false), auditing = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
@@ -69,8 +72,12 @@ const rejectVisible = ref(false), rejectRow = ref<any>(null), rejectRemark = ref
 
 async function loadData() {
   loading.value = true
-  const res = await enrollmentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-  tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+  try {
+    // keyword 目前被后端报名分页接口丢弃（第八轮待办：后端补关键字过滤），保留传参以便后端支持后自动生效
+    const res = await enrollmentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    tableData.value = res.data.records; total.value = res.data.total
+  } catch (e) { showError(e, '加载报名列表失败') }
+  finally { loading.value = false }
 }
 
 function handleSearch() { pageNum.value = 1; loadData() }
@@ -90,7 +97,7 @@ async function handleAudit(row: any, status: number) {
     ElMessage.success(status === 2 ? '审核通过，进入待缴费' : '已拒绝')
     rejectVisible.value = false
     loadData()
-  } finally { auditing.value = false }
+  } catch (e) { showError(e, '审核失败') } finally { auditing.value = false }
 }
 
 onMounted(loadData)

@@ -47,6 +47,7 @@
 import {ref,reactive,onMounted} from 'vue'
 import {ElMessage,ElMessageBox} from 'element-plus'
 import { classroomApi } from '@/api/edu'
+import { showError } from '@/utils/error'
 
 const loading=ref(false),saving=ref(false)
 const keyword=ref(''),sortField=ref(''),sortOrder=ref('')
@@ -54,13 +55,13 @@ const tableData=ref<any[]>([]),pageNum=ref(1),pageSize=ref(10),total=ref(0)
 const dialogVisible=ref(false),isEdit=ref(false)
 const form=reactive<any>({name:'',capacity:10,campus:'',status:1})
 
-async function loadData(){loading.value=true;const r=await classroomApi.list({pageNum:pageNum.value,pageSize:pageSize.value,keyword:keyword.value||undefined,sortField:sortField.value||undefined,sortOrder:sortOrder.value||undefined});tableData.value=r.data.records;total.value=r.data.total;loading.value=false}
+async function loadData(){loading.value=true;try{const r=await classroomApi.list({pageNum:pageNum.value,pageSize:pageSize.value,keyword:keyword.value||undefined,sortField:sortField.value||undefined,sortOrder:sortOrder.value||undefined});tableData.value=r.data?.records||[];total.value=r.data?.total||0}catch(e){showError(e,'加载教室失败')}finally{loading.value=false}}
 function handleSearch(){pageNum.value=1;loadData()}
 function resetSearch(){keyword.value='';sortField.value='';sortOrder.value='';pageNum.value=1;loadData()}
 function handleSortChange({prop,order}:any){sortField.value=order?prop:'';sortOrder.value=order==='ascending'?'asc':order==='descending'?'desc':'';pageNum.value=1;loadData()}
 
 function openDialog(row:any){isEdit.value=!!row;if(row)Object.assign(form,row);else Object.assign(form,{name:'',capacity:10,campus:'',status:1});dialogVisible.value=true}
-async function handleSave(){saving.value=true;try{if(isEdit.value){await classroomApi.update(form.id,form);ElMessage.success('已更新')}else{await classroomApi.create(form);ElMessage.success('已创建')}dialogVisible.value=false;loadData()}finally{saving.value=false}}
-async function handleDelete(row:any){await ElMessageBox.confirm('确定删除？','提示',{type:'warning'});await classroomApi.delete(row.id);ElMessage.success('已删除');loadData()}
+async function handleSave(){saving.value=true;try{if(isEdit.value){await classroomApi.update(form.id,form);ElMessage.success('已更新')}else{await classroomApi.create(form);ElMessage.success('已创建')}dialogVisible.value=false;loadData()}catch(e){showError(e,'保存失败')}finally{saving.value=false}}
+async function handleDelete(row:any){try{await ElMessageBox.confirm('确定删除？','提示',{type:'warning'})}catch{return};try{await classroomApi.delete(row.id);ElMessage.success('已删除');loadData()}catch(e){showError(e,'删除失败')}}
 onMounted(loadData)
 </script>

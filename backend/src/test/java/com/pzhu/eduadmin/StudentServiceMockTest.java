@@ -632,10 +632,9 @@ class StudentServiceMockTest {
                 .thenReturn(List.of(cs));
         when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
         when(studentMapper.updateById(any(Student.class))).thenReturn(1);
-        // 改为 selectPage（跨数据库兼容）
-        Page<PaymentRecord> page = new Page<>(1, 1);
-        page.setRecords(List.of(payment));
-        when(paymentRecordMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(page);
+        // Critical fix 后改为 selectList 查询全部缴费记录
+        when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(payment));
         when(refundRecordMapper.insert(any(RefundRecord.class))).thenAnswer(invocation -> {
             RefundRecord r = invocation.getArgument(0);
             r.setId(100L);
@@ -645,8 +644,8 @@ class StudentServiceMockTest {
         Map<String, Object> result = studentService.withdrawStudent(1L);
 
         assertThat(result).containsEntry("studentId", 1L);
-        assertThat(result).containsEntry("message", "退班申请已提交，待财务审核退费");
-        assertThat(result.get("refundRecordId")).isEqualTo(100L);
+        assertThat(result).containsEntry("message", "退班申请已提交，共生成 1 笔退费单待财务审核");
+        assertThat(result.get("refundRecordIds")).isEqualTo(List.of(100L));
 
         // 在班记录应被标记为已退出(3)
         assertThat(cs.getStatus()).isEqualTo(3);
@@ -687,16 +686,15 @@ class StudentServiceMockTest {
                 .thenReturn(List.of(cs));
         when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
         when(studentMapper.updateById(any(Student.class))).thenReturn(1);
-        // 改为 selectPage（跨数据库兼容）
-        Page<PaymentRecord> emptyPage = new Page<>(1, 1);
-        emptyPage.setRecords(Collections.emptyList());
-        when(paymentRecordMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(emptyPage);
+        // Critical fix 后改为 selectList 查询全部缴费记录
+        when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Collections.emptyList());
 
         Map<String, Object> result = studentService.withdrawStudent(1L);
 
         // L9: 无缴费记录时不创建退费申请
         assertThat(result).containsEntry("message", "退班完成，该学员无缴费记录");
-        assertThat(result).containsEntry("refundRecordId", null);
+        assertThat(result.get("refundRecordIds")).isEqualTo(Collections.emptyList());
         verify(refundRecordMapper, never()).insert(any(RefundRecord.class));
     }
 

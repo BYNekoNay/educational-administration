@@ -46,6 +46,8 @@ public class EnrollmentController {
         enrollment.setAuditRemark(null);
         enrollment.setHoldExpireTime(null);
         enrollment.setIsDeleted(null);
+        enrollment.setCreateTime(null);
+        enrollment.setUpdateTime(null);
         LoginUser loginUser = CurrentUserHolder.get();
         if (enrollment.getParentUserId() == null) {
             enrollment.setParentUserId(loginUser.getUserId());
@@ -63,11 +65,16 @@ public class EnrollmentController {
         }
         // M2: classId 变更保护
         if (enrollment.getClassId() != null && !enrollment.getClassId().equals(existing.getClassId())) {
-            if (existing.getStatus() == 3) {
-                throw new BusinessException(409, "已缴费的报名不可变更班级");
+            // A2#1 fix: 仅待审核(1)/待缴费(2)可变更班级；终态(>=3 已缴费/已拒绝/已失效/已退费)禁止，
+            // 否则改班级会污染按班级归属的统计，且 null 状态直接拆箱会 NPE
+            Integer st = existing.getStatus();
+            if (st == null || st >= 3) {
+                throw new BusinessException(409, "当前报名状态不可变更班级");
             }
             // M4 fix: 校验新班级归属于该课程
             enrollmentService.validateClassBelongsToCourse(enrollment.getClassId(), existing.getCourseId());
+            // Medium fix: 变更班级时同样需要学员排课时间冲突检测（create 有此校验，update 不能绕过）
+            enrollmentService.checkTimeConflict(existing.getStudentId(), enrollment.getClassId());
         }
         // M2 fix: 仅更新 classId，避免 updateById 将 stale 字段写回覆盖并发审核操作
         if (enrollment.getClassId() != null) {

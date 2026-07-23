@@ -9,6 +9,7 @@ import com.pzhu.eduadmin.modules.attendance.service.AttendanceService;
 import com.pzhu.eduadmin.modules.attendance.service.LeaveRequestService;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
+import com.pzhu.eduadmin.modules.schedule.dto.AdjustRequestVO;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.service.ScheduleService;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
@@ -30,10 +31,12 @@ public class TeacherAttendanceController {
 
     @GetMapping({"/lessons", "/schedules"})
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<PageResult> myLessons(PageQuery query) {
+    public Result<PageResult> myLessons(PageQuery query,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
         Long teacherId = CurrentUserHolder.get().getUserId();
         return Result.success(PageResult.of(attendanceService.pageTeacherLessons(teacherId,
-                (int) query.getPageNum(), (int) query.getPageSize())));
+                (int) query.getPageNum(), (int) query.getPageSize(), dateFrom, dateTo)));
     }
 
     @GetMapping("/today-lessons")
@@ -69,12 +72,18 @@ public class TeacherAttendanceController {
         if (list.size() > 100) {
             throw new com.pzhu.eduadmin.common.BusinessException(400, "单次批量考勤不能超过100条");
         }
+        // Mass assignment protection: 剥离服务端控制字段（与 AdminAttendanceController.submit 一致）
+        for (com.pzhu.eduadmin.modules.attendance.entity.Attendance a : list) {
+            a.setId(null);
+            a.setCreateTime(null);
+            a.setUpdateTime(null);
+        }
         return Result.success(attendanceService.batchSubmit(lessonId, list));
     }
 
     @GetMapping("/adjust-requests")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<PageResult<ScheduleAdjustRequest>> myAdjustRequests(PageQuery query) {
+    public Result<PageResult<AdjustRequestVO>> myAdjustRequests(PageQuery query) {
         Long teacherId = CurrentUserHolder.get().getUserId();
         return Result.success(PageResult.of(scheduleService.pageTeacherAdjustRequests(teacherId,
                 (int) query.getPageNum(), (int) query.getPageSize())));
@@ -86,6 +95,13 @@ public class TeacherAttendanceController {
                                                                 @RequestBody ScheduleAdjustRequest request) {
         // H3 fix: 校验课次归属，防止教师对非自己授课的课次提交调课申请
         attendanceService.checkTeacherLessonOwnership(lessonId);
+        // Mass assignment protection: strip server-controlled fields
+        request.setId(null);
+        request.setAuditorId(null);
+        request.setAuditRemark(null);
+        request.setCreateTime(null);
+        request.setUpdateTime(null);
+        request.setIsDeleted(null);
         request.setLessonId(lessonId);
         request.setApplicantId(CurrentUserHolder.get().getUserId());
         request.setStatus(1);

@@ -8,12 +8,13 @@
     <view v-else class="cell-group">
       <view
         v-for="item in notices"
-        :key="item.id"
+        :key="item.source + '-' + item.id"
         class="cell"
         @click="showDetail(item)"
       >
         <view class="cell-body">
           <view class="notice-title-row">
+            <view v-if="item.source === 'notification' && item.isRead === 0" class="unread-dot"></view>
             <text class="cell-title">{{ item.title }}</text>
             <text class="tag" :class="tagClass(item.category)">{{ typeLabel(item.category) }}</text>
           </view>
@@ -81,11 +82,11 @@ onMounted(async () => {
     const info = typeof stored === 'string' ? JSON.parse(stored) : stored
     const requests = [api({ url: '/api/notifications?pageNum=1&pageSize=50' })]
     if (info.roleCode === 'PARENT') requests.push(api({ url: '/api/parent/notices' }))
-    const results = await Promise.all(requests)
-    const personal = (results[0].data?.records || []).map(item => ({
+    const settled = await Promise.allSettled(requests)
+    const personal = (settled[0].status === 'fulfilled' ? (settled[0].value.data?.records || []) : []).map(item => ({
       ...item, category: item.type, source: 'notification', publishTime: item.createTime
     }))
-    const announcements = (results[1]?.data || []).map(item => ({
+    const announcements = (settled[1] && settled[1].status === 'fulfilled' ? (settled[1].value.data || []) : []).map(item => ({
       ...item, category: item.noticeType || 'ANNOUNCEMENT', source: 'announcement'
     }))
     notices.value = [...personal, ...announcements].sort((a, b) =>
@@ -104,6 +105,14 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12rpx;
+}
+
+.unread-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #FA5151;
+  flex-shrink: 0;
 }
 
 .dialog-content {

@@ -34,6 +34,7 @@ function m() {
         'el-card': { template: '<div><slot name="header" /><slot /></div>' },
         'el-date-picker': { template: '<div><slot /></div>' },
         'el-avatar': { template: '<span><slot /></span>' },
+        ExportButton: { template: '<button>{{ label }}</button>', props: ['label'] },
       },
     },
   })
@@ -46,6 +47,8 @@ describe('SalaryList.vue', () => {
     const t = m().text()
     expect(t).toContain('新增规则')
     expect(t).toContain('核算薪资')
+    expect(t).toContain('一键结算本月')
+    expect(t).toContain('导出薪资')
   })
   it('calls APIs', () => {
     m()

@@ -9,7 +9,7 @@
     <view class="form-card">
       <view class="form-row">
         <text class="form-label">请假日期</text>
-        <picker mode="date" :value="form.lessonDate" @change="onDateChange">
+        <picker mode="date" :value="form.lessonDate" :start="today" @change="onDateChange">
           <view class="date-picker">
             <text :class="form.lessonDate ? 'date-text' : 'date-placeholder'">
               {{ form.lessonDate || '请选择日期' }}
@@ -62,11 +62,16 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api, getCurrentStudentId } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const studentId = ref(getCurrentStudentId())
 const records = ref([])
 const submitting = ref(false)
+
+// 日期选择器最早可选今天（历史课次不可请假）
+const _now = new Date()
+const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
 
 const form = reactive({
   lessonDate: '',
@@ -96,11 +101,13 @@ function truncate(str, len) {
 }
 
 async function fetchRecords() {
+  const sid = studentId.value
   try {
-    const res = await api({ url: `/api/parent/leave-requests${studentId.value ? '?studentId=' + studentId.value : ''}` })
+    const res = await api({ url: `/api/parent/leave-requests${sid ? '?studentId=' + sid : ''}` })
+    if (sid !== studentId.value) return
     records.value = res.data || []
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '加载失败', icon: 'none' })
   }
 }
 
@@ -128,8 +135,9 @@ async function handleSubmit() {
     form.lessonDate = ''
     form.reason = ''
     fetchRecords()
-  } catch {
-    // error already handled by api() interceptor
+  } catch (e) {
+    // 业务错误 api() 已弹 toast（_handled），网络错误需此处提示
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '提交失败'), icon: 'none' })
   } finally {
     submitting.value = false
   }

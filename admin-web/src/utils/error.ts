@@ -6,8 +6,10 @@ import { ElMessage } from 'element-plus'
  */
 export function getErrorMessage(e: any, defaultMsg = '操作失败'): string {
   // 1. 后端返回的 Result.data.message（来自 response 拦截器 reject 或手动提取）
-  if (typeof e === 'string' && e) {
-    return e
+  if (typeof e === 'string') {
+    // ElMessageBox 取消/关闭会 reject 字符串 'cancel'/'close'，属预期拒绝，不提示
+    if (e === 'cancel' || e === 'close') return ''
+    return e || defaultMsg
   }
   if (e?.response?.data?.message) {
     return e.response.data.message

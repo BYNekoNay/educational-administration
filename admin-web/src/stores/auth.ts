@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { ElMessage } from 'element-plus'
 
 interface MenuNode {
   id: number
@@ -21,62 +22,37 @@ interface UserInfo {
 }
 
 export const useAuthStore = defineStore('auth', () => {
+  /** 安全读取 JSON 持久化值：损坏时清除该 key 并返回默认值，避免启动白屏 */
+  function safeParse<T>(key: string, fallback: T): T {
+    const raw = localStorage.getItem(key)
+    if (!raw) return fallback
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      localStorage.removeItem(key)
+      return fallback
+    }
+  }
+
   const token = ref<string>(localStorage.getItem('token') || '')
-  const userInfo = ref<UserInfo | null>(
-    JSON.parse(localStorage.getItem('userInfo') || 'null')
-  )
+  // 持久化恢复必须做运行时类型校验：localStorage 可能被旧版本/手工改写污染，
+  // safeParse 只防 JSON 解析失败，不防"解析出来类型不对"（如 new Set(123) 直接抛错白屏）
+  const rawUser = safeParse<UserInfo | null>('userInfo', null)
+  const userInfo = ref<UserInfo | null>(rawUser && typeof rawUser === 'object' ? rawUser : null)
   const roleCode = ref<string>(userInfo.value?.roleCode || '')
 
-  // 角色拥有的菜单权限码集合
-  const permissions = ref<Set<string>>(
-    new Set(JSON.parse(localStorage.getItem('permissions') || '[]'))
-  )
+  // 角色拥有的菜单权限码集合（仅接受字符串数组，过滤非法元素）
+  const rawPermissions = safeParse<unknown>('permissions', [])
+  const permissions = ref<Set<string>>(new Set(
+    Array.isArray(rawPermissions)
+      ? rawPermissions.filter((p): p is string => typeof p === 'string')
+      : []
+  ))
 
   /** 判断当前用户是否拥有指定菜单权限 */
   function hasPermission(code: string): boolean {
     if (roleCode.value === 'SUPER_ADMIN') return true
     return permissions.value.has(code)
-  }
-
-  /** 从 API 获取全量权限码列表（供 SUPER_ADMIN 或角色管理页使用） */
-  async function fetchAllPermissionCodes(): Promise<string[]> {
-    try {
-      const { permissionApi } = await import('@/api/auth')
-      const res = await permissionApi.list()
-      const list: any[] = res.data || []
-      return list.map((p: any) => p.permissionCode)
-    } catch {
-      return []
-    }
-  }
-
-  /** 拉取当前角色的菜单权限（SUPER_ADMIN 从 API 获取全部权限码） */
-  async function fetchPermissions() {
-    try {
-      if (roleCode.value === 'SUPER_ADMIN') {
-        const allCodes = await fetchAllPermissionCodes()
-        const all = new Set(allCodes)
-        permissions.value = all
-        localStorage.setItem('permissions', JSON.stringify([...all]))
-        return
-      }
-      const { roleApi } = await import('@/api/auth')
-      const rolesRes = await roleApi.list()
-      const roles = rolesRes.data || []
-      const role = roles.find((r: any) => r.roleCode === roleCode.value)
-      if (role) {
-        const permRes = await roleApi.permissions(role.id)
-        // 返回格式: { roleId, roleCode, permissionCodes: [...] }
-        const permData = permRes.data
-        const codes = permData?.permissionCodes || []
-        const perms = new Set<string>(codes)
-        permissions.value = perms
-        localStorage.setItem('permissions', JSON.stringify([...perms]))
-      }
-    } catch {
-      // 加载失败时允许访问看板
-      permissions.value = new Set<string>(['menu:dashboard'])
-    }
   }
 
   /** 当前用户可见菜单树（数据驱动侧栏） */
@@ -90,6 +66,8 @@ export const useAuthStore = defineStore('auth', () => {
       menuTree.value = res.data || []
     } catch {
       menuTree.value = []
+      // 侧栏菜单空白且无任何提示会让用户困惑；此处仅在挂载时调用一次，不会刷屏
+      ElMessage.error('菜单加载失败，请刷新重试')
     }
   }
 
@@ -108,10 +86,11 @@ export const useAuthStore = defineStore('auth', () => {
     userInfo.value = null
     roleCode.value = ''
     permissions.value = new Set()
+    menuTree.value = []
     localStorage.removeItem('token')
     localStorage.removeItem('userInfo')
     localStorage.removeItem('permissions')
   }
 
-  return { token, userInfo, roleCode, permissions, menuTree, setLogin, logout, hasPermission, fetchPermissions, fetchMyMenus }
+  return { token, userInfo, roleCode, permissions, menuTree, setLogin, logout, hasPermission, fetchMyMenus }
 })

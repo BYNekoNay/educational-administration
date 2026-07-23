@@ -228,7 +228,7 @@ class SalaryServiceMockTest {
                 .thenReturn(List.of(subLesson));
         when(attendanceMapper.selectList(any())).thenReturn(List.of(att1, att2, att3));
         when(ruleMapper.selectList(any())).thenReturn(List.of(rule));
-        when(classGroupMapper.selectList(any())).thenReturn(List.of(cg));
+        when(classGroupMapper.selectCourseIdByIdIncludeDeleted(10L)).thenReturn(100L);
         when(salaryMapper.selectOne(any())).thenReturn(null);
         when(salaryMapper.insert(any(TeacherSalary.class))).thenReturn(1);
 

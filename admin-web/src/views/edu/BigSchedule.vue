@@ -11,7 +11,7 @@
         style="width:220px"
         :prefix-icon="Search"
         @input="onKeywordInput"
-        @keyup.enter="loadLessons"
+        @keyup.enter="onKeywordEnter"
       />
       <el-select v-model="filters.courseId" placeholder="全部课程" clearable style="width:150px" @change="loadLessons">
         <el-option v-for="c in courseList" :key="c.id" :label="c.name" :value="c.id" />
@@ -44,29 +44,28 @@
       <el-radio-group v-model="viewMode" size="small" @change="loadLessons">
         <el-radio-button value="month">月</el-radio-button>
         <el-radio-button value="week">周</el-radio-button>
-        <el-radio-button value="day">日</el-radio-button>
       </el-radio-group>
     </div>
 
-    <!-- 日历视图 -->
+    <!-- 视图 -->
     <div v-loading="loading" style="min-height:300px">
       <MonthlyCalendar v-if="viewMode === 'month'" :lessons="lessons" :year="year" :month="month" />
       <WeeklyCalendar v-if="viewMode === 'week'" :lessons="lessons" :weekDays="weekDayLabels" />
-      <DailyTimeline v-if="viewMode === 'day'" :lessons="lessons" :date="dayDateStr" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ElMessage } from 'element-plus'
 import { ArrowLeft, ArrowRight, Search } from '@element-plus/icons-vue'
 import { scheduleApi, courseApi, classApi, teacherApi, classroomApi } from '@/api/edu'
+import { showError } from '@/utils/error'
 import MonthlyCalendar from './components/MonthlyCalendar.vue'
 import WeeklyCalendar from './components/WeeklyCalendar.vue'
-import DailyTimeline from './components/DailyTimeline.vue'
 
 // 模式
-const viewMode = ref<'month' | 'week' | 'day'>('week')
+const viewMode = ref<'month' | 'week'>('week')
 const currentDate = ref(new Date())
 const loading = ref(false)
 
@@ -77,6 +76,15 @@ function onKeywordInput() {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => loadLessons(), 300)
 }
+// 回车立即搜索：先取消挂起的防抖，避免"回车一次、请求两发"
+function onKeywordEnter() {
+  if (searchTimer) { clearTimeout(searchTimer); searchTimer = null }
+  loadLessons()
+}
+onBeforeUnmount(() => {
+  // 页面销毁后防抖回调不应再触发请求
+  if (searchTimer) { clearTimeout(searchTimer); searchTimer = null }
+})
 
 // 过滤
 const filters = reactive({ courseId: null as number | null, classId: null as number | null, teacherId: null as number | null, classroomId: null as number | null, status: null as number | null })
@@ -93,19 +101,15 @@ const lessons = ref<any[]>([])
 // 计算日期范围
 const year = computed(() => currentDate.value.getFullYear())
 const month = computed(() => currentDate.value.getMonth() + 1)
-const dayDateStr = computed(() => toDateStr(currentDate.value))
 
 // 周范围标签
 const rangeLabel = computed(() => {
   if (viewMode.value === 'month') return `${year.value}年${month.value}月`
-  if (viewMode.value === 'week') {
-    const monday = getMonday(currentDate.value)
-    const sunday = new Date(monday.getTime() + 6 * 86400000)
-    if (monday.getMonth() === sunday.getMonth())
-      return `${monday.getMonth() + 1}月${monday.getDate()}日 - ${sunday.getDate()}日`
-    return `${monday.getMonth() + 1}/${monday.getDate()} - ${sunday.getMonth() + 1}/${sunday.getDate()}`
-  }
-  return `${month.value}月${currentDate.value.getDate()}日 周${'日一二三四五六'[currentDate.value.getDay()]}`
+  const monday = getMonday(currentDate.value)
+  const sunday = new Date(monday.getTime() + 6 * 86400000)
+  if (monday.getMonth() === sunday.getMonth())
+    return `${monday.getMonth() + 1}月${monday.getDate()}日 - ${sunday.getDate()}日`
+  return `${monday.getMonth() + 1}/${monday.getDate()} - ${sunday.getMonth() + 1}/${sunday.getDate()}`
 })
 
 // 周几标签
@@ -128,15 +132,13 @@ function getMonday(d: Date): Date {
 
 function prev() {
   if (viewMode.value === 'month') currentDate.value = new Date(year.value, month.value - 2, 1)
-  else if (viewMode.value === 'week') currentDate.value = new Date(currentDate.value.getTime() - 7 * 86400000)
-  else currentDate.value = new Date(currentDate.value.getTime() - 86400000)
+  else currentDate.value = new Date(currentDate.value.getTime() - 7 * 86400000)
   loadLessons()
 }
 
 function next() {
   if (viewMode.value === 'month') currentDate.value = new Date(year.value, month.value, 1)
-  else if (viewMode.value === 'week') currentDate.value = new Date(currentDate.value.getTime() + 7 * 86400000)
-  else currentDate.value = new Date(currentDate.value.getTime() + 86400000)
+  else currentDate.value = new Date(currentDate.value.getTime() + 7 * 86400000)
   loadLessons()
 }
 
@@ -146,23 +148,28 @@ function goToday() {
 }
 
 async function loadOptions() {
-  const [cRes, clRes, tRes, rRes] = await Promise.all([
-    courseApi.list({ pageNum: 1, pageSize: 200 }),
-    classApi.list({ pageNum: 1, pageSize: 200 }),
-    teacherApi.list(),
-    classroomApi.list({ pageNum: 1, pageSize: 200 }),
-  ])
-  courseList.value = cRes.data?.records || []
-  classList.value = clRes.data?.records || []
-  teacherList.value = (tRes.data || []) as any[]
-  roomList.value = rRes.data?.records || []
+  try {
+    const [cRes, clRes, tRes, rRes] = await Promise.all([
+      courseApi.list({ pageNum: 1, pageSize: 200 }),
+      classApi.list({ pageNum: 1, pageSize: 200 }),
+      teacherApi.list(),
+      classroomApi.list({ pageNum: 1, pageSize: 200 }),
+    ])
+    courseList.value = cRes.data?.records || []
+    classList.value = clRes.data?.records || []
+    teacherList.value = (tRes.data || []) as any[]
+    roomList.value = rRes.data?.records || []
+  } catch {
+    // 选项加载失败时降级为空列表，不阻塞课表主体加载
+  }
 }
 
 async function loadLessons() {
   loading.value = true
   try {
     const { dateFrom, dateTo } = getDateRange()
-    const params: any = { pageNum: 1, pageSize: 500, dateFrom, dateTo }
+    // 后端单页上限为 200，请求 500 会被静默截断，这里按上限请求并在超限时提示
+    const params: any = { pageNum: 1, pageSize: 200, dateFrom, dateTo }
     if (keyword.value?.trim()) params.keyword = keyword.value.trim()
     if (filters.courseId) params.courseId = filters.courseId
     if (filters.classId) params.classId = filters.classId
@@ -170,7 +177,14 @@ async function loadLessons() {
     if (filters.classroomId) params.classroomId = filters.classroomId
     if (filters.status) params.status = filters.status
     const res = await scheduleApi.list(params)
-    lessons.value = res.data?.records || []
+    const records = res.data?.records || []
+    lessons.value = records
+    const total = res.data?.total || 0
+    if (total > records.length) {
+      ElMessage.warning(`当前范围共 ${total} 条课次，仅显示前 ${records.length} 条，请缩小日期范围或筛选条件`)
+    }
+  } catch (e) {
+    showError(e, '加载课表失败')
   } finally {
     loading.value = false
   }
@@ -182,13 +196,10 @@ function getDateRange() {
     const last = new Date(year.value, month.value, 0)
     return { dateFrom: toDateStr(first), dateTo: toDateStr(last) }
   }
-  if (viewMode.value === 'week') {
-    const mon = getMonday(currentDate.value)
-    const sun = new Date(mon.getTime() + 6 * 86400000)
-    return { dateFrom: toDateStr(mon), dateTo: toDateStr(sun) }
-  }
-  const s = toDateStr(currentDate.value)
-  return { dateFrom: s, dateTo: s }
+  // week
+  const mon = getMonday(currentDate.value)
+  const sun = new Date(mon.getTime() + 6 * 86400000)
+  return { dateFrom: toDateStr(mon), dateTo: toDateStr(sun) }
 }
 
 onMounted(async () => {

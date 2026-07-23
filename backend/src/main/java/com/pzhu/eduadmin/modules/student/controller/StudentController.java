@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.student.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -31,13 +32,18 @@ public class StudentController {
 
     @GetMapping("/{id}")
     public Result<Student> get(@PathVariable Long id) {
-        return Result.success(studentService.getStudentById(id));
+        Student student = studentService.getStudentById(id);
+        if (student == null) {
+            throw new BusinessException(404, "学员不存在");
+        }
+        return Result.success(student);
     }
 
     @PostMapping
     public Result<Student> create(@Valid @RequestBody Student student) {
         // Mass assignment protection: strip server-controlled fields
         student.setId(null);
+        student.setStatus(null);
         student.setIsDeleted(null);
         student.setCreateTime(null);
         student.setUpdateTime(null);
@@ -67,6 +73,9 @@ public class StudentController {
 
     @PostMapping("/bind-parent")
     public Result<Void> bindParent(@RequestBody ParentStudent parentStudent) {
+        // Mass assignment protection: strip server-controlled fields
+        parentStudent.setId(null);
+        parentStudent.setCreateTime(null);
         studentService.bindParent(parentStudent);
         return Result.success();
     }

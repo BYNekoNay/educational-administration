@@ -61,6 +61,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api, downloadProtectedFile, getCurrentStudentId } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const tab = ref(0)
@@ -79,22 +80,27 @@ function attTagClass(s) { return { 1: 'tag-success', 2: 'tag-warning', 3: 'tag-i
 
 async function loadData() {
   if (!studentId.value) return
+  const sid = studentId.value
   try {
     const [aR, lR, hR] = await Promise.all([
-      api({ url: `/api/parent/students/${studentId.value}/attendance` }),
-      api({ url: `/api/parent/students/${studentId.value}/learning-records` }),
-      api({ url: `/api/parent/students/${studentId.value}/homeworks` })
+      api({ url: `/api/parent/students/${sid}/attendance?pageNum=1&pageSize=100` }),
+      api({ url: `/api/parent/students/${sid}/learning-records` }),
+      api({ url: `/api/parent/students/${sid}/homeworks` })
     ])
+    if (sid !== studentId.value) return
     attendances.value = (aR.data && aR.data.records) || (aR.data || [])
     records.value = lR.data || []
-    homeworks.value = await Promise.all((hR.data || []).map(async item => ({
+    const hws = await Promise.all((hR.data || []).map(async item => ({
       ...item,
       attachmentDisplayUrl: item.attachmentUrl
         ? await downloadProtectedFile(item.attachmentUrl).catch(() => '')
         : ''
     })))
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+    if (sid !== studentId.value) return
+    homeworks.value = hws
+  } catch (e) {
+    // request.js 已对业务/HTTP 错误弹过提示（_handled），此处仅兜底未处理异常
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '加载失败'), icon: 'none' })
   }
 }
 

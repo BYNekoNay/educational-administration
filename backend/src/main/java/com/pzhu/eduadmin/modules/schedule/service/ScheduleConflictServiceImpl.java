@@ -50,6 +50,8 @@ public class ScheduleConflictServiceImpl implements ScheduleConflictService {
 
             LocalTime existStart = existing.getStartTime();
             LocalTime existEnd = existing.getEndTime();
+            // L fix: 历史/遗留课次可能缺失起止时间，跳过以免 isBefore/isAfter 抛 NPE
+            if (existStart == null || existEnd == null) continue;
             boolean overlap = existStart.isBefore(newEnd) && existEnd.isAfter(newStart);
             if (!overlap) continue;
 
@@ -123,6 +125,8 @@ public class ScheduleConflictServiceImpl implements ScheduleConflictService {
 
             LocalTime existStart = existing.getStartTime();
             LocalTime existEnd = existing.getEndTime();
+            // L fix: 历史/遗留课次可能缺失起止时间，跳过以免 isBefore/isAfter 抛 NPE
+            if (existStart == null || existEnd == null) continue;
             boolean overlap = existStart.isBefore(newEnd) && existEnd.isAfter(newStart);
             if (!overlap) continue;
 

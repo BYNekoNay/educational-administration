@@ -10,6 +10,8 @@
       </view>
     </view>
 
+    <view v-if="open && students.length > 1" class="switcher-mask" @click.stop="open = false" />
+
     <view v-if="open && students.length > 1" class="switcher-dropdown">
       <view
         v-for="s in students"
@@ -128,7 +130,18 @@ function select(s) {
   margin-top: -6rpx;
 }
 
+.switcher-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;
+}
+
 .switcher-dropdown {
+  position: relative;
+  z-index: 100;
   background: #FFF;
   border-radius: 24rpx;
   margin-bottom: 16rpx;

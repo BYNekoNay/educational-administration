@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { mountPage } from './helpers'
 
 vi.mock('@/api/auth', async () => {
@@ -7,11 +8,17 @@ vi.mock('@/api/auth', async () => {
 })
 
 import { dashboardApi, statisticsApi } from '@/api/auth'
+import { useAuthStore } from '@/stores/auth'
 import Dashboard from '@/views/dashboard/Dashboard.vue'
 
 describe('Dashboard.vue', () => {
   beforeEach(() => { vi.clearAllMocks() })
-  function m() { return mountPage(Dashboard) }
+  function m(role = '') {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    if (role) useAuthStore().roleCode = role
+    return mountPage(Dashboard, {}, [pinia])
+  }
 
   it('renders title', () => { expect(m().html()).toContain('运营数据看板') })
   it('renders stat card labels', () => {
@@ -22,10 +29,15 @@ describe('Dashboard.vue', () => {
     expect(t).toContain('到课率')
   })
   it('renders export buttons', () => {
-    const t = m().text()
+    const t = m('SUPER_ADMIN').text()
     expect(t).toContain('导出台账')
     expect(t).toContain('导出课时消耗')
     expect(t).toContain('导出薪资')
+  })
+  it('hides export buttons for non-finance roles', () => {
+    const t = m('EDU_ADMIN').text()
+    expect(t).not.toContain('导出台账')
+    expect(t).not.toContain('导出薪资')
   })
   it('renders multidimensional statistics', () => {
     const t = m().text()

@@ -37,7 +37,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { api } from '@/utils/request'
 
 const recentNotices = ref([])
@@ -46,13 +47,19 @@ function goNotices() {
   uni.navigateTo({ url: '/pages/parent/notices' })
 }
 
-onMounted(async () => {
+async function loadRecent() {
   try {
     const res = await api({ url: '/api/notifications?pageNum=1&pageSize=3' })
     recentNotices.value = res.data?.records || []
   } catch (e) {
-    recentNotices.value = []
+    // 失败时保留上一次成功加载的数据，避免把"加载失败"展示成"暂无新消息"
+    if (!e || !e._handled) console.warn('最近消息加载失败', e)
   }
+}
+
+// tabBar 页切走再切回不会重建，用 onShow 保证每次显示都刷新最近消息
+onShow(() => {
+  loadRecent()
 })
 </script>
 

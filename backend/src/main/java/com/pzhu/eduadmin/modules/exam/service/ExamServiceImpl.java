@@ -65,6 +65,10 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public ExamLevel updateExamLevel(ExamLevel examLevel) {
+        ExamLevel existing = examLevelMapper.selectById(examLevel.getId());
+        if (existing == null) {
+            throw new BusinessException(404, "考级项目不存在");
+        }
         examLevelMapper.updateById(examLevel);
         return examLevelMapper.selectById(examLevel.getId());
     }
@@ -124,13 +128,26 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public ExamSignup createExamSignup(ExamSignup signup) {
+        // 防止批量赋值绕过状态机：强制重置服务端控制字段
+        signup.setId(null);
+        signup.setStatus(1); // 强制初始状态为"已报名"
+        signup.setScore(null);
+        signup.setCertificateNo(null);
+        signup.setCertificateFileUrl(null);
+        signup.setIsDeleted(null);
+
         if (signup.getStudentId() == null) throw new BusinessException(400, "学员ID不能为空");
         if (signup.getExamId() == null) throw new BusinessException(400, "考级项目ID不能为空");
         if (examLevelMapper.selectById(signup.getExamId()) == null) {
             throw new BusinessException(404, "考级项目不存在");
         }
-        if (studentMapper.selectById(signup.getStudentId()) == null) {
+        Student student = studentMapper.selectById(signup.getStudentId());
+        if (student == null) {
             throw new BusinessException(404, "学员不存在");
+        }
+        // L7 fix: 与 Enrollment.create 保持一致，拒绝已退班(status=4)学员报名考级
+        if (student.getStatus() != null && student.getStatus() == 4) {
+            throw new BusinessException(409, "该学员已退班，无法报名考级");
         }
         Long existCount = examSignupMapper.selectCount(new LambdaQueryWrapper<ExamSignup>()
                 .eq(ExamSignup::getExamId, signup.getExamId())
@@ -161,6 +178,12 @@ public class ExamServiceImpl implements ExamService {
                 throw new BusinessException(400, "无效的状态变更");
             }
         }
+        // Low fix: studentId/examId 创建后不可变更，防止 mass-assignment 将报名转移到其他学员/考试
+        signup.setStudentId(null);
+        signup.setExamId(null);
+        // L6 fix: 剥离服务端控制的审计字段，防止客户端覆盖报名时间
+        signup.setCreateTime(null);
+        signup.setUpdateTime(null);
         examSignupMapper.updateById(signup);
         return examSignupMapper.selectById(signup.getId());
     }

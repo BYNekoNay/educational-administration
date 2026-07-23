@@ -48,7 +48,7 @@
       <!-- Highlighted payment notice for 待缴费 -->
       <view v-if="e.status === 2" class="payment-notice">
         <text v-if="!e.amount" class="payment-notice-text">价格待定</text>
-        <text v-else class="payment-notice-text">需缴费 ¥{{ e.amount }}</text>
+        <text v-else class="payment-notice-text">需缴费 ¥{{ Number(e.amount).toFixed(2) }}</text>
         <button class="btn-pay" :disabled="payingId === e.id || !e.amount" @click="handlePay(e)">
           {{ payingId === e.id ? '处理中...' : '立即模拟缴费' }}
         </button>
@@ -66,12 +66,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api, getCurrentStudentId } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const list = ref([])
 const activeTab = ref(0)
 const tabs = ['全部', '待审核', '待缴费', '已完成', '已拒绝']
-const statusMap = { 1: '待审核', 2: '待缴费', 3: '已完成', 4: '已拒绝', 5: '已失效' }
+const statusMap = { 1: '待审核', 2: '待缴费', 3: '已完成', 4: '已拒绝', 5: '已失效', 6: '已退费' }
 const payingId = ref(null)
 const studentId = ref(getCurrentStudentId())
 
@@ -80,7 +81,8 @@ const statusColors = {
   2: { bg: '#ECFEFF', color: '#0E7490' },
   3: { bg: '#ECFDF5', color: '#10B981' },
   4: { bg: '#FEF2F2', color: '#E11D48' },
-  5: { bg: '#F5F0ED', color: '#8C7E74' }
+  5: { bg: '#F5F0ED', color: '#8C7E74' },
+  6: { bg: '#FFEBEE', color: '#C62828' }
 }
 
 function statusStyle(status) {
@@ -103,16 +105,17 @@ function onStudentChange(id) {
 }
 
 async function fetchData() {
+  const sid = studentId.value
   try {
-    const sid = studentId.value
     const url = sid
       ? `/api/parent/enrollments?pageNum=1&pageSize=100&studentId=${sid}`
       : '/api/parent/enrollments?pageNum=1&pageSize=100'
     const res = await api({ url })
+    if (sid !== studentId.value) return
     list.value = res.data?.records || res.data || []
     await ensureAmounts()
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '加载失败', icon: 'none' })
   }
 }
 
@@ -139,7 +142,7 @@ async function handlePay(enrollment) {
     uni.showToast({ title: '缴费成功', icon: 'success' })
     await fetchData()
   } catch (e) {
-    uni.showToast({ title: e?.message || '缴费失败', icon: 'none' })
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '缴费失败'), icon: 'none' })
   } finally {
     payingId.value = null
   }

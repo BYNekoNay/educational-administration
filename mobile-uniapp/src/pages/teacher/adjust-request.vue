@@ -32,52 +32,68 @@
         :key="item.id"
       >
         <view class="request-card-header">
-          <text class="request-card-title">课次 {{ item.lessonId }}</text>
+          <text class="request-card-title">{{ item.courseName || '未知课程' }} · {{ item.className || '-' }}</text>
           <text class="status-tag" :class="statusClass(item.status)">{{ statusText(item.status) }}</text>
         </view>
 
         <view class="request-card-body">
           <view class="request-row">
-            <text class="request-label">原上课时间</text>
-            <text class="request-value">{{ item.originalDate }} {{ item.originalStartTime }}-{{ item.originalEndTime }}</text>
+            <text class="request-label">原课次</text>
+            <text class="request-value">{{ item.lessonDate }} {{ item.startTime?.slice(0,5) }}-{{ item.endTime?.slice(0,5) }}</text>
+          </view>
+          <view class="request-row" v-if="item.periodName">
+            <text class="request-label">时段</text>
+            <text class="request-value">{{ item.periodName }}</text>
           </view>
           <view class="request-row">
-            <text class="request-label">申请调整至</text>
-            <text class="request-value highlight">{{ item.adjustDate }} {{ item.adjustStartTime }}-{{ item.adjustEndTime }}</text>
+            <text class="request-label">调至</text>
+            <text class="request-value highlight">{{ formatExpectTime(item.expectTime) }}</text>
           </view>
           <view class="request-row">
-            <text class="request-label">申请原因</text>
+            <text class="request-label">原因</text>
             <text class="request-value reason">{{ item.reason }}</text>
           </view>
           <view v-if="item.auditRemark" class="request-row">
-            <text class="request-label">审核备注</text>
+            <text class="request-label">备注</text>
             <text class="request-value remark">{{ item.auditRemark }}</text>
           </view>
         </view>
 
         <view class="request-card-footer">
-          <text class="request-time">{{ item.createTime }}</text>
+          <text class="request-time">{{ formatTime(item.createTime) }}</text>
         </view>
       </view>
     </view>
 
     <!-- 新建申请 Tab -->
     <view v-if="activeTab === 'create'" class="form-panel">
-      <!-- Lesson picker -->
+      <!-- 两级选择：班级 → 课次 -->
       <view class="form-section">
-        <text class="form-label">选择课次</text>
-        <picker
-          :range="lessonLabels"
-          @change="onLessonPick"
-        >
+        <text class="form-label">选择班级</text>
+        <picker :range="classLabels" @change="onClassPick">
           <view class="form-picker">
-            <text :class="form.lessonId ? 'picker-text' : 'picker-placeholder'">
-              {{ form.lessonId ? selectedLessonLabel : '请选择要调课的课次' }}
+            <text :class="form.classIdx >= 0 ? 'picker-text' : 'picker-placeholder'">
+              {{ form.classIdx >= 0 ? classLabels[form.classIdx] : '请选择班级' }}
             </text>
             <view class="picker-arrow"></view>
           </view>
         </picker>
       </view>
+
+      <view class="form-section" v-if="form.classIdx >= 0">
+        <text class="form-label">选择课次</text>
+        <picker :range="filteredLessonLabels" @change="onLessonPick">
+          <view class="form-picker">
+            <text :class="form.lessonIdx >= 0 ? 'picker-text' : 'picker-placeholder'">
+              {{ form.lessonIdx >= 0 ? filteredLessonLabels[form.lessonIdx] : '请选择具体课次' }}
+            </text>
+            <view class="picker-arrow"></view>
+          </view>
+        </picker>
+      </view>
+
+      <!-- 选中课次后才显示调课信息 -->
+      <view v-if="form.classIdx >= 0 && form.lessonId" class="step2">
 
       <!-- Reason -->
       <view class="form-section">
@@ -103,26 +119,22 @@
         </picker>
       </view>
 
-      <!-- Start time -->
-      <view class="form-section">
-        <text class="form-label">开始时间</text>
-        <picker mode="time" @change="onStartTimeChange">
-          <view class="form-picker">
-            <text :class="form.adjustStartTime ? 'picker-text' : 'picker-placeholder'">
-              {{ form.adjustStartTime || '请选择开始时间' }}
-            </text>
-            <view class="picker-arrow"></view>
-          </view>
-        </picker>
+      <!-- 当日占用提示 -->
+      <view v-if="form.adjustDate && occupiedHint" class="occupied-hint">
+        <text>{{ occupiedHint }}</text>
       </view>
 
-      <!-- End time -->
+      <!-- Period picker (仅空闲时段) -->
       <view class="form-section">
-        <text class="form-label">结束时间</text>
-        <picker mode="time" @change="onEndTimeChange">
+        <text class="form-label">调整时段</text>
+        <picker
+          :range="availablePeriodLabels"
+          @change="onPeriodChange"
+          :disabled="availablePeriodLabels.length === 0"
+        >
           <view class="form-picker">
-            <text :class="form.adjustEndTime ? 'picker-text' : 'picker-placeholder'">
-              {{ form.adjustEndTime || '请选择结束时间' }}
+            <text :class="form.periodIdx >= 0 ? 'picker-text' : 'picker-placeholder'">
+              {{ availablePeriodLabels.length === 0 ? '当日无空闲时段' : (form.periodIdx >= 0 ? availablePeriodLabels[form.periodIdx] : '请选择上课时段') }}
             </text>
             <view class="picker-arrow"></view>
           </view>
@@ -131,21 +143,24 @@
 
       <!-- Submit -->
       <view class="form-actions">
-        <button class="btn-primary" :disabled="submitting" @click="submitRequest">
+        <button class="btn-primary" :disabled="submitting || availablePeriodLabels.length === 0" @click="submitRequest">
           {{ submitting ? '提交中...' : '提交申请' }}
         </button>
       </view>
+
+      </view><!-- /step2 -->
     </view>
   </view>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { api } from '@/utils/request'
 
 const activeTab = ref('list')
 const requests = ref([])
 const lessons = ref([])
+const periods = ref([])
 const loading = ref(false)
 const submitting = ref(false)
 
@@ -153,24 +168,72 @@ const form = ref({
   lessonId: '',
   reason: '',
   adjustDate: '',
-  adjustStartTime: '',
-  adjustEndTime: '',
+  periodIdx: -1,
+  classIdx: -1,
+  lessonIdx: -1,
 })
 
-const lessonLabels = computed(() =>
-  lessons.value.map(l => `${l.lessonDate} ${l.startTime}-${l.endTime}`)
+// 班级列表（从 lessons 中按 classId 去重）
+const classOptions = computed(() => {
+  const seen = new Set()
+  const result = []
+  for (const l of lessons.value) {
+    if (seen.has(l.classId)) continue
+    seen.add(l.classId)
+    result.push({ classId: l.classId, className: l.className || '', courseName: l.courseName || '', count: 0 })
+  }
+  // 计数
+  for (const r of result) {
+    r.count = lessons.value.filter(l => l.classId === r.classId).length
+  }
+  return result
+})
+
+const classLabels = computed(() =>
+  classOptions.value.map(c => `${c.courseName} · ${c.className}  (${c.count}节)`)
 )
 
-const selectedLessonLabel = computed(() => {
-  const l = lessons.value.find(l => l.id === form.value.lessonId)
-  return l ? `${l.lessonDate} ${l.startTime}-${l.endTime}` : ''
+// 当前选中班级的课次
+const filteredLessons = computed(() => {
+  if (form.value.classIdx < 0) return []
+  const cls = classOptions.value[form.value.classIdx]
+  return cls ? lessons.value.filter(l => l.classId === cls.classId) : []
 })
+
+const filteredLessonLabels = computed(() =>
+  filteredLessons.value.map(l => {
+    const weekNames = ['日','一','二','三','四','五','六']
+    const d = new Date(l.lessonDate)
+    const wd = weekNames[d.getDay()]
+    return `${l.lessonDate} 周${wd} ${l.startTime.slice(0,5)}-${l.endTime.slice(0,5)}`
+  })
+)
 
 function statusText(s) {
   return { 1: '待审核', 2: '已通过', 3: '已拒绝' }[s] || '未知'
 }
 function statusClass(s) {
   return { 1: 'status-pending', 2: 'status-approved', 3: 'status-rejected' }[s] || ''
+}
+// 格式化后端返回的 expectTime（如 2026-07-20T14:00:00）为 'YYYY-MM-DD HH:mm'
+function formatExpectTime(t) {
+  if (!t) return '待定'
+  const s = String(t).replace('T', ' ')
+  return s.length >= 16 ? s.slice(0, 16) : s
+}
+
+// 格式化 createTime 为友好展示（今天/昨天/完整日期）
+function formatTime(t) {
+  if (!t) return '-'
+  const d = new Date(t)
+  const now = new Date()
+  const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+  const yesterday = new Date(now.getTime() - 86400000)
+  const yesStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`
+  if (dateStr === nowStr) return `今天 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+  if (dateStr === yesStr) return `昨天 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
 function switchTab(tab) {
@@ -181,10 +244,11 @@ function switchTab(tab) {
 async function fetchRequests() {
   loading.value = true
   try {
-    const res = await api({ url: '/api/teacher/adjust-requests' })
+    // 后端分页默认 pageSize=10，不传会静默截断历史申请
+    const res = await api({ url: '/api/teacher/adjust-requests?pageNum=1&pageSize=50' })
     requests.value = res.data?.records || []
-  } catch {
-    uni.showToast({ title: '加载申请失败', icon: 'none' })
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '加载申请失败', icon: 'none' })
   } finally {
     loading.value = false
   }
@@ -193,26 +257,71 @@ async function fetchRequests() {
 async function fetchLessons() {
   try {
     const res = await api({ url: '/api/teacher/lessons?pageNum=1&pageSize=50' })
-    lessons.value = res.data?.records || []
-  } catch {
-    uni.showToast({ title: '加载课表失败', icon: 'none' })
+    // 后端仅允许待上课(status=1)课次发起调课，已完成/已调课课次申请必被 409 拒绝，这里提前过滤
+    lessons.value = (res.data?.records || []).filter(l => Number(l.status) === 1)
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '加载课表失败', icon: 'none' })
   }
 }
 
+const periodLabels = computed(() =>
+  periods.value.map(p => `${p.name} ${p.startTime?.slice(0,5)}-${p.endTime?.slice(0,5)}`)
+)
+
+// 当日已被该教师占用的时段 ID 集合
+const occupiedPeriodIds = ref(new Set())
+const occupiedHint = ref('')
+
+// 可用时段（排除已占用）
+const availablePeriods = computed(() =>
+  periods.value.filter(p => !occupiedPeriodIds.value.has(p.id))
+)
+const availablePeriodLabels = computed(() =>
+  availablePeriods.value.map(p => `${p.name} ${p.startTime?.slice(0,5)}-${p.endTime?.slice(0,5)}`)
+)
+
+// 监听调整日期：查询当日教师已占时段
+watch(() => form.value.adjustDate, async (date) => {
+  occupiedPeriodIds.value = new Set()
+  occupiedHint.value = ''
+  form.value.periodIdx = -1
+  if (!date) return
+  try {
+    const res = await api({ url: `/api/teacher/lessons?pageNum=1&pageSize=100&dateFrom=${date}&dateTo=${date}` })
+    const records = res.data?.records || []
+    const set = new Set()
+    const names = []
+    for (const l of records) {
+      if (l.periodId) {
+        set.add(l.periodId)
+        const p = periods.value.find(pp => pp.id === l.periodId)
+        if (p) names.push(p.name)
+      }
+    }
+    occupiedPeriodIds.value = set
+    if (names.length > 0) {
+      occupiedHint.value = `当日已占：${names.join('、')}`
+    }
+  } catch (e) { /* 静默 */ }
+})
+
+function onClassPick(e) {
+  form.value.classIdx = e.detail.value
+  form.value.lessonIdx = -1
+  form.value.lessonId = ''
+}
+
 function onLessonPick(e) {
-  const idx = e.detail.value
-  const lesson = lessons.value[idx]
+  form.value.lessonIdx = e.detail.value
+  const lesson = filteredLessons.value[form.value.lessonIdx]
   if (lesson) form.value.lessonId = lesson.id
 }
 
 function onDateChange(e) {
   form.value.adjustDate = e.detail.value
 }
-function onStartTimeChange(e) {
-  form.value.adjustStartTime = e.detail.value
-}
-function onEndTimeChange(e) {
-  form.value.adjustEndTime = e.detail.value
+function onPeriodChange(e) {
+  form.value.periodIdx = e.detail.value
 }
 
 async function submitRequest() {
@@ -220,8 +329,10 @@ async function submitRequest() {
   if (!f.lessonId) return uni.showToast({ title: '请选择课次', icon: 'none' })
   if (!f.reason.trim()) return uni.showToast({ title: '请输入申请原因', icon: 'none' })
   if (!f.adjustDate) return uni.showToast({ title: '请选择调整日期', icon: 'none' })
-  if (!f.adjustStartTime) return uni.showToast({ title: '请选择开始时间', icon: 'none' })
-  if (!f.adjustEndTime) return uni.showToast({ title: '请选择结束时间', icon: 'none' })
+  if (f.periodIdx < 0) return uni.showToast({ title: '请选择上课时段', icon: 'none' })
+
+  const period = availablePeriods.value[f.periodIdx]
+  if (!period) return uni.showToast({ title: '时段数据异常', icon: 'none' })
 
   submitting.value = true
   try {
@@ -230,25 +341,35 @@ async function submitRequest() {
       method: 'POST',
       data: {
         reason: f.reason,
-        expectTime: `${f.adjustDate}T${f.adjustStartTime}:00`,
+        expectTime: `${f.adjustDate}T${period.startTime}`,
       },
     })
     uni.showToast({ title: '申请提交成功' })
     // Reset form
-    form.value = { lessonId: '', reason: '', adjustDate: '', adjustStartTime: '', adjustEndTime: '' }
+    form.value = { lessonId: '', reason: '', adjustDate: '', periodIdx: -1, classIdx: -1, lessonIdx: -1 }
     // Switch to list tab and reload
     activeTab.value = 'list'
-    await fetchRequests()
-  } catch {
-    uni.showToast({ title: '提交失败', icon: 'none' })
+    await Promise.all([fetchRequests(), fetchLessons()])
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '提交失败', icon: 'none' })
   } finally {
     submitting.value = false
+  }
+}
+
+async function fetchPeriods() {
+  try {
+    const res = await api({ url: '/api/edu/periods' })
+    periods.value = res.data || []
+  } catch (e) {
+    // 时段加载失败不阻塞其他功能
   }
 }
 
 onMounted(() => {
   fetchRequests()
   fetchLessons()
+  fetchPeriods()
 })
 </script>
 
@@ -434,5 +555,14 @@ onMounted(() => {
 .form-actions {
   margin-top: 48rpx;
   padding-bottom: 48rpx;
+}
+
+.occupied-hint {
+  margin: 0 0 20rpx 0;
+  padding: 16rpx 24rpx;
+  background: #FEF3C7;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #92400E;
 }
 </style>

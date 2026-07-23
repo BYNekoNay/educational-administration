@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.course.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -30,11 +31,19 @@ public class CourseController {
 
     @GetMapping("/courses/{id}")
     public Result<Course> getCourse(@PathVariable Long id) {
-        return Result.success(courseService.getCourseById(id));
+        Course course = courseService.getCourseById(id);
+        if (course == null) {
+            throw new BusinessException(404, "课程不存在");
+        }
+        return Result.success(course);
     }
 
     @PostMapping("/courses")
     public Result<Course> createCourse(@Valid @RequestBody Course course) {
+        // Mass assignment protection: strip server-controlled fields
+        course.setId(null);
+        course.setCreateTime(null);
+        course.setUpdateTime(null);
         return Result.success(courseService.createCourse(course));
     }
 
@@ -59,11 +68,19 @@ public class CourseController {
 
     @GetMapping("/classes/{id}")
     public Result<ClassGroup> getClassGroup(@PathVariable Long id) {
-        return Result.success(courseService.getClassGroupById(id));
+        ClassGroup classGroup = courseService.getClassGroupById(id);
+        if (classGroup == null) {
+            throw new BusinessException(404, "班级不存在");
+        }
+        return Result.success(classGroup);
     }
 
     @PostMapping("/classes")
     public Result<ClassGroup> createClassGroup(@Valid @RequestBody ClassGroup classGroup) {
+        // Mass assignment protection: strip server-controlled fields
+        classGroup.setId(null);
+        classGroup.setCreateTime(null);
+        classGroup.setUpdateTime(null);
         return Result.success(courseService.createClassGroup(classGroup));
     }
 
@@ -88,6 +105,11 @@ public class CourseController {
 
     @PostMapping("/classes/{id}/students")
     public Result<Void> addStudentToClass(@PathVariable Long id, @RequestBody ClassStudent classStudent) {
+        // Mass assignment protection: strip server-controlled fields
+        classStudent.setId(null);
+        classStudent.setCreateTime(null);
+        classStudent.setUpdateTime(null);
+        classStudent.setStatus(1);
         classStudent.setClassId(id);
         courseService.addStudentToClass(classStudent);
         return Result.success();

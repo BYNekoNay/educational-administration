@@ -16,7 +16,7 @@
     <!-- Student switcher (parent only) -->
     <view v-if="isParent" class="switcher-section">
       <text class="section-header">我的孩子</text>
-      <StudentSwitcher @change="onStudentChange" />
+      <StudentSwitcher :key="switcherKey" @change="onStudentChange" />
     </view>
 
     <!-- Menu list -->
@@ -40,15 +40,35 @@
         </view>
       </view>
     </view>
+
+    <!-- 退出登录 -->
+    <view class="cell-group" style="margin-top: 24rpx">
+      <view class="cell" @click="handleLogout">
+        <view class="cell-icon" style="background: #FFEBEE">
+          <text>🚪</text>
+        </view>
+        <view class="cell-body">
+          <text class="cell-title" style="color: #E53935">退出登录</text>
+          <text class="cell-desc">返回登录页面</text>
+        </view>
+        <view class="cell-footer">
+          <view class="cell-arrow"></view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
+import { api, getMyStudents } from '@/utils/request'
 
 const userInfo = ref(null)
 const isParent = ref(true)
+// 学员列表刷新后递增至 key，强制 StudentSwitcher 重新读取
+const switcherKey = ref(0)
 
 const parentMenus = [
   { path: '/pages/parent/enrollment',         emoji: '📋', label: '课程报名', desc: '浏览课程并报名', bg: '#E0F7FA' },
@@ -62,7 +82,8 @@ const parentMenus = [
 ]
 
 const teacherMenus = [
-  { path: '/pages/teacher/attendance',    emoji: '✅', label: '课堂考勤', desc: '记录学员出勤', bg: '#E8F5E9' },
+  { path: '/pages/teacher/attendance',    emoji: '✅', label: '课堂考勤', desc: '当日学员出勤', bg: '#E8F5E9' },
+  { path: '/pages/teacher/attendance-records', emoji: '📋', label: '考勤记录', desc: '历史考勤查看', bg: '#F0FDF4' },
   { path: '/pages/teacher/learning',      emoji: '📝', label: '学情管理', desc: '作业与成长点评', bg: '#FFF3E0' },
   { path: '/pages/teacher/adjust-request',emoji: '🔄', label: '调课申请', desc: '申请调课与查看进度', bg: '#E0F7FA' },
   { path: '/pages/teacher/statistics',    emoji: '📊', label: '课时统计', desc: '本月授课数据', bg: '#F3E5F5' },
@@ -96,6 +117,21 @@ function navTo(url) {
   uni.navigateTo({ url })
 }
 
+function handleLogout() {
+  uni.showModal({
+    title: '退出确认',
+    content: '确定要退出登录吗？',
+    success: (res) => {
+      if (res.confirm) {
+        uni.removeStorageSync('token')
+        uni.removeStorageSync('userInfo')
+        uni.removeStorageSync('students')
+        uni.reLaunch({ url: '/pages/login/login' })
+      }
+    }
+  })
+}
+
 onMounted(() => {
   try {
     const stored = uni.getStorageSync('userInfo')
@@ -105,6 +141,25 @@ onMounted(() => {
   } catch (e) {}
   const roleCode = userInfo.value?.roleCode || ''
   isParent.value = roleCode !== 'TEACHER'
+})
+
+// 首页是 tabBar 页面，onMounted 只执行一次；
+// 登录时学员列表加载失败会提示"可稍后在首页重试"，这里在每次显示时补偿加载
+onShow(() => {
+  let storedUser = null
+  try {
+    storedUser = uni.getStorageSync('userInfo')
+    if (typeof storedUser === 'string') storedUser = JSON.parse(storedUser)
+  } catch (e) {}
+  if ((storedUser?.roleCode || '') !== 'PARENT') return
+  if (getMyStudents().length > 0) return
+  api({ url: '/api/parent/students' }).then(res => {
+    const list = res.data || []
+    uni.setStorageSync('students', list)
+    if (list.length) switcherKey.value++
+  }).catch(() => {
+    // 静默重试，不打扰用户
+  })
 })
 </script>
 

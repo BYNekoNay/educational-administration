@@ -5,6 +5,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
 import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.dto.AdjustRequestVO;
 import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 
 import java.time.LocalDate;
@@ -50,9 +51,9 @@ public interface ScheduleService {
     RoomBooking createRoomBooking(RoomBooking booking);
 
     // 调课申请
-    Page<ScheduleAdjustRequest> pageAdjustRequests(int pageNum, int pageSize);
+    Page<AdjustRequestVO> pageAdjustRequests(int pageNum, int pageSize, Integer status);
 
-    Page<ScheduleAdjustRequest> pageTeacherAdjustRequests(Long teacherId, int pageNum, int pageSize);
+    Page<AdjustRequestVO> pageTeacherAdjustRequests(Long teacherId, int pageNum, int pageSize);
 
     ScheduleAdjustRequest createAdjustRequest(ScheduleAdjustRequest request);
 

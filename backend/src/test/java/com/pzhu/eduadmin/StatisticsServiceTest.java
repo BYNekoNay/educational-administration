@@ -95,7 +95,7 @@ class StatisticsServiceTest {
 
         when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(p));
         when(refundRecordMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(r));
-        when(enrollmentMapper.selectBatchIds(anySet())).thenReturn(List.of(en));
+        when(enrollmentMapper.selectBatchIdsIncludeDeleted(anySet())).thenReturn(List.of(en));
 
         List<Map<String, Object>> result = statisticsService.getCourseProfit();
         assertThat(result.get(0).get("netProfit")).isEqualTo(new BigDecimal("4000.00"));

@@ -18,9 +18,10 @@
       <el-table-column prop="menuName" label="菜单名称" min-width="140" />
       <el-table-column prop="icon" label="图标" width="100" align="center">
         <template #default="{ row }">
-          <el-icon v-if="row.icon" style="font-size: 18px">
+          <el-icon v-if="row.icon && knownIcons.has(row.icon)" style="font-size: 18px">
             <component :is="row.icon" />
           </el-icon>
+          <span v-else-if="row.icon" style="color: #e6a23c" :title="`未注册的图标名: ${row.icon}`">⚠</span>
           <span v-else style="color: #c0c4cc">—</span>
         </template>
       </el-table-column>
@@ -65,7 +66,7 @@
       :title="editing?.id ? '编辑菜单' : parentForChild ? `新增「${parentForChild.menuName}」子菜单` : '新增顶级菜单'"
       v-model="dialogVisible"
       width="460px"
-      @closed="editing = null; parentForChild = null; form = defaultForm()"
+      @closed="onDialogClosed"
     >
       <el-form :model="form" label-width="100px">
         <el-form-item label="菜单名称" required>
@@ -106,6 +107,10 @@ import { menuApi } from '@/api/auth'
 
 const menuTree = ref<any[]>([])
 const loading = ref(false)
+
+/** 已注册图标白名单——须与 AppLayout.vue 侧栏 iconMap 保持同步，
+    未注册的图标名直接 <component :is> 会触发 Vue 告警且侧栏静默无图标 */
+const knownIcons = new Set(['Monitor', 'Setting', 'Document', 'Money'])
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editing = ref<any>(null)
@@ -122,6 +127,13 @@ function defaultForm() {
   })
 }
 const form = defaultForm()
+
+/** 弹窗关闭后复位编辑状态与表单（避免在模板中对 const 绑定直接赋值） */
+function onDialogClosed() {
+  editing.value = null
+  parentForChild.value = null
+  Object.assign(form, defaultForm())
+}
 
 async function loadTree() {
   loading.value = true

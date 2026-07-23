@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.exam.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -14,10 +15,12 @@ import com.pzhu.eduadmin.security.RequireRole;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/edu/exams")
 @RequiredArgsConstructor
@@ -36,17 +39,38 @@ public class ExamController {
 
     @GetMapping("/levels/{id}")
     public Result<ExamLevel> getExamLevel(@PathVariable Long id) {
-        return Result.success(examService.getExamLevelById(id));
+        ExamLevel examLevel = examService.getExamLevelById(id);
+        if (examLevel == null) {
+            throw new BusinessException(404, "考级不存在");
+        }
+        return Result.success(examLevel);
     }
 
     @PostMapping("/levels")
     public Result<ExamLevel> createExamLevel(@Valid @RequestBody ExamLevel examLevel) {
+        // Mass assignment protection: strip server-controlled fields
+        examLevel.setId(null);
+        examLevel.setCreateTime(null);
+        examLevel.setUpdateTime(null);
+        if (examLevel.getFee() != null && examLevel.getFee().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, "考级费用不能为负数");
+        }
         return Result.success(examService.createExamLevel(examLevel));
     }
 
     @PutMapping("/levels/{id}")
     public Result<ExamLevel> updateExamLevel(@PathVariable Long id, @RequestBody ExamLevel examLevel) {
         examLevel.setId(id);
+        // L5 fix: 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime（与 create 保持一致）
+        examLevel.setCreateTime(null);
+        examLevel.setUpdateTime(null);
+        // L fix: 与 create 对齐校验——费用不可为负；提供名称时不可为空白（updateById 会写空串）
+        if (examLevel.getFee() != null && examLevel.getFee().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, "考级费用不能为负数");
+        }
+        if (examLevel.getName() != null && examLevel.getName().isBlank()) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, "考级项目名称不能为空");
+        }
         return Result.success(examService.updateExamLevel(examLevel));
     }
 
@@ -86,7 +110,10 @@ public class ExamController {
                 n.setRelatedId(signup.getId());
                 notificationService.sendToUsers(parentUserIds, n);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            // L fix: 记录告警而非静默吞掉，否则通知持续失败（如 DB 异常）无任何可观测性
+            log.warn("考级报名通知发送失败, signupId={}", signup.getId(), e);
+        }
     }
 
     @PutMapping("/signups/{id}")

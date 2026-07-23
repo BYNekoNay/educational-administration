@@ -3,17 +3,21 @@ package com.pzhu.eduadmin.common;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 /**
@@ -58,6 +62,20 @@ public class GlobalExceptionHandler {
         return Result.fail(400, message);
     }
 
+    // M9 fix: Spring 6.1 起，@Validated 控制器方法参数（@RequestParam 上的约束）校验失败
+    // 抛 HandlerMethodValidationException 而非 ConstraintViolationException，
+    // 缺少此处理器时所有非法提交会落入通用兜底返回 500（如家长请假原因校验）
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public Result<Void> handleHandlerMethodValidation(HandlerMethodValidationException e) {
+        String message = e.getAllValidationResults().stream()
+                .flatMap(r -> r.getResolvableErrors().stream())
+                .map(MessageSourceResolvable::getDefaultMessage)
+                .filter(m -> m != null && !m.isBlank())
+                .findFirst()
+                .orElse("参数校验失败");
+        return Result.fail(400, message);
+    }
+
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public Result<Void> handleMissingParam(MissingServletRequestParameterException e) {
         return Result.fail(400, "缺少必要参数：" + e.getParameterName());
@@ -78,6 +96,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public Result<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
         return Result.fail(405, "请求方式不正确，请使用：" + e.getSupportedHttpMethods());
+    }
+
+    // L8 fix: Content-Type 不受支持语义上是 415，缺少处理器会落入通用兜底返回 500
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public Result<Void> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
+        return Result.fail(415, "不支持的请求内容类型：" + e.getContentType());
+    }
+
+    // L8 fix: 上传文件超过大小限制应返回友好提示，而非通用 500
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public Result<Void> handleMaxUploadSize(MaxUploadSizeExceededException e) {
+        return Result.fail(400, "上传文件大小超过限制");
     }
 
     // ==================== 404 处理 ====================

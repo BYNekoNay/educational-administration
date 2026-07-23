@@ -14,7 +14,7 @@
     <!-- Schedule content placeholder - redirects to existing schedule pages -->
     <view class="quick-actions">
       <view class="action-card" @click="goSchedule">
-        <text class="action-emoji">{{ isParent ? '📅' : '📅' }}</text>
+        <text class="action-emoji">📅</text>
         <text class="action-label">查看完整课表</text>
         <text class="action-desc">{{ isParent ? '近期课程安排与调课信息' : '我的授课排班详情' }}</text>
       </view>

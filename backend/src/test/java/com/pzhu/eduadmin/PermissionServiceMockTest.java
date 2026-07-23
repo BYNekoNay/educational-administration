@@ -9,6 +9,7 @@ import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.Permission;
 import com.pzhu.eduadmin.modules.user.entity.RolePermission;
+import com.pzhu.eduadmin.modules.user.mapper.MenuMapper;
 import com.pzhu.eduadmin.modules.user.mapper.PermissionMapper;
 import com.pzhu.eduadmin.modules.user.mapper.RolePermissionMapper;
 import com.pzhu.eduadmin.modules.user.service.PermissionServiceImpl;
@@ -36,6 +37,7 @@ class PermissionServiceMockTest {
 
     @Mock private PermissionMapper permissionMapper;
     @Mock private RolePermissionMapper rolePermissionMapper;
+    @Mock private MenuMapper menuMapper;
     @Mock private OperationLogService operationLogService;
     @Mock private EntityNameResolver nameResolver;
 

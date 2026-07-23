@@ -92,6 +92,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '排课管理', permission: 'menu:schedule' }
       },
       {
+        path: 'edu/adjust-audit',
+        name: 'AdjustAudit',
+        component: () => import('@/views/edu/AdjustAudit.vue'),
+        meta: { title: '调课审核', permission: 'menu:adjust-audit' }
+      },
+      {
         path: 'edu/classrooms',
         name: 'Classrooms',
         component: () => import('@/views/edu/ClassroomList.vue'),
@@ -163,7 +169,7 @@ router.beforeEach((to, _from, next) => {
   if (redirectCount > MAX_REDIRECTS) {
     redirectCount = 0
     authStore.logout()
-    next()
+    next('/login')
     return
   }
 
@@ -179,7 +185,8 @@ router.beforeEach((to, _from, next) => {
   }
   if (!authStore.token) {
     redirectCount = 0
-    next('/login')
+    // 携带原目标路径，登录成功后回到用户实际想访问的页面（Login 侧校验合法性）
+    next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
     return
   }
 
@@ -197,10 +204,11 @@ router.beforeEach((to, _from, next) => {
   if (requiredPermission) {
     if (!authStore.hasPermission(requiredPermission)) {
       if (to.path === '/admin/dashboard') {
-        // 看板页都没有权限 → token/权限已失效，清除登录态后跳转登录页
+        // 看板页都没有权限 → token/权限已失效（或角色未分配任何菜单），清除登录态并携带原因跳转，
+        // 由登录页提示用户，避免"登录即被弹回、无任何提示"的静默死循环
         authStore.logout()
         redirectCount = 0
-        next('/login')
+        next('/login?reason=no_permission')
       } else {
         redirectCount++
         next('/admin/dashboard')

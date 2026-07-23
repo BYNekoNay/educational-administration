@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.attendance.controller;
 
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
@@ -26,12 +27,20 @@ public class AdminAttendanceController {
     @GetMapping("/attendances/{id}")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Attendance> get(@PathVariable Long id) {
-        return Result.success(attendanceService.getById(id));
+        Attendance attendance = attendanceService.getById(id);
+        if (attendance == null) {
+            throw new BusinessException(404, "考勤记录不存在");
+        }
+        return Result.success(attendance);
     }
 
     @PostMapping("/attendances")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Attendance> submit(@RequestBody Attendance attendance) {
+        // Bug3 fix: 防止客户端传入已有id/时间戳（mass assignment保护）
+        attendance.setId(null);
+        attendance.setCreateTime(null);
+        attendance.setUpdateTime(null);
         return Result.success(attendanceService.submit(attendance));
     }
 }

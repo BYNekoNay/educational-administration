@@ -8,27 +8,20 @@
           <el-button type="primary" @click="showAddDialog" :icon="Plus">新增考勤</el-button>
         </div>
         <div style="margin-bottom:12px;display:flex;gap:8px">
-          <el-input v-model="keyword" placeholder="搜索学员或课次" clearable style="width:260px" />
+          <el-input v-model="keyword" placeholder="在当前页筛选学员或课次" clearable style="width:260px" />
         </div>
         <el-table :data="filteredData" border stripe v-loading="loading" @sort-change="handleSortChange">
           <el-table-column prop="id" label="ID" width="70" sortable="custom" />
-          <el-table-column prop="lessonInfo" label="课次信息" min-width="200" sortable />
-          <el-table-column prop="studentName" label="学员" min-width="80" sortable />
+          <el-table-column prop="lessonInfo" label="课次信息" min-width="200" />
+          <el-table-column prop="studentName" label="学员" min-width="80" />
           <el-table-column prop="status" label="考勤状态" width="100" sortable="custom">
             <template #default="{ row }">
               <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="deductLessons" label="扣课时" width="80" sortable="custom" />
+          <el-table-column prop="deductLessons" label="扣课时" width="80" />
           <el-table-column prop="checkTime" label="考勤时间" width="170" sortable="custom" />
-          <el-table-column prop="remark" label="备注" min-width="120" sortable />
-          <el-table-column label="操作" width="80" fixed="right">
-            <template #default="{ row }">
-              <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
-                <el-button type="danger" size="small" @click="handleDelete(row.id)">删除</el-button>
-              </div>
-            </template>
-          </el-table-column>
+          <el-table-column prop="remark" label="备注" min-width="120" />
         </el-table>
         <el-pagination
           v-model:current-page="pageNum" :total="total" :page-size="pageSize"
@@ -77,9 +70,10 @@
     <el-dialog v-model="dialogVisible" title="新增考勤记录" width="500px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="课次">
+          <!-- 后端仅允许 status 1/2（待上课/已完成）课次考勤，其余状态直接 409，故下拉只列可选课次 -->
           <el-select v-model="form.lessonId" placeholder="请选择课次" filterable style="width:100%">
             <el-option
-              v-for="s in scheduleList"
+              v-for="s in lessonOptions"
               :key="s.id"
               :label="scheduleOptionLabel(s)"
               :value="s.id"
@@ -100,7 +94,8 @@
           </el-select>
         </el-form-item>
         <el-form-item label="扣课时">
-          <el-input-number v-model="form.deductLessons" :min="0" :precision="1" />
+          <!-- 请假/缺勤后端强制 deductLessons=0，编辑无意义，禁用 -->
+          <el-input-number v-model="form.deductLessons" :min="0" :precision="1" :disabled="form.status === 3 || form.status === 4" />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" />
@@ -135,7 +130,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
-import { attendanceApi, scheduleApi, studentApi, leaveRequestApi } from '@/api/edu'
+import { attendanceApi, scheduleApi, studentApi, leaveRequestApi, classApi } from '@/api/edu'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // ─── 考勤管理 ───
@@ -157,6 +152,7 @@ const total = ref(0)
 const dialogVisible = ref(false)
 const scheduleList = ref<any[]>([])
 const studentList = ref<any[]>([])
+const allStudents = ref<any[]>([])
 const form = ref({ lessonId: null as number | null, studentId: null as number | null, status: 1, deductLessons: 1, remark: '' })
 
 function statusType(s: number) { return s === 1 ? 'success' : s === 2 ? 'warning' : s === 3 ? 'info' : 'danger' }
@@ -166,8 +162,31 @@ function scheduleOptionLabel(s: any): string {
   const cn = s.className || ''
   const date = s.lessonDate || ''
   const st = s.startTime || ''
-  return `${cn} ${date} ${st}`.trim()
+  const status = Number(s.status) === 2 ? ' [已完成]' : ''
+  return `${cn} ${date} ${st}${status}`.trim()
 }
+
+// 仅待上课(1)/已完成(2)课次可考勤（其余状态后端 409 拒绝），下拉只列可选课次
+const lessonOptions = computed(() => (scheduleList.value || []).filter((s: any) => Number(s.status) === 1 || Number(s.status) === 2))
+
+// 请假(3)/缺勤(4)后端强制 deductLessons=0，切换状态时同步默认值，避免提交被后端静默改写
+watch(() => form.value.status, (st) => {
+  form.value.deductLessons = (st === 3 || st === 4) ? 0 : 1
+})
+
+// 选定课次后将学员下拉收窄为该班级在读学员（后端校验学员班级归属，跨班学员会 409）；加载失败保留全量兜底
+watch(() => form.value.lessonId, async (lid) => {
+  if (!lid) return
+  const lesson = (scheduleList.value || []).find((s: any) => s.id === lid)
+  if (!lesson?.classId) return
+  try {
+    const res = await classApi.students(lesson.classId, { pageSize: 100 })
+    const records = res.data?.records || []
+    if (records.length > 0) {
+      studentList.value = records.map((cs: any) => ({ id: cs.studentId, name: cs.studentName || `学员${cs.studentId}` }))
+    }
+  } catch { /* 保持全量学员列表兜底 */ }
+})
 
 async function loadOptions() {
   try {
@@ -177,6 +196,7 @@ async function loadOptions() {
     ])
     scheduleList.value = sRes.data?.records || []
     studentList.value = stRes.data?.records || []
+    allStudents.value = studentList.value
   } catch { /* ignore */ }
 }
 
@@ -198,24 +218,22 @@ function handleSortChange({ prop, order }: any) {
 
 function showAddDialog() {
   form.value = { lessonId: null, studentId: null, status: 1, deductLessons: 1, remark: '' }
+  studentList.value = allStudents.value
   dialogVisible.value = true
   // 确保下拉数据已加载
   if (scheduleList.value.length === 0) loadOptions()
 }
 
 async function handleSubmit() {
+  if (!form.value.lessonId) { ElMessage.warning('请选择课次'); return }
+  if (!form.value.studentId) { ElMessage.warning('请选择学员'); return }
   try {
     await attendanceApi.create(form.value)
     ElMessage.success('提交成功')
     dialogVisible.value = false
+    pageNum.value = 1
     loadData()
   } catch (e: any) { showError(e, '提交失败') }
-}
-
-async function handleDelete(id: number) {
-  await ElMessageBox.confirm('确定删除？', '提示', { type: 'warning' })
-  try { await attendanceApi.delete(id); ElMessage.success('删除成功'); loadData() }
-  catch (e) { if (e !== 'cancel') showError(e, '删除失败') }
 }
 
 // ─── 请假审核 ───

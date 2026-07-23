@@ -24,7 +24,7 @@
         <el-card shadow="hover" class="stat-card">
           <div class="card-inner">
             <div class="card-label">本月营收</div>
-            <div class="card-value" style="color:#E6A23C">¥{{ cards.monthlyRevenue ?? '--' }}</div>
+            <div class="card-value" style="color:#E6A23C">¥{{ formatMoney(cards.monthlyRevenue) }}</div>
           </div>
         </el-card>
       </el-col>
@@ -59,8 +59,8 @@
       </el-col>
     </el-row>
 
-    <!-- 导出按钮 -->
-    <el-card shadow="hover" style="margin-top: 20px">
+    <!-- 导出按钮：后端 /export/* 仅放行 SUPER_ADMIN/FINANCE，其余角色隐藏避免必 403 -->
+    <el-card v-if="canExport" shadow="hover" style="margin-top: 20px">
       <h4 style="margin: 0 0 12px 0">报表导出</h4>
       <el-space>
         <ExportButton url="/export/payments" filename="收费台账.xlsx" label="导出台账" />
@@ -73,7 +73,7 @@
       <h3 style="margin: 0 0 12px">多维运营分析</h3>
       <el-tabs v-model="analysisTab">
         <el-tab-pane label="教师工作量" name="teacher">
-          <h4>教师工作量</h4>
+          <h4>教师工作量（本月）</h4>
           <el-table :data="teacherWorkload" border stripe>
             <el-table-column prop="teacherName" label="教师" />
             <el-table-column prop="lessonCount" label="完成课次" />
@@ -111,8 +111,8 @@
           <h4>收费率</h4>
           <el-table :data="paymentRate" border stripe>
             <el-table-column prop="courseName" label="课程" />
-            <el-table-column prop="expected" label="应收" />
-            <el-table-column prop="paid" label="实收" />
+            <el-table-column prop="expected" label="应收报名数" />
+            <el-table-column prop="paid" label="已缴费报名数" />
             <el-table-column label="收费率"><template #default="{ row }">{{ percent(row.rate) }}%</template></el-table-column>
           </el-table>
         </el-tab-pane>
@@ -122,11 +122,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { dashboardApi, statisticsApi } from '@/api/auth'
 import { ElMessage } from 'element-plus'
+import { showError } from '@/utils/error'
 import ExportButton from '@/components/ExportButton.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+// 与后端 ExportController 的 @RequireRole({"SUPER_ADMIN","FINANCE"}) 对齐
+const canExport = computed(() => ['SUPER_ADMIN', 'FINANCE'].includes(authStore.roleCode))
 
 const cards = reactive<any>({ activeStudents: '--', monthlyLessons: '--', monthlyRevenue: '--', attendanceRate: '--' })
 
@@ -144,14 +150,19 @@ let revenueChart: echarts.ECharts | null = null
 let attendanceChart: echarts.ECharts | null = null
 
 async function loadDashboard() {
-  const res = await dashboardApi.get()
-  const d = res.data
-  Object.assign(cards, d.cards)
+  try {
+    const res = await dashboardApi.get()
+    const d = res.data || {}
+    if (d.cards) Object.assign(cards, d.cards)
 
-  await nextTick()
-  initLessonChart(d.charts.lessonTrend)
-  initRevenueChart(d.charts.revenueTrend)
-  initAttendanceChart(d.charts.attendanceTrend)
+    await nextTick()
+    const charts = d.charts || {}
+    initLessonChart(charts.lessonTrend || [])
+    initRevenueChart(charts.revenueTrend || [])
+    initAttendanceChart(charts.attendanceTrend || [])
+  } catch (e) {
+    showError(e, '看板数据加载失败')
+  }
 }
 
 function initLessonChart(data: any[]) {
@@ -197,38 +208,57 @@ function percent(value: unknown) {
   return Math.round((Number(value) || 0) * 100)
 }
 
+/** 金额展示：非数值（含初始 '--'）原样兜底，数值加千分位 + 两位小数 */
+function formatMoney(value: unknown): string {
+  if (value === '--' || value === null || value === undefined || value === '') return '--'
+  const n = Number(value)
+  if (Number.isNaN(n)) return '--'
+  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 async function loadAnalytics() {
-  try {
-    const [teacher, loss, activity, profit, payment] = await Promise.all([
-      statisticsApi.teacherWorkload(),
-      statisticsApi.studentLoss(),
-      statisticsApi.classActivity(),
-      statisticsApi.courseProfit(),
-      statisticsApi.paymentRate()
-    ])
-    teacherWorkload.value = teacher.data || []
-    studentLoss.value = loss.data || []
-    classActivity.value = activity.data || []
-    courseProfit.value = profit.data || []
-    paymentRate.value = payment.data || []
-  } catch (error) {
+  // 五个统计接口相互独立：用 allSettled 隔离失败，避免单个接口异常拖空全部表格
+  const results = await Promise.allSettled([
+    statisticsApi.teacherWorkload(),
+    statisticsApi.studentLoss(),
+    statisticsApi.classActivity(),
+    statisticsApi.courseProfit(),
+    statisticsApi.paymentRate()
+  ])
+  const assign = (idx: number, target: { value: any[] }) => {
+    const r = results[idx]
+    if (r.status === 'fulfilled') target.value = r.value.data || []
+  }
+  assign(0, teacherWorkload)
+  assign(1, studentLoss)
+  assign(2, classActivity)
+  assign(3, courseProfit)
+  assign(4, paymentRate)
+  if (results.some(r => r.status === 'rejected')) {
     ElMessage.warning('部分运营统计加载失败')
   }
 }
 
+let resizeTimer: ReturnType<typeof setTimeout> | null = null
 function handleResize() {
-  lessonChart?.resize()
-  revenueChart?.resize()
-  attendanceChart?.resize()
+  // 节流：resize 事件高频触发，三个图表连续 resize 会造成卡顿
+  if (resizeTimer) return
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null
+    lessonChart?.resize()
+    revenueChart?.resize()
+    attendanceChart?.resize()
+  }, 150)
 }
 
 onMounted(() => {
   loadDashboard()
   loadAnalytics()
+  window.addEventListener('resize', handleResize)
 })
-window.addEventListener('resize', handleResize)
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  if (resizeTimer) { clearTimeout(resizeTimer); resizeTimer = null }
   lessonChart?.dispose()
   revenueChart?.dispose()
   attendanceChart?.dispose()

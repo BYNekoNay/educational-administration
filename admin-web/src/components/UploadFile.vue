@@ -61,8 +61,10 @@ const fileList = ref<any[]>([])
 watch(
   () => props.modelValue,
   (val) => {
-    if (val && val.length && fileList.value.length === 0) {
+    if (val && val.length) {
       fileList.value = val.map((url, i) => ({ name: `文件${i + 1}`, url }))
+    } else {
+      fileList.value = []
     }
   },
   { immediate: true }

@@ -6,22 +6,22 @@
     </div>
     <el-table :data="filteredData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-      <el-table-column prop="studentName" label="学员" min-width="80" sortable />
-      <el-table-column label="来源类型" width="90" sortable>
+      <el-table-column prop="studentName" label="学员" min-width="80" />
+      <el-table-column label="来源类型" width="90">
         <template #default="{ row }">
           <el-tag :type="sourceTypeTag(row.sourceType)" size="small">{{ sourceTypeLabel(row.sourceType) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="变动课时" width="100" sortable>
+      <el-table-column prop="changeAmount" label="变动课时" width="100" sortable="custom">
         <template #default="{ row }">
           <span :class="row.changeAmount >= 0 ? 'amount-plus' : 'amount-minus'">
             {{ row.changeAmount >= 0 ? '+' : '' }}{{ row.changeAmount }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="beforeBalance" label="变动前" width="80" sortable="custom" />
-      <el-table-column prop="afterBalance" label="变动后" width="80" sortable="custom" />
-      <el-table-column prop="remark" label="备注" min-width="120" sortable />
+      <el-table-column prop="beforeBalance" label="变动前" width="80" />
+      <el-table-column prop="afterBalance" label="变动后" width="80" />
+      <el-table-column prop="remark" label="备注" min-width="120" />
       <el-table-column prop="createTime" label="时间" width="170" sortable="custom" />
     </el-table>
     <el-pagination style="margin-top: 16px; justify-content: flex-end"
@@ -33,6 +33,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { lessonFlowApi } from '@/api/finance'
+import { showError } from '@/utils/error'
 
 const loading = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
@@ -57,8 +58,14 @@ function sourceTypeTag(v: number) {
 
 async function loadData() {
   loading.value = true
-  const res = await lessonFlowApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-  tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+  try {
+    const res = await lessonFlowApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    tableData.value = res.data.records; total.value = res.data.total
+  } catch (e) {
+    showError(e, '加载课时流水失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 function handleSortChange({ prop, order }: any) {

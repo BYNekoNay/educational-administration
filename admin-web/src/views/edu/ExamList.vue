@@ -11,8 +11,8 @@
         </div>
         <el-table :data="levels" v-loading="levelsLoading" border stripe @sort-change="handleLevelSortChange">
           <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-          <el-table-column prop="name" label="考级名称" sortable />
-          <el-table-column prop="levelName" label="级别" width="100" sortable />
+          <el-table-column prop="name" label="考级名称" sortable="custom" />
+          <el-table-column prop="levelName" label="级别" width="100" />
           <el-table-column prop="examDate" label="考试日期" width="120" sortable="custom" />
           <el-table-column prop="fee" label="费用" width="80" sortable="custom">
             <template #default="{ row }">¥{{ row.fee || 0 }}</template>
@@ -34,7 +34,7 @@
           <el-form :model="levelForm" label-width="80px">
             <el-form-item label="考级名称"><el-input v-model="levelForm.name" /></el-form-item>
             <el-form-item label="级别"><el-input v-model="levelForm.levelName" /></el-form-item>
-            <el-form-item label="考试日期"><el-date-picker v-model="levelForm.examDate" type="date" style="width:100%" /></el-form-item>
+            <el-form-item label="考试日期"><el-date-picker v-model="levelForm.examDate" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
             <el-form-item label="费用"><el-input-number v-model="levelForm.fee" :min="0" :precision="2" /></el-form-item>
           </el-form>
           <template #footer>
@@ -53,10 +53,10 @@
         </div>
         <el-table :data="signups" v-loading="signupsLoading" border stripe @sort-change="handleSignupSortChange">
           <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-          <el-table-column prop="examName" label="考级项目" width="160" sortable />
-          <el-table-column prop="studentName" label="学员" width="120" sortable />
+          <el-table-column prop="examName" label="考级项目" width="160" />
+          <el-table-column prop="studentName" label="学员" width="120" />
           <el-table-column prop="score" label="成绩" width="80" sortable="custom" />
-          <el-table-column prop="certificateNo" label="证书编号" width="150" sortable />
+          <el-table-column prop="certificateNo" label="证书编号" width="150" />
           <el-table-column label="证书文件" width="100">
             <template #default="{ row }">
               <el-link v-if="row.certificateFileUrl" type="primary" @click="viewCertificate(row.certificateFileUrl)">查看</el-link>
@@ -85,25 +85,31 @@
         <el-dialog :title="editingSignup?.id ? '编辑报名' : '新增报名'" v-model="signupVisible" width="400px">
           <el-form :model="signupForm" label-width="80px">
             <el-form-item label="考级项目">
-              <el-select v-model="signupForm.examId" style="width:100%">
+              <!-- 后端 updateExamSignup 剥离 examId/studentId（创建后不可变更），编辑态禁用避免"改了不生效" -->
+              <el-select v-model="signupForm.examId" style="width:100%" :disabled="!!editingSignup?.id">
                 <el-option v-for="l in levels" :key="l.id" :label="l.name + (l.levelName ? ' - ' + l.levelName : '')" :value="l.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="学员">
-              <el-select v-model="signupForm.studentId" filterable style="width:100%" placeholder="搜索选择学员">
+              <el-select v-model="signupForm.studentId" filterable style="width:100%" placeholder="搜索选择学员" :disabled="!!editingSignup?.id">
                 <el-option v-for="s in studentList" :key="s.id" :label="s.name" :value="s.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="成绩"><el-input-number v-model="signupForm.score" :min="0" :max="100" /></el-form-item>
-            <el-form-item label="证书编号"><el-input v-model="signupForm.certificateNo" /></el-form-item>
-            <el-form-item label="证书文件">
-              <UploadFile v-model="certificateFiles" action="/files/upload" accept=".jpg,.jpeg,.png,.pdf" :limit="1" tip="支持图片或 PDF，最大 10MB" />
-            </el-form-item>
-            <el-form-item label="状态">
-              <el-select v-model="signupForm.status">
-                <el-option :value="1" label="已报名" /><el-option :value="2" label="已通过" /><el-option :value="3" label="未通过" />
-              </el-select>
-            </el-form-item>
+            <!-- 后端 createExamSignup 强制 status=1 并清空成绩/证书字段：
+                 新增态展示这些控件只会静默丢弃用户输入（上传的证书还会变成孤儿文件），仅编辑态可见 -->
+            <template v-if="editingSignup?.id">
+              <el-form-item label="成绩"><el-input-number v-model="signupForm.score" :min="0" :max="100" /></el-form-item>
+              <el-form-item label="证书编号"><el-input v-model="signupForm.certificateNo" /></el-form-item>
+              <el-form-item label="证书文件">
+                <UploadFile v-model="certificateFiles" action="/files/upload" accept=".jpg,.jpeg,.png,.pdf" :limit="1" tip="支持图片或 PDF，最大 10MB" />
+              </el-form-item>
+              <el-form-item label="状态">
+                <!-- 状态机仅允许 1→2(通过)/1→3(未通过)，已有结论的记录锁定状态 -->
+                <el-select v-model="signupForm.status" :disabled="signupForm.status !== 1">
+                  <el-option :value="1" label="已报名" /><el-option :value="2" label="已通过" /><el-option :value="3" label="未通过" />
+                </el-select>
+              </el-form-item>
+            </template>
           </el-form>
           <template #footer>
             <el-button @click="signupVisible = false">取消</el-button>
@@ -134,8 +140,14 @@ const levelForm = reactive<any>({ name: '', levelName: '', examDate: '', fee: 0 
 
 async function loadLevels() {
   levelsLoading.value = true
-  const res = await examApi.levels({ pageNum: levelsPage.value, pageSize: levelsPageSize.value, keyword: levelKeyword.value || undefined, sortField: levelSortField.value || undefined, sortOrder: levelSortOrder.value || undefined })
-  levels.value = res.data.records; levelsTotal.value = res.data.total; levelsLoading.value = false
+  try {
+    const res = await examApi.levels({ pageNum: levelsPage.value, pageSize: levelsPageSize.value, keyword: levelKeyword.value || undefined, sortField: levelSortField.value || undefined, sortOrder: levelSortOrder.value || undefined })
+    levels.value = res.data.records; levelsTotal.value = res.data.total
+  } catch (e) {
+    showError(e, '加载考级项目失败')
+  } finally {
+    levelsLoading.value = false
+  }
 }
 function handleLevelSearch() { levelsPage.value = 1; loadLevels() }
 function resetLevelSearch() { levelKeyword.value = ''; levelSortField.value = ''; levelSortOrder.value = ''; levelsPage.value = 1; loadLevels() }
@@ -153,7 +165,7 @@ function showLevelDialog(row: any) {
 async function saveLevel() {
   levelSaving.value = true
   try {
-    const payload = { ...levelForm, examDate: levelForm.examDate ? new Date(levelForm.examDate).toISOString().slice(0, 10) : null }
+    const payload = { ...levelForm, examDate: levelForm.examDate || null }
     if (editingLevel.value?.id) {
       await examApi.updateLevel(editingLevel.value.id, payload)
     } else {
@@ -181,17 +193,23 @@ const filterExamId = ref<number | null>(null)
 const signupVisible = ref(false), signupSaving = ref(false)
 const editingSignup = ref<any>(null)
 const studentList = ref<any[]>([])
-const signupForm = reactive<any>({ examId: 1, studentId: 1, score: null, certificateNo: '', status: 1 })
+const signupForm = reactive<any>({ examId: null, studentId: null, score: null, certificateNo: '', status: 1 })
 const certificateFiles = ref<string[]>([])
 
 async function loadSignups() {
   signupsLoading.value = true
-  const params: any = { pageNum: signupsPage.value, pageSize: signupsPageSize.value }
-  if (filterExamId.value) params.examId = filterExamId.value
-  if (signupSortField.value) params.sortField = signupSortField.value
-  if (signupSortOrder.value) params.sortOrder = signupSortOrder.value
-  const res = await examApi.signups(params)
-  signups.value = res.data.records; signupsTotal.value = res.data.total; signupsLoading.value = false
+  try {
+    const params: any = { pageNum: signupsPage.value, pageSize: signupsPageSize.value }
+    if (filterExamId.value) params.examId = filterExamId.value
+    if (signupSortField.value) params.sortField = signupSortField.value
+    if (signupSortOrder.value) params.sortOrder = signupSortOrder.value
+    const res = await examApi.signups(params)
+    signups.value = res.data.records; signupsTotal.value = res.data.total
+  } catch (e) {
+    showError(e, '加载报名列表失败')
+  } finally {
+    signupsLoading.value = false
+  }
 }
 function handleSignupSortChange({ prop, order }: any) {
   signupSortField.value = order ? prop : ''
@@ -204,12 +222,14 @@ function showSignupDialog(row: any) {
     Object.assign(signupForm, { examId: row.examId, studentId: row.studentId, score: row.score, certificateNo: row.certificateNo || '', status: row.status })
     certificateFiles.value = row.certificateFileUrl ? [row.certificateFileUrl] : []
   } else {
-    Object.assign(signupForm, { examId: 1, studentId: 1, score: null, certificateNo: '', status: 1 })
+    Object.assign(signupForm, { examId: null, studentId: null, score: null, certificateNo: '', status: 1 })
     certificateFiles.value = []
   }
   signupVisible.value = true
 }
 async function saveSignup() {
+  if (!signupForm.examId) { ElMessage.warning('请选择考级项目'); return }
+  if (!signupForm.studentId) { ElMessage.warning('请选择学员'); return }
   signupSaving.value = true
   try {
     const payload = { ...signupForm, certificateFileUrl: certificateFiles.value[0] || null }

@@ -42,6 +42,7 @@ import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
+import { authApi } from '@/api/auth'
 import { Monitor, Setting, Document, Money } from '@element-plus/icons-vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import MenuItem from '@/components/MenuItem.vue'
@@ -80,7 +81,11 @@ const roleNameMap: Record<string, string> = {
 }
 const roleName = computed(() => roleNameMap[authStore.roleCode] || authStore.roleCode)
 
-function handleLogout() {
+async function handleLogout() {
+  // 先通知后端吊销 Token（version+1 使所有已发 Token 立即失效），失败不阻塞本地登出
+  try { await authApi.logout() } catch { /* 网络/权限错误也继续本地清理 */ }
+  notificationStore.disconnect()
+  notificationStore.reset()
   authStore.logout()
   router.push('/login')
 }

@@ -196,11 +196,11 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { userApi } from '@/api/auth'
+import { userApi, roleApi } from '@/api/auth'
 import { courseApi } from '@/api/edu'
 import { showError } from '@/utils/error'
 
-// ====== 角色映射 ======
+// ====== 角色映射（仅内置角色显示名兜底） ======
 const roleMap: Record<string, string> = {
   SUPER_ADMIN: '超级管理员',
   EDU_ADMIN: '教务管理员',
@@ -209,10 +209,28 @@ const roleMap: Record<string, string> = {
   PARENT: '家长',
 }
 
-const roleOptions = Object.entries(roleMap).map(([code, name]) => ({ code, name }))
+// 角色选项从后端动态加载：RoleList 支持自定义角色，硬编码会导致自定义角色无法分配给用户
+const roleOptions = ref<{ code: string; name: string }[]>(
+  Object.entries(roleMap).map(([code, name]) => ({ code, name }))
+)
+
+async function loadRoleOptions() {
+  try {
+    const res = await roleApi.list()
+    const list: any[] = res.data || []
+    if (list.length) {
+      roleOptions.value = list.map(r => ({
+        code: r.roleCode,
+        name: r.roleName || roleMap[r.roleCode] || r.roleCode,
+      }))
+    }
+  } catch (e) {
+    showError(e, '加载角色列表失败')
+  }
+}
 
 function roleLabel(code: string): string {
-  return roleMap[code] || code
+  return roleOptions.value.find(r => r.code === code)?.name || roleMap[code] || code
 }
 
 function roleTagType(code: string): string {
@@ -311,7 +329,7 @@ async function loadCourseOptions() {
   try {
     const res = await courseApi.list({ pageSize: 200 })
     courseOptions.value = res.data?.records || []
-  } catch { /* ignore */ }
+  } catch (e) { showError(e, '加载课程列表失败') }
   finally { courseLoading.value = false }
 }
 
@@ -425,6 +443,7 @@ function formatTime(dateStr: string): string {
 
 onMounted(() => {
   fetchData()
+  loadRoleOptions()
 })
 </script>
 

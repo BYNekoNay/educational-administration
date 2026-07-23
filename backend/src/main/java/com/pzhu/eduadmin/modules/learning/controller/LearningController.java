@@ -44,8 +44,13 @@ public class LearningController {
     @PostMapping("/edu/homeworks")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "TEACHER"})
     public Result<Homework> createHomework(@RequestBody Homework homework) {
+        // Mass assignment protection: strip server-controlled fields
+        homework.setId(null);
+        homework.setCreateTime(null);
+        homework.setUpdateTime(null);
         LoginUser currentUser = CurrentUserHolder.get();
         if ("TEACHER".equals(currentUser.getRoleCode())) {
+            checkTeacherLessonAccess(homework.getLessonId());
             homework.setTeacherId(currentUser.getUserId());
         } else if (homework.getTeacherId() == null) {
             homework.setTeacherId(currentUser.getUserId());
@@ -88,6 +93,10 @@ public class LearningController {
                                                   @RequestBody Homework homework) {
         // H7 fix: 教师角色校验课次归属
         checkTeacherLessonAccess(lessonId);
+        // Mass assignment protection: 剥离服务端控制字段（与 createHomework 一致）
+        homework.setId(null);
+        homework.setCreateTime(null);
+        homework.setUpdateTime(null);
         homework.setLessonId(lessonId);
         homework.setTeacherId(CurrentUserHolder.get().getUserId());
         return Result.success(learningService.createHomework(homework));
@@ -105,18 +114,49 @@ public class LearningController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<LearningRecord>> batchCreateRecords(@PathVariable Long lessonId,
                                                             @RequestBody List<LearningRecord> records) {
+        // L9 fix: 请求体可能为 null（客户端发送 JSON null），先判空防止 size() NPE
+        if (records == null || records.isEmpty()) {
+            throw new BusinessException(400, "学情记录列表不能为空");
+        }
+        // Issue 3: 批量大小限制
+        if (records.size() > 100) {
+            throw new BusinessException(400, "单次批量学情记录不能超过100条");
+        }
         // M29: 教师角色校验课次归属，防止向非自己授课的课次写入记录
         LoginUser loginUser = CurrentUserHolder.get();
+        ScheduleLesson lesson = scheduleLessonMapper.selectById(lessonId);
+        if (lesson == null) {
+            throw new BusinessException(404, "课次不存在");
+        }
         if ("TEACHER".equals(loginUser.getRoleCode())) {
-            ScheduleLesson lesson = scheduleLessonMapper.selectById(lessonId);
-            if (lesson == null) {
-                throw new BusinessException(404, "课次不存在");
-            }
             if (!loginUser.getUserId().equals(lesson.getTeacherId())) {
                 throw new BusinessException(403, "无权操作非自己授课的课次");
             }
         }
+        // Issue 2: 校验学员是否在该课次所属班级中（class_student status=1）
+        // M5 fix: classId 为 null 时无法校验学员归属，直接拒绝，防止绕过行级隔离向任意学员写记录
+        if (lesson.getClassId() == null) {
+            throw new BusinessException(400, "该课次未关联班级，无法校验学员归属，不能创建学情记录");
+        }
         for (LearningRecord r : records) {
+            if (r.getStudentId() == null) {
+                throw new BusinessException(400, "学情记录中学员ID不能为空");
+            }
+            Long enrollmentCount = classStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getStudentId, r.getStudentId())
+                            .eq(ClassStudent::getClassId, lesson.getClassId())
+                            .eq(ClassStudent::getStatus, 1));
+            if (enrollmentCount == 0) {
+                throw new BusinessException(400, "学员(ID:" + r.getStudentId() + ")未在该课次所属班级中，无法创建学情记录");
+            }
+        }
+        for (LearningRecord r : records) {
+            // Mass assignment protection: 剥离服务端控制字段（与 createLessonHomework 一致），
+            // 否则教师可伪造 createTime/updateTime 或注入主键
+            r.setId(null);
+            r.setCreateTime(null);
+            r.setUpdateTime(null);
             r.setLessonId(lessonId);
         }
         return Result.success(learningService.batchCreateRecords(records));

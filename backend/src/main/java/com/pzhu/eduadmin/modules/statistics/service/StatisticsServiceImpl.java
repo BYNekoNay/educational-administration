@@ -3,6 +3,7 @@ package com.pzhu.eduadmin.modules.statistics.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
@@ -112,7 +113,8 @@ public class StatisticsServiceImpl implements StatisticsService {
                 Map<Long, String> nameMap = users.stream()
                         .collect(Collectors.toMap(User::getId,
                                 u -> u.getRealName() != null && !u.getRealName().isBlank()
-                                        ? u.getRealName() : u.getUsername(),
+                                        ? u.getRealName()
+                                        : (u.getUsername() != null ? u.getUsername() : "用户" + u.getId()),
                                 (a, b) -> a));
                 page.getRecords().forEach(log -> {
                     String name = nameMap.get(log.getOperatorId());
@@ -156,9 +158,9 @@ public class StatisticsServiceImpl implements StatisticsService {
         BigDecimal monthlyRevenue = sumPaymentRevenue(monthStart, monthEnd);
         cards.put("monthlyRevenue", monthlyRevenue.setScale(2, RoundingMode.HALF_UP));
 
-        // 4. 到课率（Issue #23: 仅统计有效考勤状态 1=到场, 2=迟到, 3=请假）
+        // 4. 到课率（Medium fix: 分母含全部有效考勤 1=到场,2=迟到,3=请假,4=缺勤，与班级活动统计口径一致）
         long totalAttendance = attendanceMapper.selectCount(
-                new LambdaQueryWrapper<Attendance>().in(Attendance::getStatus, 1, 2, 3));
+                new LambdaQueryWrapper<Attendance>().in(Attendance::getStatus, 1, 2, 3, 4));
         long attendedCount = attendanceMapper.selectCount(
                 new LambdaQueryWrapper<Attendance>().in(Attendance::getStatus, 1, 2)); // 到场+迟到算到课
         BigDecimal attendanceRate = totalAttendance > 0
@@ -233,7 +235,8 @@ public class StatisticsServiceImpl implements StatisticsService {
                 return d != null && YearMonth.from(d).equals(ym);
             }).map(ScheduleLesson::getId).collect(Collectors.toSet());
             long attended = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2)).count();
-            long total = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2 || a.getStatus() == 3)).count();
+            // M6 fix: 分母口径与仪表盘卡片(buildCards)统一，含 1=到场,2=迟到,3=请假,4=缺勤
+            long total = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2 || a.getStatus() == 3 || a.getStatus() == 4)).count();
             BigDecimal rate = total > 0
                     ? BigDecimal.valueOf(attended).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(total), 1, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
@@ -273,9 +276,16 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public List<Map<String, Object>> getTeacherWorkload(String month) {
-        YearMonth ym = (month != null && !month.isBlank())
-                ? YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyy-MM"))
-                : YearMonth.now();
+        YearMonth ym;
+        if (month != null && !month.isBlank()) {
+            try {
+                ym = YearMonth.parse(month, DateTimeFormatter.ofPattern("yyyy-MM"));
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new BusinessException(400, "month 日期格式不正确，应为 yyyy-MM");
+            }
+        } else {
+            ym = YearMonth.now();
+        }
         LocalDate monthStart = ym.atDay(1);
         LocalDate monthEnd = ym.atEndOfMonth();
 
@@ -404,9 +414,11 @@ public class StatisticsServiceImpl implements StatisticsService {
             for (Attendance a : attendances) {
                 ScheduleLesson sl = lessonMap.get(a.getLessonId());
                 if (sl == null) continue;
+                // M6 fix: 分母口径与仪表盘卡片统一，仅统计有效考勤状态 1=到场,2=迟到,3=请假,4=缺勤
+                if (a.getStatus() == null || a.getStatus() < 1 || a.getStatus() > 4) continue;
                 Long cid = sl.getClassId();
                 attendanceTotal.merge(cid, 1L, Long::sum);
-                if (a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2)) {
+                if (a.getStatus() == 1 || a.getStatus() == 2) {
                     attendancePresent.merge(cid, 1L, Long::sum);
                 }
             }
@@ -416,7 +428,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         for (ClassGroup cg : classes) {
             long sc = studentCount.getOrDefault(cg.getId(), 0L);
             List<ScheduleLesson> clsLessons = lessonByClass.getOrDefault(cg.getId(), Collections.emptyList());
-            long completed = clsLessons.stream().filter(l -> l.getStatus() == 2).count();
+            long completed = clsLessons.stream().filter(l -> Integer.valueOf(2).equals(l.getStatus())).count();
             long totalLessons = clsLessons.size();
             long attPresent = attendancePresent.getOrDefault(cg.getId(), 0L);
             long attTotal = attendanceTotal.getOrDefault(cg.getId(), 0L);
@@ -466,7 +478,8 @@ public class StatisticsServiceImpl implements StatisticsService {
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             Map<Long, Enrollment> enrollmentMap = Collections.emptyMap();
             if (!enrollmentIds.isEmpty()) {
-                enrollmentMap = enrollmentMapper.selectBatchIds(enrollmentIds).stream()
+                // Medium fix: 用 IncludeDeleted 查询，避免已退班（逻辑删除）报名的退费被丢弃导致利润高估
+                enrollmentMap = enrollmentMapper.selectBatchIdsIncludeDeleted(enrollmentIds).stream()
                         .collect(Collectors.toMap(Enrollment::getId, e -> e, (a, b) -> a));
             }
             for (RefundRecord r : refunds) {

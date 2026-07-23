@@ -35,6 +35,9 @@ public class StatisticsController {
     @PutMapping("/organization")
     @RequireRole({"SUPER_ADMIN"})
     public Result<Organization> updateOrganization(@RequestBody Organization organization) {
+        // Mass assignment protection: createTime/updateTime are server-controlled, prevent overwrite on update
+        organization.setCreateTime(null);
+        organization.setUpdateTime(null);
         return Result.success(statisticsService.updateOrganization(organization));
     }
 
@@ -93,6 +96,8 @@ public class StatisticsController {
     public Result<Map<String, Object>> revenueStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> charts = (Map<String, Object>) dashboard.get("charts");
+        // L8 fix: 与兄弟接口保持一致的判空，防止 charts 为 null 时 NPE
+        if (charts == null) return Result.fail(500, "统计数据获取失败");
         return Result.success(Map.of("revenueTrend", charts.get("revenueTrend")));
     }
 

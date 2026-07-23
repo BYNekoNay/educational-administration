@@ -57,7 +57,7 @@
             <view class="class-row1">
               <text class="class-name">{{ cls.className }}</text>
               <text class="class-spots" :class="{ 'class-spots-full': isClassFull(cls), 'class-spots-conflict': isClassConflict(cls) }">
-                {{ isClassConflict(cls) ? '⛔ 冲突' : `${cls.currentStudentCount}/${cls.maxStudentCount}` }}
+                {{ isClassConflict(cls) ? '⛔ 冲突' : spotsText(cls) }}
               </text>
             </view>
             <view class="class-row2">
@@ -68,7 +68,8 @@
               <text v-if="cls.startDate" class="class-start">📅 {{ formatDate(cls.startDate) }} 开课</text>
               <text v-if="isClassFull(cls)" class="class-full-tip">已满</text>
               <text v-else-if="isClassConflict(cls)" class="class-conflict-desc">{{ getConflictText(cls) }}</text>
-              <text v-else class="class-remaining">剩 {{ cls.maxStudentCount - cls.currentStudentCount }} 个名额</text>
+              <!-- maxStudentCount=0 表示不限名额（后端 null→0），直接相减会显示负数 -->
+              <text v-else class="class-remaining">{{ cls.maxStudentCount > 0 ? '剩 ' + (cls.maxStudentCount - cls.currentStudentCount) + ' 个名额' : '名额不限' }}</text>
             </view>
           </view>
         </view>
@@ -153,6 +154,11 @@ function isClassFull(cls) {
   return cls.maxStudentCount > 0 && cls.currentStudentCount >= cls.maxStudentCount
 }
 
+/** 名额文案：maxStudentCount=0 为不限名额，不能渲染成 "3/0" */
+function spotsText(cls) {
+  return cls.maxStudentCount > 0 ? `${cls.currentStudentCount}/${cls.maxStudentCount}` : `${cls.currentStudentCount}人已报`
+}
+
 /** 班级是否与已报名班级有时间冲突 */
 function isClassConflict(cls) {
   return !!conflictMap.value[cls.id]
@@ -193,13 +199,13 @@ async function fetchCourses() {
         const r = await api({ url: `/api/parent/courses/${c.id}/classes` })
         classCountMap.value[c.id] = (r.data || []).length
       } catch {
-        classCountMap.value[c.id] = 0
+        // 失败时不写 0：模板按 key 是否存在决定展示，写 0 会误显示"0 个开班可选"
       }
     }
     // 标记已报名课程
     await checkAllEnrollments()
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '加载失败', icon: 'none' })
   }
 }
 
@@ -214,6 +220,8 @@ async function checkAllEnrollments() {
       if (r.data) set.add(c.id)
     } catch { /* skip */ }
   }
+  // 竞态守卫：循环期间若已切换学员，丢弃本次（旧学员）结果，避免覆盖新学员状态
+  if (sid !== studentId.value) return
   enrolledCourseIds.value = set
 }
 
@@ -237,8 +245,8 @@ async function toggleCourse(course) {
       fetchConflictsForCourse(course.id),
     ])
     classList.value = classRes.data || []
-  } catch {
-    uni.showToast({ title: '班级加载失败', icon: 'none' })
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '班级加载失败', icon: 'none' })
   } finally {
     loadingClasses.value = false
   }
@@ -252,6 +260,8 @@ async function fetchConflictsForCourse(courseId) {
     const r = await api({ url: `/api/parent/enrollments/conflicts/${sid}?courseId=${courseId}` })
     const map = {}
     ;(r.data || []).forEach(c => { map[c.classId] = c })
+    // 竞态守卫：请求期间切换学员时丢弃旧学员的冲突结果
+    if (sid !== studentId.value) return
     conflictMap.value = map
   } catch { /* 接口失败不影响班级展示 */ }
 }
@@ -279,24 +289,32 @@ function closePopup() {
 async function handleSubmit() {
   if (!selectedCourse.value || !selectedClass.value) return
   if (!studentId.value) { uni.showToast({ title: '未找到学员', icon: 'none' }); return }
+  const sid = studentId.value
+  const courseId = selectedCourse.value.id
   submitting.value = true
   try {
     await api({
       url: '/api/parent/enrollments',
       method: 'POST',
       data: {
-        studentId: studentId.value,
+        studentId: sid,
         courseId: selectedCourse.value.id,
         classId: selectedClass.value.id,
       },
     })
     uni.showToast({ title: '报名成功，等待审核', icon: 'success' })
-    enrolledCourseIds.value = new Set([...enrolledCourseIds.value, selectedCourse.value.id])
+    // 竞态守卫：提交期间若已切换学员，不能把"已报名"记到新学员头上
+    if (sid === studentId.value) {
+      enrolledCourseIds.value = new Set([...enrolledCourseIds.value, courseId])
+    } else {
+      checkAllEnrollments()
+    }
     closePopup()
     expandedCourseId.value = null
     classList.value = []
   } catch (e) {
-    uni.showToast({ title: e?.message || '报名失败', icon: 'none' })
+    // api() 已对业务/网络错误弹过具体提示（_handled），此处仅兜底未处理异常
+    if (!e || !e._handled) uni.showToast({ title: (e && e.message) || '报名失败', icon: 'none' })
   } finally {
     submitting.value = false
   }

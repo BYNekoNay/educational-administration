@@ -9,12 +9,13 @@
       <el-button type="primary" @click="handleSearch">搜索</el-button>
       <el-button @click="resetSearch">重置</el-button>
     </div>
-    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
-      <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-      <el-table-column prop="className" label="班级名称" sortable />
-      <el-table-column prop="courseName" label="课程" min-width="120" sortable />
-      <el-table-column prop="teacherName" label="教师" min-width="100" sortable />
-      <el-table-column prop="maxStudentCount" label="最大人数" width="80" sortable="custom" />
+    <!-- 后端 pageClassGroups 暂不支持排序（sortField 被丢弃），移除无效排序箭头，见第八轮待办 -->
+    <el-table :data="tableData" v-loading="loading" border stripe>
+      <el-table-column prop="id" label="ID" width="60" />
+      <el-table-column prop="className" label="班级名称" />
+      <el-table-column prop="courseName" label="课程" min-width="120" />
+      <el-table-column prop="teacherName" label="教师" min-width="100" />
+      <el-table-column prop="maxStudentCount" label="最大人数" width="80" />
       <el-table-column label="当前人数" width="100">
         <template #default="{ row }">
           <span :style="{
@@ -27,8 +28,8 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="startDate" label="开课日期" width="110" sortable="custom" />
-      <el-table-column prop="status" label="状态" width="80" sortable="custom">
+      <el-table-column prop="startDate" label="开课日期" width="110" />
+      <el-table-column prop="status" label="状态" width="80">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'warning'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
         </template>
@@ -59,7 +60,8 @@
       <el-form :model="form" label-width="80px">
         <el-form-item label="班级名称"><el-input v-model="form.className" /></el-form-item>
         <el-form-item label="课程">
-          <el-select v-model="form.courseId" style="width:100%">
+          <!-- 后端 updateClassGroup 白名单不含 courseId（创建后不可变更），编辑态禁用避免假成功 -->
+          <el-select v-model="form.courseId" style="width:100%" :disabled="isEdit">
             <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
@@ -127,12 +129,13 @@
     <el-dialog :title="'班级学员 - ' + (currentClass?.className || '')" v-model="studentListVisible" width="700px">
       <el-table :data="classStudents" border stripe v-loading="studentLoading">
         <el-table-column prop="studentName" label="学员" min-width="100" />
-        <el-table-column prop="joinTime" label="加入时间" width="170" />
+        <el-table-column prop="joinTime" label="加入时间" width="170">
+          <template #default="{ row }">{{ formatTime(row.joinTime) }}</template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'info' : 'warning'">
-              {{ row.status === 1 ? '在班' : row.status === 2 ? '已转出' : '已退出' }}
-            </el-tag>
+          <template #default>
+            <!-- 后端 pageClassStudents 仅返回 status=1 的在班记录，转出/退出不在此列表展示 -->
+            <el-tag type="success">在班</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="130" fixed="right">
@@ -176,7 +179,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { showError } from '@/utils/error'
 import { classApi, studentApi, courseApi, teacherApi } from '@/api/edu'
 
-const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
+const keyword = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const adding = ref(false)
@@ -207,18 +210,21 @@ let studentSearchTimer: number | null = null
 
 async function loadData() {
   loading.value = true
-  const res = await classApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-  tableData.value = res.data.records
-  total.value = res.data.total
-  loading.value = false
+  try {
+    // keyword 目前被后端 pageClassGroups 丢弃（第八轮待办：后端补关键字过滤），保留传参以便后端支持后自动生效
+    const res = await classApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined })
+    tableData.value = res.data.records
+    total.value = res.data.total
+  } catch (e) { showError(e, '加载班级列表失败') }
+  finally { loading.value = false }
 }
 
 function handleSearch() { pageNum.value = 1; loadData() }
-function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
-  sortField.value = order ? prop : ''
-  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
-  pageNum.value = 1; loadData()
+function resetSearch() { keyword.value = ''; pageNum.value = 1; loadData() }
+
+function formatTime(t: string | undefined | null) {
+  if (!t) return '-'
+  return String(t).replace('T', ' ').substring(0, 16)
 }
 
 async function loadOptions() {
@@ -259,7 +265,9 @@ async function handleSave() {
 }
 
 async function handleDelete(row: any) {
-  await ElMessageBox.confirm('确定删除该班级？', '提示', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm('确定删除该班级？', '提示', { type: 'warning' })
+  } catch { return /* canceled */ }
   try {
     await classApi.delete(row.id)
     ElMessage.success('已删除')
@@ -318,10 +326,12 @@ async function openStudentList(row: any) {
 }
 
 async function handleWithdrawStudent(row: any) {
-  await ElMessageBox.confirm(`确定将学员"${row.studentName || row.studentId}"退班？`, '退班确认', { type: 'warning' })
   try {
-    await studentApi.withdraw(row.studentId)
-    ElMessage.success('退班申请已提交，待财务审核')
+    await ElMessageBox.confirm(`确定将学员"${row.studentName || row.studentId}"退班？`, '退班确认', { type: 'warning' })
+  } catch { return /* canceled */ }
+  try {
+    await classApi.removeStudent(currentClass.value.id, row.studentId)
+    ElMessage.success('已将该学员从班级移除')
     openStudentList(currentClass.value)
   } catch (e) { showError(e, '退班操作失败') }
 }
@@ -330,10 +340,13 @@ async function handleTransferStudent(row: any) {
   transferringStudentId.value = row.studentId
   transferringStudentName.value = row.studentName || `学员${row.studentId}`
   targetClassId.value = null
+  allClasses.value = []
   transferVisible.value = true
   // 加载可选班级列表
-  const res = await classApi.list({ pageSize: 100 })
-  allClasses.value = res.data.records
+  try {
+    const res = await classApi.list({ pageSize: 100 })
+    allClasses.value = res.data.records
+  } catch (e) { showError(e, '加载班级列表失败') }
 }
 
 async function confirmTransfer() {
@@ -343,7 +356,8 @@ async function confirmTransfer() {
   }
   transferring.value = true
   try {
-    await studentApi.transfer(transferringStudentId.value, targetClassId.value)
+    // 从当前班级学员列表发起转班，明确指定源班级，避免多班级学员转班歧义
+    await studentApi.transfer(transferringStudentId.value, targetClassId.value, currentClass.value?.id)
     ElMessage.success('转班成功')
     transferVisible.value = false
     openStudentList(currentClass.value)

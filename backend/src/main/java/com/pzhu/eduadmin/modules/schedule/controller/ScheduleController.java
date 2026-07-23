@@ -8,6 +8,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.Classroom;
 import com.pzhu.eduadmin.modules.schedule.entity.RoomBooking;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
+import com.pzhu.eduadmin.modules.schedule.dto.AdjustRequestVO;
 import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 import com.pzhu.eduadmin.modules.schedule.service.ScheduleService;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
@@ -88,7 +89,11 @@ public class ScheduleController {
 
     @GetMapping("/schedules/{id}")
     public Result<ScheduleLesson> getLesson(@PathVariable Long id) {
-        return Result.success(scheduleService.getLessonById(id));
+        ScheduleLesson lesson = scheduleService.getLessonById(id);
+        if (lesson == null) {
+            throw new BusinessException(404, "课次不存在");
+        }
+        return Result.success(lesson);
     }
 
     @PostMapping("/schedules/check-conflict")
@@ -114,6 +119,8 @@ public class ScheduleController {
             lesson.setIsDeleted(null);
             lesson.setCreateTime(null);
             lesson.setUpdateTime(null);
+            // High fix: sourceLessonId 仅由调课审批流程设置，决定薪资主/代课分类，禁止客户端指定
+            lesson.setSourceLessonId(null);
         });
         scheduleService.batchCreate(lessons);
         return Result.success();
@@ -133,6 +140,11 @@ public class ScheduleController {
         lesson.setIsDeleted(null);
         lesson.setCreateTime(null);
         lesson.setUpdateTime(null);
+        // High fix: sourceLessonId 仅由调课审批流程设置，决定薪资主/代课分类，禁止客户端指定
+        lesson.setSourceLessonId(null);
+        // Medium fix: 与 batchCreate/autoSchedule 一致，新建课次强制为待上课（status=1），
+        // 否则客户端传入 status=4 等会绕过冲突检测（仅查 status IN 1,2）导致重复排课
+        lesson.setStatus(1);
         List<String> conflicts = scheduleService.checkConflict(lesson);
         if (!conflicts.isEmpty()) {
             return Result.fail(409, String.join("；", conflicts));
@@ -170,7 +182,11 @@ public class ScheduleController {
     @GetMapping("/classrooms/{id}")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Classroom> getClassroom(@PathVariable Long id) {
-        return Result.success(scheduleService.getClassroomById(id));
+        Classroom classroom = scheduleService.getClassroomById(id);
+        if (classroom == null) {
+            throw new BusinessException(404, "教室不存在");
+        }
+        return Result.success(classroom);
     }
 
     @PostMapping("/classrooms")
@@ -226,8 +242,8 @@ public class ScheduleController {
 
     @GetMapping("/schedule-adjust-requests")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<PageResult<ScheduleAdjustRequest>> listAdjustRequests(PageQuery query) {
-        return Result.success(PageResult.of(scheduleService.pageAdjustRequests((int) query.getPageNum(), (int) query.getPageSize())));
+    public Result<PageResult<AdjustRequestVO>> listAdjustRequests(PageQuery query, @RequestParam(required = false) Integer status) {
+        return Result.success(PageResult.of(scheduleService.pageAdjustRequests((int) query.getPageNum(), (int) query.getPageSize(), status)));
     }
 
     @PostMapping("/schedule-adjust-requests")

@@ -112,6 +112,7 @@
 <script setup>
 import { ref } from 'vue'
 import { api } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 
 const statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0
 
@@ -157,9 +158,10 @@ async function handleRegister() {
       }
     })
 
-    const { token, roleCode } = res.data
+    const data = res.data || {}
+    const { token, roleCode } = data
     uni.setStorageSync('token', token)
-    uni.setStorageSync('userInfo', res.data)
+    uni.setStorageSync('userInfo', data)
 
     // 家长注册后加载学员列表（与管理端登录逻辑一致）
     if (roleCode === 'PARENT') {
@@ -171,7 +173,7 @@ async function handleRegister() {
       uni.switchTab({ url: '/pages/home/index' })
     }, 600)
   } catch (e) {
-    uni.showToast({ title: (e && e.errMsg) || '注册失败', icon: 'none' })
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '注册失败'), icon: 'none' })
   } finally {
     loading.value = false
   }

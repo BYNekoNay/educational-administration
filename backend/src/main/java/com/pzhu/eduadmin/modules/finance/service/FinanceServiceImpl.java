@@ -175,20 +175,22 @@ public class FinanceServiceImpl implements FinanceService {
         if (enrollment.getClassId() != null) {
             ClassGroup classGroup = classGroupMapper.selectById(enrollment.getClassId());
             if (classGroup == null) throw new BusinessException(404, "所属班级不存在或已删除");
-            long currentCount = classStudentMapper.selectCount(
-                    new LambdaQueryWrapper<ClassStudent>()
-                            .eq(ClassStudent::getClassId, enrollment.getClassId())
-                            .eq(ClassStudent::getStatus, 1));
-            int maxCount = classGroup.getMaxStudentCount() != null ? classGroup.getMaxStudentCount() : 0;
-            if (maxCount > 0 && currentCount >= maxCount) {
-                throw new BusinessException(409, "班级已满，无法入班");
-            }
-            // 检查是否存在退费后的记录（status=3），若有则恢复为活跃状态
             // H2 fix: 先检查是否已有活跃记录（status=1），防止续费时重复插入
             ClassStudent activeRecord = classStudentMapper.selectOne(new LambdaQueryWrapper<ClassStudent>()
                     .eq(ClassStudent::getClassId, enrollment.getClassId())
                     .eq(ClassStudent::getStudentId, record.getStudentId())
                     .eq(ClassStudent::getStatus, 1));
+            long currentCount = classStudentMapper.selectCount(
+                    new LambdaQueryWrapper<ClassStudent>()
+                            .eq(ClassStudent::getClassId, enrollment.getClassId())
+                            .eq(ClassStudent::getStatus, 1));
+            int maxCount = classGroup.getMaxStudentCount() != null ? classGroup.getMaxStudentCount() : 0;
+            // M fix: 仅当学员尚无活跃座位（新入班/恢复）时才做容量预检。
+            // currentCount 已含该学员自身的活跃行，满员时在班学员续费不占新座位，不应被拒。
+            if (activeRecord == null && maxCount > 0 && currentCount >= maxCount) {
+                throw new BusinessException(409, "班级已满，无法入班");
+            }
+            // 检查是否存在退费后的记录（status=3），若有则恢复为活跃状态
             if (activeRecord != null) {
                 // 学员已在班级中，续费无需重复加入
             } else {
@@ -207,8 +209,10 @@ public class FinanceServiceImpl implements FinanceService {
                     classStudentMapper.insert(cs);
                 }
             }
-            // Bug #31 fix: 插入/恢复后再次校验班级人数，防止并发请求同时通过预检导致超员
-            if (maxCount > 0) {
+            // Bug #31 fix: 插入/恢复后再次校验班级人数，防止并发请求同时通过预检导致超员。
+            // A5#6 fix: 仅在本次确实新增/恢复座位(activeRecord==null)时复检；在班学员续费不占新座位，
+            // 班级已被调成超员时不应拒绝续费（与上方预检豁免一致）
+            if (activeRecord == null && maxCount > 0) {
                 long newCount = classStudentMapper.selectCount(
                         new LambdaQueryWrapper<ClassStudent>()
                                 .eq(ClassStudent::getClassId, enrollment.getClassId())
@@ -265,7 +269,7 @@ public class FinanceServiceImpl implements FinanceService {
 
         Enrollment enrollment = enrollmentMapper.selectById(record.getEnrollmentId());
         if (enrollment == null) throw new BusinessException(404, "报名记录不存在");
-        if (enrollment.getStatus() != 3) {
+        if (!Integer.valueOf(3).equals(enrollment.getStatus())) {
             throw new BusinessException(409, "仅已缴费的报名可申请退费");
         }
         // C1 fix: 强制使用 enrollment 的 studentId，防止请求体伪造导致扣错学员课时
@@ -285,6 +289,10 @@ public class FinanceServiceImpl implements FinanceService {
 
         if (record.getLessonCount() != null && record.getLessonCount().compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException(400, "退费课时数不能为负数");
+        }
+        // Low fix: 提交时若带金额，校验非负，避免待审核列表出现负数金额
+        if (record.getAmount() != null && record.getAmount().compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException(400, "退费金额不能为负数");
         }
 
         record.setStatus(1);
@@ -323,6 +331,9 @@ public class FinanceServiceImpl implements FinanceService {
         if (updated == 0) {
             throw new BusinessException(409, "该退费申请已被处理，请刷新后重试");
         }
+        // A5#2 fix: update(null,wrapper) 不突变内存对象，同步状态/审核人，避免返回陈旧的 status=1/auditorId=null
+        record.setStatus(status);
+        record.setAuditorId(auditorId);
 
         if (status == 2) {
             // 审核通过 — 执行退费操作（课时扣减、流水写入）
@@ -383,10 +394,13 @@ public class FinanceServiceImpl implements FinanceService {
         }
 
         // 自动计算退费金额（审核人未显式指定时）
+        // Issue #4 fix: 与家长端 ParentRefundController 保持一致，采用单步比例公式
+        // totalPaid × remain / originalTotal（scale 2, HALF_UP），避免两步法（先算 4 位单价再相乘）的舍入偏差
         if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            if (pricePerLesson.compareTo(BigDecimal.ZERO) > 0) {
-                refundAmount = account.getRemainingLessons().multiply(pricePerLesson)
-                        .setScale(2, java.math.RoundingMode.HALF_UP);
+            if (originalTotalLessons != null && originalTotalLessons.compareTo(BigDecimal.ZERO) > 0
+                    && totalPaid.compareTo(BigDecimal.ZERO) > 0) {
+                refundAmount = totalPaid.multiply(account.getRemainingLessons())
+                        .divide(originalTotalLessons, 2, java.math.RoundingMode.HALF_UP);
             } else {
                 refundAmount = BigDecimal.ZERO;
             }
@@ -398,6 +412,19 @@ public class FinanceServiceImpl implements FinanceService {
         if (refundAmount.compareTo(maxRefundable) > 0) {
             throw new BusinessException(409,
                     String.format("退费金额(%.2f)超过可退上限(%.2f)，超出部分需人工核实", refundAmount, maxRefundable));
+        }
+
+        // Issue #1 fix: 退费金额不得超过剩余课时价值，防止超额退费
+        // Medium fix: 改用与自动计算一致的单步比例公式，避免两步法（4 位单价再相乘）舍入导致
+        // 合法全额退费被误拒（如 99.99 < 100.00）
+        BigDecimal lessonValueCap = BigDecimal.ZERO;
+        if (originalTotalLessons != null && originalTotalLessons.compareTo(BigDecimal.ZERO) > 0
+                && totalPaid.compareTo(BigDecimal.ZERO) > 0) {
+            lessonValueCap = totalPaid.multiply(account.getRemainingLessons())
+                    .divide(originalTotalLessons, 2, java.math.RoundingMode.HALF_UP);
+        }
+        if (refundAmount.compareTo(lessonValueCap) > 0) {
+            throw new BusinessException(409, "退费金额超过剩余课时价值(" + lessonValueCap + ")");
         }
 
         return refundAmount;
@@ -421,6 +448,11 @@ public class FinanceServiceImpl implements FinanceService {
             throw new BusinessException(404, "该学员无课时账户，无法退费");
         }
 
+        // Issue #3 fix: 剩余课时为 0 时直接拒绝，避免 0 课时扣减的空操作退费
+        if (account.getRemainingLessons().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(409, "剩余课时为0，无可退费课时");
+        }
+
         // 计算单价
         // Bug #29 fix: 使用累计购买课时数（不随退费变化）作为分母，避免部分退费后分母缩小导致单价虚高
         BigDecimal originalTotalLessons = paymentRecordMapper.sumLessonCountByEnrollmentId(record.getEnrollmentId());
@@ -436,7 +468,9 @@ public class FinanceServiceImpl implements FinanceService {
             // M2 fix: 提交时的 lessonCount 可能已过期（期间有考勤消耗），上限为当前剩余
             refundLessonCount = record.getLessonCount().min(account.getRemainingLessons());
         } else if (pricePerLesson.compareTo(BigDecimal.ZERO) > 0 && finalAmount.compareTo(BigDecimal.ZERO) > 0) {
-            refundLessonCount = finalAmount.divide(pricePerLesson, 2, java.math.RoundingMode.CEILING);
+            // A5#3 fix: 反算课时数用高精度(scale=10)，避免 2 位小数舍入误差(最高 0.005×单价)超过下方 0.01 容差，
+            // 误拒合法退费（如 50元/单价150 → 0.33课时×150=49.50 < 50 触发假 409）
+            refundLessonCount = finalAmount.divide(pricePerLesson, 10, java.math.RoundingMode.HALF_UP);
             // 不超过剩余课时
             if (refundLessonCount.compareTo(account.getRemainingLessons()) > 0) {
                 refundLessonCount = account.getRemainingLessons();
@@ -445,6 +479,15 @@ public class FinanceServiceImpl implements FinanceService {
             throw new BusinessException(400, "无法自动计算退费课时数，请手动填写 lessonCount");
         } else {
             refundLessonCount = BigDecimal.ZERO;
+        }
+
+        // High fix: 退费金额不得超过"实际回退课时"的价值，防止"退全款只扣 1 课时"的超额退费。
+        // validateAndCalculateRefund 的上限是按全部剩余课时计算的，此处按真正回退的课时数二次校验。
+        BigDecimal refundValueCap = refundLessonCount.multiply(pricePerLesson)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        if (finalAmount.compareTo(refundValueCap.add(new BigDecimal("0.01"))) > 0) {
+            throw new BusinessException(409,
+                    String.format("退费金额(%.2f)超过回退课时价值(%.2f)，请调整退费课时数或金额", finalAmount, refundValueCap));
         }
 
         BigDecimal before = account.getRemainingLessons();

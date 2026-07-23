@@ -15,12 +15,12 @@
     </div>
     <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-      <el-table-column prop="className" label="班级" min-width="140" sortable />
-      <el-table-column prop="teacherName" label="教师" min-width="80" sortable />
-      <el-table-column prop="classroomName" label="教室" min-width="100" sortable />
+      <el-table-column prop="className" label="班级" min-width="140" />
+      <el-table-column prop="teacherName" label="教师" min-width="80" />
+      <el-table-column prop="classroomName" label="教室" min-width="100" />
       <el-table-column prop="lessonDate" label="日期" width="110" sortable="custom" />
       <el-table-column prop="startTime" label="开始" width="80" sortable="custom" />
-      <el-table-column prop="endTime" label="结束" width="80" sortable="custom" />
+      <el-table-column prop="endTime" label="结束" width="80" />
       <el-table-column prop="status" label="状态" width="90" sortable="custom">
         <template #default="{ row }">
           <el-tag v-if="row.status===1" type="warning">待上课</el-tag>
@@ -32,8 +32,12 @@
       <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
           <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
-            <el-button size="small" @click="openDialog(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-tooltip :content="row.status !== 1 ? '仅待上课课次可编辑' : ''" :disabled="row.status === 1">
+              <el-button size="small" :disabled="row.status !== 1" @click="openDialog(row)">编辑</el-button>
+            </el-tooltip>
+            <el-tooltip :content="row.status !== 1 ? '仅待上课课次可删除' : ''" :disabled="row.status === 1">
+              <el-button size="small" type="danger" :disabled="row.status !== 1" @click="handleDelete(row)">删除</el-button>
+            </el-tooltip>
           </div>
         </template>
       </el-table-column>
@@ -55,8 +59,8 @@
         </el-form-item>
         <el-form-item label="教师">
           <el-select v-model="form.teacherId" placeholder="请选择教师" filterable style="width:100%">
-            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id">
-              <span>{{ t.realName }}</span>
+            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName || t.username" :value="t.id">
+              <span>{{ t.realName || t.username }}</span>
               <el-tag v-for="sp in (t.specialties || [])" :key="sp.id"
                       size="small" type="info" style="margin-left:4px;font-size:10px">
                 {{ sp.name }}
@@ -78,12 +82,8 @@
         <el-form-item label="结束时间">
           <el-time-picker v-model="form.endTime" placeholder="结束时间" value-format="HH:mm:ss" style="width:100%" />
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="form.status">
-            <el-option :value="1" label="待上课" />
-            <el-option :value="2" label="已完成" />
-            <el-option :value="3" label="已取消" />
-          </el-select>
+        <el-form-item v-if="isEdit" label="状态">
+          <span style="color:#909399;font-size:12px">状态变更请走调课/取消流程，此处不可修改</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -101,7 +101,7 @@
         </el-form-item>
         <el-form-item label="教师">
           <el-select v-model="autoForm.teacherId" filterable style="width:100%">
-            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id" />
+            <el-option v-for="t in teacherList" :key="t.id" :label="t.realName || t.username" :value="t.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="指定教室">
@@ -139,14 +139,14 @@
           <el-option v-for="c in classList" :key="c.id" :label="c.className" :value="c.id" />
         </el-select>
         <el-select v-model="item.teacherId" size="small" style="width:100px" placeholder="教师" filterable>
-          <el-option v-for="t in teacherList" :key="t.id" :label="t.realName" :value="t.id" />
+          <el-option v-for="t in teacherList" :key="t.id" :label="t.realName || t.username" :value="t.id" />
         </el-select>
         <el-select v-model="item.classroomId" size="small" style="width:100px" placeholder="教室" filterable>
           <el-option v-for="r in roomList" :key="r.id" :label="r.name" :value="r.id" />
         </el-select>
         <el-date-picker v-model="item.lessonDate" type="date" size="small" value-format="YYYY-MM-DD" style="width:120px" placeholder="日期" />
-        <el-input v-model="item.startTime" size="small" style="width:80px" placeholder="开始" />
-        <el-input v-model="item.endTime" size="small" style="width:80px" placeholder="结束" />
+        <el-time-picker v-model="item.startTime" size="small" value-format="HH:mm:ss" style="width:110px" placeholder="开始" />
+        <el-time-picker v-model="item.endTime" size="small" value-format="HH:mm:ss" style="width:110px" placeholder="结束" />
         <el-button size="small" type="danger" @click="batchItems.splice(idx,1)">X</el-button>
       </div>
       <el-button size="small" @click="batchItems.push({classId:null,teacherId:null,classroomId:null,lessonDate:'',startTime:'',endTime:'',status:1})">+ 添加行</el-button>
@@ -171,7 +171,7 @@ const dialogVisible = ref(false), batchVisible = ref(false), autoVisible = ref(f
 const classList = ref<any[]>([])
 const teacherList = ref<any[]>([])
 const roomList = ref<any[]>([])
-const form = reactive<any>({ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '', status: 1 })
+const form = reactive<any>({ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '' })
 const batchItems = ref<any[]>([{ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '', status: 1 }])
 const autoDateRange = ref<string[]>([])
 const autoForm = reactive<any>({ classId: null, teacherId: null, classroomId: null, startTime: '09:00:00', endTime: '10:00:00', lessonCount: 12, weekdays: [6] })
@@ -183,20 +183,32 @@ const weekdayOptions = [
 async function loadOptions() {
   try {
     const [clRes, tRes, rRes] = await Promise.all([
-      classApi.list({ pageNum: 1, pageSize: 100 }),
+      classApi.list({ pageNum: 1, pageSize: 200 }),
       teacherApi.list(),
-      classroomApi.list({ pageNum: 1, pageSize: 100 }),
+      classroomApi.list({ pageNum: 1, pageSize: 200 }),
     ])
     classList.value = clRes.data?.records || []
+    if ((clRes.data?.total || 0) > classList.value.length) {
+      ElMessage.warning(`班级数量超过 ${classList.value.length}，下拉仅显示前 ${classList.value.length} 个`)
+    }
     teacherList.value = tRes.data || []
-    roomList.value = rRes.data?.records || []
+    // 仅保留启用中的教室：后端对停用教室排课直接 409 拒绝，下拉里展示只会误导
+    const allRooms = rRes.data?.records || []
+    roomList.value = allRooms.filter((r: any) => r.status === 1)
+    if ((rRes.data?.total || 0) > allRooms.length) {
+      ElMessage.warning(`教室数量超过 ${allRooms.length}，下拉仅显示前 ${allRooms.length} 个`)
+    }
   } catch (e) { showError(e, '加载排课选项失败') }
 }
 
 async function loadData() {
   loading.value = true
-  const r = await scheduleApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-  tableData.value = r.data.records; total.value = r.data.total; loading.value = false
+  try {
+    const r = await scheduleApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    tableData.value = r.data?.records || []; total.value = r.data?.total || 0
+  } catch (e) {
+    showError(e, '加载课次失败')
+  } finally { loading.value = false }
 }
 
 function handleSearch() { pageNum.value = 1; loadData() }
@@ -217,7 +229,6 @@ function openDialog(row: any) {
     form.lessonDate = row.lessonDate
     form.startTime = row.startTime
     form.endTime = row.endTime
-    form.status = row.status
   } else {
     form.id = undefined
     form.classId = null
@@ -226,7 +237,6 @@ function openDialog(row: any) {
     form.lessonDate = ''
     form.startTime = ''
     form.endTime = ''
-    form.status = 1
   }
   dialogVisible.value = true
 }
@@ -234,6 +244,7 @@ function openDialog(row: any) {
 async function handleSave() {
   saving.value = true
   try {
+    // 后端新增强制 status=1、更新明确不接受客户端 status（状态变更走调课/取消流程），故不传 status
     const payload = {
       classId: form.classId,
       teacherId: form.teacherId,
@@ -241,7 +252,6 @@ async function handleSave() {
       lessonDate: form.lessonDate,
       startTime: form.startTime,
       endTime: form.endTime,
-      status: form.status,
     }
     if (isEdit.value) {
       await scheduleApi.update(form.id, payload)
@@ -252,14 +262,22 @@ async function handleSave() {
     }
     dialogVisible.value = false
     loadData()
+  } catch (e) {
+    showError(e, isEdit.value ? '更新失败' : '创建失败')
   } finally { saving.value = false }
 }
 
 async function handleDelete(row: any) {
-  await ElMessageBox.confirm('确定删除？', '提示', { type: 'warning' })
-  await scheduleApi.delete(row.id)
-  ElMessage.success('已删除')
-  loadData()
+  try {
+    await ElMessageBox.confirm('确定删除？', '提示', { type: 'warning' })
+  } catch { return } // 用户取消
+  try {
+    await scheduleApi.delete(row.id)
+    ElMessage.success('已删除')
+    loadData()
+  } catch (e) {
+    showError(e, '删除失败')
+  }
 }
 
 function showBatchDialog() { batchVisible.value = true }
@@ -271,6 +289,8 @@ async function handleBatchCreate() {
     ElMessage.success('批量排课成功')
     batchVisible.value = false
     loadData()
+  } catch (e) {
+    showError(e, '批量排课失败')
   } finally { batching.value = false }
 }
 

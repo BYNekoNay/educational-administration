@@ -97,11 +97,13 @@ function onStudentChange(id) {
 
 async function loadData() {
   if (!studentId.value) return
+  const sid = studentId.value
   try {
-    const res = await api({ url: `/api/parent/payments?studentId=${studentId.value}` })
+    const res = await api({ url: `/api/parent/payments?studentId=${sid}` })
+    if (sid !== studentId.value) return
     payments.value = res.data || []
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '加载失败', icon: 'none' })
   }
 }
 

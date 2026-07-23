@@ -588,6 +588,7 @@ class FinanceServiceMockTest {
             when(refundMapper.update(any(), any())).thenReturn(1);
             when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
             when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2000"));
+            when(paymentMapper.sumLessonCountByEnrollmentId(1L)).thenReturn(new BigDecimal("20"));
             when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
             when(accountMapper.selectOne(any())).thenReturn(account);
             when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
@@ -679,6 +680,7 @@ class FinanceServiceMockTest {
             // Bug #3 fix: validation runs before CAS, so provide validation mocks
             when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
             when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2000"));
+            when(paymentMapper.sumLessonCountByEnrollmentId(1L)).thenReturn(new BigDecimal("20"));
             when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
             when(accountMapper.selectOne(any())).thenReturn(account);
             // CAS update returns 0 → concurrent audit detected
@@ -737,6 +739,7 @@ class FinanceServiceMockTest {
             when(refundMapper.update(any(), any())).thenReturn(1);
             when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
             when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("1000"));
+            when(paymentMapper.sumLessonCountByEnrollmentId(1L)).thenReturn(new BigDecimal("10"));
             when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
             when(accountMapper.selectOne(any())).thenReturn(account);
             when(accountMapper.updateById(any(LessonAccount.class))).thenReturn(1);
@@ -760,7 +763,9 @@ class FinanceServiceMockTest {
             record.setEnrollmentId(1L);
             record.setStudentId(10L);
             record.setApplicantId(2L);
-            record.setLessonCount(new BigDecimal("5"));
+            // High fix 后退费金额不得超过回退课时价值：自动计算金额=1000（10 课时×100），
+            // 故 lessonCount 须为 10（回退全部剩余课时），否则触发超额退费拦截
+            record.setLessonCount(new BigDecimal("10"));
 
             LessonAccount account = new LessonAccount();
             account.setId(50L);

@@ -35,6 +35,10 @@ public class SalaryController {
     @PostMapping("/rules")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<SalaryRule> createRule(@Valid @RequestBody SalaryRule rule) {
+        // Mass assignment protection: strip server-controlled fields
+        rule.setId(null);
+        rule.setCreateTime(null);
+        rule.setUpdateTime(null);
         return Result.success(salaryService.createSalaryRule(rule));
     }
 
@@ -42,6 +46,9 @@ public class SalaryController {
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<SalaryRule> updateRule(@PathVariable Long id, @RequestBody SalaryRule rule) {
         rule.setId(id);
+        // Mass assignment protection: 剥离服务端控制的审计字段（与 createRule 一致）
+        rule.setCreateTime(null);
+        rule.setUpdateTime(null);
         return Result.success(salaryService.updateSalaryRule(rule));
     }
 
@@ -55,9 +62,11 @@ public class SalaryController {
     // ---- 薪资列表 ----
     @GetMapping
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
-    public Result<PageResult<TeacherSalary>> listSalaries(PageQuery query) {
+    public Result<PageResult<TeacherSalary>> listSalaries(PageQuery query,
+                                                           @RequestParam(required = false) Integer status,
+                                                           @RequestParam(required = false) String month) {
         return Result.success(PageResult.of(salaryService.pageTeacherSalaries((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getKeyword(), query.getSortField(), query.getSortOrder())));
+                query.getKeyword(), status, month, query.getSortField(), query.getSortOrder())));
     }
 
     @PostMapping({"/calculate", ""})
@@ -65,7 +74,12 @@ public class SalaryController {
     public Result<TeacherSalary> calculate(@RequestBody Map<String, Object> body) {
         Object teacherIdObj = body.get("teacherId");
         if (teacherIdObj == null) throw new BusinessException(400, "teacherId不能为空");
-        Long teacherId = Long.valueOf(teacherIdObj.toString());
+        Long teacherId;
+        try {
+            teacherId = Long.valueOf(teacherIdObj.toString());
+        } catch (NumberFormatException e) {
+            throw new BusinessException(400, "teacherId格式不正确");
+        }
 
         // M12 fix: 安全类型转换，防止客户端传入数字类型导致 ClassCastException
         Object salaryMonthObj = body.get("salaryMonth");
@@ -79,14 +93,48 @@ public class SalaryController {
             } catch (NumberFormatException e) {
                 throw new BusinessException(400, "bonusAmount格式不正确");
             }
+            // L fix: 奖金不能为负，负向调整应走 createAdjustment 通道
+            if (bonusAmount.signum() < 0) {
+                throw new BusinessException(400, "bonusAmount不能为负数");
+            }
         }
         return Result.success(salaryService.calculateSalary(salaryMonth, teacherId, bonusAmount));
+    }
+
+    /**
+     * 一键结算指定月份的全部教师薪资
+     */
+    @PostMapping("/calculate-batch")
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    public Result<Map<String, Object>> calculateBatch(@RequestBody Map<String, Object> body) {
+        Object salaryMonthObj = body.get("salaryMonth");
+        String salaryMonth = salaryMonthObj != null ? String.valueOf(salaryMonthObj) : null;
+        if (salaryMonth == null || salaryMonth.isBlank()) throw new BusinessException(400, "salaryMonth不能为空");
+
+        BigDecimal bonusAmount = BigDecimal.ZERO;
+        if (body.get("bonusAmount") != null) {
+            try {
+                bonusAmount = new BigDecimal(body.get("bonusAmount").toString());
+            } catch (NumberFormatException e) {
+                throw new BusinessException(400, "bonusAmount格式不正确");
+            }
+            if (bonusAmount.signum() < 0) {
+                throw new BusinessException(400, "bonusAmount不能为负数");
+            }
+        }
+        return Result.success(salaryService.calculateBatchSalary(salaryMonth, bonusAmount));
     }
 
     @PutMapping("/{id}/confirm")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<TeacherSalary> confirm(@PathVariable Long id) {
         return Result.success(salaryService.confirmSalary(id));
+    }
+
+    @PutMapping("/{id}/pay")
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    public Result<TeacherSalary> pay(@PathVariable Long id) {
+        return Result.success(salaryService.paySalary(id));
     }
 
     @PutMapping("/{id}/void")
@@ -107,7 +155,12 @@ public class SalaryController {
     public Result<SalaryAdjustment> createAdjustment(@RequestBody Map<String, Object> body) {
         Object salaryIdObj = body.get("salaryId");
         if (salaryIdObj == null) throw new BusinessException(400, "salaryId不能为空");
-        Long salaryId = Long.valueOf(salaryIdObj.toString());
+        Long salaryId;
+        try {
+            salaryId = Long.valueOf(salaryIdObj.toString());
+        } catch (NumberFormatException e) {
+            throw new BusinessException(400, "salaryId格式不正确");
+        }
 
         Object adjustAmountObj = body.get("adjustAmount");
         if (adjustAmountObj == null) throw new BusinessException(400, "adjustAmount不能为空");

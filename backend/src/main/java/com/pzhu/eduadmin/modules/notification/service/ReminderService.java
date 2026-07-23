@@ -34,7 +34,7 @@ public class ReminderService {
     private final LessonAccountMapper lessonAccountMapper;
     private final NotificationService notificationService;
 
-    @Scheduled(cron = "0 */10 * * * ?")
+    @Scheduled(cron = "0 */10 * * * ?", zone = "Asia/Shanghai")
     public void sendLessonReminders() {
         try {
             LocalDateTime now = LocalDateTime.now();
@@ -72,20 +72,21 @@ public class ReminderService {
         }
     }
 
-    @Scheduled(cron = "0 0 9 * * ?")
+    @Scheduled(cron = "0 0 9 * * ?", zone = "Asia/Shanghai")
     public void sendLessonExpiryReminders() {
         try {
             LocalDate today = LocalDate.now();
-            // Bug#44: 修正查询逻辑，明确分离"即将到期"和"课时不足"两种提醒条件
-            // 条件: 剩余课时>0 且 ((有到期日且在7天内到期且未过期) 或 剩余课时<=3)
+            // Bug#44 + Medium fix: 分离"即将到期/已过期"和"课时不足"两种提醒条件。
+            // 条件: 剩余课时>0 且 ((有到期日且 7 天内到期或已过期) 或 剩余课时<=3)。
+            // 去掉 expireDate>=today 下限，否则已过期但剩余课时>3 的账户两个分支都不命中，
+            // 与 M30「已过期但有剩余课时仍需通知家长」的意图矛盾。
             List<LessonAccount> accounts = lessonAccountMapper.selectList(
                     new LambdaQueryWrapper<LessonAccount>()
                             .gt(LessonAccount::getRemainingLessons, BigDecimal.ZERO)
                             .and(w -> w
                                     .and(inner -> inner
                                             .isNotNull(LessonAccount::getExpireDate)
-                                            .le(LessonAccount::getExpireDate, today.plusDays(7))
-                                            .ge(LessonAccount::getExpireDate, today))
+                                            .le(LessonAccount::getExpireDate, today.plusDays(7)))
                                     .or()
                                     .le(LessonAccount::getRemainingLessons, new BigDecimal("3"))
                             ));

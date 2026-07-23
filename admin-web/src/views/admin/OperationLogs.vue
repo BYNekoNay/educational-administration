@@ -15,10 +15,10 @@
       size="small"
       @sort-change="handleSortChange"
     >
-      <el-table-column prop="operatorName" label="操作人" width="120" sortable />
+      <el-table-column prop="operatorName" label="操作人" width="120" />
       <el-table-column prop="module" label="模块" width="120" sortable="custom" />
-      <el-table-column prop="operation" label="操作" min-width="200" show-overflow-tooltip sortable />
-      <el-table-column prop="ip" label="IP" width="140" sortable />
+      <el-table-column prop="operation" label="操作" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="ip" label="IP" width="140" />
       <el-table-column prop="createTime" label="操作时间" width="180" sortable="custom">
         <template #default="{ row }">
           {{ formatTime(row.createTime) }}

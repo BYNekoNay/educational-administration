@@ -77,7 +77,8 @@ public class ParentRefundController {
         Set<Long> sIds = available.stream().map(Enrollment::getStudentId).collect(Collectors.toSet());
         Set<Long> cIds = available.stream().map(Enrollment::getCourseId).collect(Collectors.toSet());
         Map<Long, String> studentNameMap = studentMapper.selectBatchIds(sIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName));
+                .collect(Collectors.toMap(Student::getId,
+                        s -> s.getName() == null ? "" : s.getName(), (a, b) -> a));
         Map<Long, String> courseNameMap = new HashMap<>();
         for (Long cid : cIds) {
             Course c = courseMapper.selectById(cid);
@@ -201,7 +202,9 @@ public class ParentRefundController {
         int pageNum = (int) Math.max(1, query.getPageNum());
         int pageSize = (int) Math.min(100, Math.max(1, query.getPageSize()));
         int total = records.size();
-        int from = Math.min((pageNum - 1) * pageSize, total);
+        // L fix: 用 long 计算偏移并下限取 0，防止超大 pageNum 使 (pageNum-1)*pageSize int 溢出为负，
+        // 导致 subList(负数, ...) 抛 IndexOutOfBoundsException(500)
+        int from = (int) Math.min(Math.max(0L, (long) (pageNum - 1) * pageSize), total);
         int to = Math.min(from + pageSize, total);
         List<RefundRecord> page = from < total ? records.subList(from, to) : Collections.emptyList();
 
@@ -214,7 +217,7 @@ public class ParentRefundController {
         Set<Long> sIds = page.stream().map(RefundRecord::getStudentId).collect(Collectors.toSet());
         Set<Long> eIds = page.stream().map(RefundRecord::getEnrollmentId).collect(Collectors.toSet());
         Map<Long, String> studentNameMap = studentMapper.selectBatchIds(sIds).stream()
-                .collect(Collectors.toMap(Student::getId, Student::getName, (a, b) -> a));
+                .collect(Collectors.toMap(Student::getId, s -> s.getName() == null ? "" : s.getName(), (a, b) -> a));
 
         List<Enrollment> enrollments = enrollmentMapper.selectBatchIds(eIds);
         Map<Long, Enrollment> enrollmentMap = enrollments.stream()

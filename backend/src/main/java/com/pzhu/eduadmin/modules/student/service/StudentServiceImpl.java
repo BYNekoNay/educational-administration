@@ -110,7 +110,11 @@ public class StudentServiceImpl implements StudentService {
         Map<Long, String> userMap = parentUserIds.isEmpty()
                 ? Collections.emptyMap()
                 : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, parentUserIds))
-                        .stream().collect(Collectors.toMap(User::getId, User::getRealName, (a, b) -> a));
+                        .stream().collect(Collectors.toMap(User::getId,
+                                u -> u.getRealName() != null && !u.getRealName().isBlank()
+                                        ? u.getRealName()
+                                        : (u.getUsername() != null ? u.getUsername() : "用户" + u.getId()),
+                                (a, b) -> a));
         // 按 studentId 聚合家长姓名
         Map<Long, String> studentParentMap = new HashMap<>();
         for (ParentStudent b : bindings) {
@@ -144,11 +148,17 @@ public class StudentServiceImpl implements StudentService {
         if (existing == null) {
             throw new BusinessException(404, "学员不存在");
         }
-        existing.setName(student.getName());
-        existing.setGender(student.getGender());
-        existing.setBirthday(student.getBirthday());
-        existing.setSchool(student.getSchool());
-        existing.setContactPhone(student.getContactPhone());
+        // M fix: null 安全白名单，防止部分更新（partial PUT）把未携带的字段覆盖为 null
+        if (student.getName() != null) {
+            if (student.getName().isBlank()) {
+                throw new BusinessException(400, "学员姓名不能为空");
+            }
+            existing.setName(student.getName());
+        }
+        if (student.getGender() != null) existing.setGender(student.getGender());
+        if (student.getBirthday() != null) existing.setBirthday(student.getBirthday());
+        if (student.getSchool() != null) existing.setSchool(student.getSchool());
+        if (student.getContactPhone() != null) existing.setContactPhone(student.getContactPhone());
         studentMapper.updateById(existing);
         return studentMapper.selectById(student.getId());
     }
@@ -196,6 +206,9 @@ public class StudentServiceImpl implements StudentService {
             throw new BusinessException(404, "学员不存在");
         }
         operationLogService.log("学员管理", "删除学员（学员=" + student.getName() + "）");
+        // A2#5 fix: 清理由该学员的家长绑定关系，避免遗留孤立 parent_student 行
+        parentStudentMapper.delete(new LambdaQueryWrapper<ParentStudent>()
+                .eq(ParentStudent::getStudentId, id));
         return studentMapper.deleteById(id) > 0;
     }
 
@@ -291,8 +304,13 @@ public class StudentServiceImpl implements StudentService {
         if (rows == 0) {
             throw new BusinessException(404, "未找到该家长的绑定关系");
         }
-        operationLogService.log("学员管理", "解绑家长（学员=" + nameResolver.getStudentName(studentId)
-                + "，家长=" + nameResolver.getUserDisplayName(parentUserId) + "）");
+        // Low fix: 日志记录失败不应影响解绑业务操作
+        try {
+            operationLogService.log("学员管理", "解绑家长（学员=" + nameResolver.getStudentName(studentId)
+                    + "，家长=" + nameResolver.getUserDisplayName(parentUserId) + "）");
+        } catch (Exception ignored) {
+            // 日志异常不阻断主流程
+        }
         return true;
     }
 
@@ -319,6 +337,10 @@ public class StudentServiceImpl implements StudentService {
         if (targetClass == null) {
             throw new BusinessException(404, "目标班级不存在");
         }
+        // Medium fix: 目标班级必须为开班状态（status=1），禁止转入已结课/已关闭班级
+        if (targetClass.getStatus() != null && targetClass.getStatus() != 1) {
+            throw new BusinessException(409, "目标班级非开班状态，无法转入");
+        }
 
         // 4. 校验目标班级容量
         Long targetStudentCount = classStudentMapper.selectCount(
@@ -344,6 +366,11 @@ public class StudentServiceImpl implements StudentService {
                     "该学员在 " + currentRecords.size() + " 个班级中，请指定 fromClassId 参数");
         }
 
+        // Low fix: 禁止转入当前所在班级（无意义的同班转班）
+        if (targetClassId.equals(sourceRecord.getClassId())) {
+            throw new BusinessException(400, "目标班级与当前班级相同，无需转班");
+        }
+
         // 6. 校验目标班级与源班级属于同一课程
         ClassGroup sourceClass = classGroupMapper.selectById(sourceRecord.getClassId());
         if (sourceClass == null) {
@@ -357,12 +384,31 @@ public class StudentServiceImpl implements StudentService {
         sourceRecord.setStatus(2); // 已转出
         classStudentMapper.updateById(sourceRecord);
 
-        ClassStudent newRecord = new ClassStudent();
-        newRecord.setClassId(targetClassId);
-        newRecord.setStudentId(studentId);
-        newRecord.setStatus(1);
-        newRecord.setJoinTime(LocalDateTime.now());
-        classStudentMapper.insert(newRecord);
+        // H1 fix: class_student 唯一键 uk_class_student(class_id, student_id) 不含 status，
+        // 学员转回曾经离开过的班级时旧行仍存在，直接 insert 会触发 DuplicateKeyException(500)。
+        // 优先复用已有行（含 status=2/3 的历史记录），将其重新激活；否则再插入新行。
+        ClassStudent existingTarget = classStudentMapper.selectOne(
+                new LambdaQueryWrapper<ClassStudent>()
+                        .eq(ClassStudent::getClassId, targetClassId)
+                        .eq(ClassStudent::getStudentId, studentId)
+                        .last("LIMIT 1"));
+        if (existingTarget != null) {
+            existingTarget.setStatus(1);
+            existingTarget.setJoinTime(LocalDateTime.now());
+            classStudentMapper.updateById(existingTarget);
+        } else {
+            ClassStudent newRecord = new ClassStudent();
+            newRecord.setClassId(targetClassId);
+            newRecord.setStudentId(studentId);
+            newRecord.setStatus(1);
+            newRecord.setJoinTime(LocalDateTime.now());
+            try {
+                classStudentMapper.insert(newRecord);
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                // 软删除行仍占据物理唯一键时的兜底
+                throw new BusinessException(409, "该学员在目标班级存在历史记录，无法重复添加");
+            }
+        }
 
         // M13 fix: 插入后再次校验容量，防止并发转班超出上限
         if (maxCount > 0) {
@@ -374,6 +420,15 @@ public class StudentServiceImpl implements StudentService {
                 throw new BusinessException(409, "目标班级已满，无法转入");
             }
         }
+
+        // H fix: 同步该学员在源班级的活跃报名记录 classId 到目标班级。
+        // detectTimeConflict 依据 Enrollment.classId 构建在班集合，若不同步，
+        // 转班后仍检查旧班级（误报）且漏检新班级（漏报，可在新班级时段重复排课）。
+        enrollmentMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Enrollment>()
+                .eq(Enrollment::getStudentId, studentId)
+                .eq(Enrollment::getClassId, sourceRecord.getClassId())
+                .in(Enrollment::getStatus, 1, 2, 3)
+                .set(Enrollment::getClassId, targetClassId));
 
         Map<String, Object> result = new HashMap<>();
         result.put("studentId", studentId);
@@ -423,37 +478,49 @@ public class StudentServiceImpl implements StudentService {
                         .notIn(Enrollment::getStatus, List.of(4, 5, 6))
                         .set(Enrollment::getStatus, 6));
 
-        // 4. 查找该学员最近的报名和缴费记录，生成退费申请
-        PaymentRecord latestPayment = paymentRecordMapper.selectPage(
-                new Page<PaymentRecord>(1, 1),
+        // 4. 查找该学员所有缴费记录，按 enrollmentId 分组，为每个已缴费的报名生成退费申请
+        // Critical fix: 原实现仅为最近一笔缴费创建退费，导致其他已缴费报名永久无法退费
+        List<PaymentRecord> allPayments = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>()
                         .eq(PaymentRecord::getStudentId, studentId)
-                        .orderByDesc(PaymentRecord::getPayTime))
-                .getRecords().stream().findFirst().orElse(null);
+                        .isNotNull(PaymentRecord::getEnrollmentId));
 
-        // L9: 仅有缴费记录时才创建退费申请，避免无意义的零元退费单
-        Long refundRecordId = null;
-        // M5 fix: enrollmentId 为空时退费单无法被财务审核，跳过创建
-        if (latestPayment != null && latestPayment.getEnrollmentId() != null) {
-            RefundRecord refund = new RefundRecord();
+        // 按 enrollmentId 去重（同一报名可能有多笔缴费，只需一张退费单）
+        Set<Long> paidEnrollmentIds = allPayments.stream()
+                .map(PaymentRecord::getEnrollmentId)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+
+        List<Long> refundRecordIds = new ArrayList<>();
+        if (!paidEnrollmentIds.isEmpty()) {
             com.pzhu.eduadmin.security.LoginUser operator = CurrentUserHolder.get();
-            refund.setStudentId(studentId);
-            refund.setApplicantId(operator != null ? operator.getUserId() : 0L);
-            refund.setApplicantRole(operator != null ? operator.getRoleCode() : "SYSTEM");
-            refund.setStatus(1); // 待审核
-            refund.setAmount(BigDecimal.ZERO); // 退费金额由财务审核时确定
-            refund.setLessonCount(BigDecimal.ZERO);
-            refund.setPaymentRecordId(latestPayment.getId());
-            refund.setEnrollmentId(latestPayment.getEnrollmentId());
-            refundRecordMapper.insert(refund);
-            refundRecordId = refund.getId();
+            for (Long enrollmentId : paidEnrollmentIds) {
+                // 取该报名下最近一笔缴费作为关联
+                PaymentRecord payment = allPayments.stream()
+                        .filter(p -> enrollmentId.equals(p.getEnrollmentId()))
+                        .max(java.util.Comparator.comparing(PaymentRecord::getPayTime,
+                                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+                        .orElse(null);
+                RefundRecord refund = new RefundRecord();
+                refund.setStudentId(studentId);
+                refund.setApplicantId(operator != null ? operator.getUserId() : 0L);
+                refund.setApplicantRole(operator != null ? operator.getRoleCode() : "SYSTEM");
+                refund.setStatus(1); // 待审核
+                refund.setAmount(BigDecimal.ZERO); // 退费金额由财务审核时确定
+                refund.setLessonCount(BigDecimal.ZERO);
+                refund.setPaymentRecordId(payment != null ? payment.getId() : null);
+                refund.setEnrollmentId(enrollmentId);
+                refundRecordMapper.insert(refund);
+                refundRecordIds.add(refund.getId());
+            }
         }
 
         Map<String, Object> result = new HashMap<>();
         result.put("studentId", studentId);
         result.put("withdrawnClassIds", currentRecords.stream().map(ClassStudent::getClassId).toList());
-        result.put("refundRecordId", refundRecordId);
-        result.put("message", latestPayment != null ? "退班申请已提交，待财务审核退费" : "退班完成，该学员无缴费记录");
+        result.put("refundRecordIds", refundRecordIds);
+        result.put("message", !paidEnrollmentIds.isEmpty()
+                ? "退班申请已提交，共生成 " + refundRecordIds.size() + " 笔退费单待财务审核"
+                : "退班完成，该学员无缴费记录");
         return result;
     }
 

@@ -12,6 +12,8 @@
       >
         <div class="mo-date">{{ cell.day }}</div>
         <div v-for="l in cell.lessons.slice(0, maxShow)" :key="l.id" class="mo-lesson"
+             :class="'st-' + (l.status || 0)"
+             :title="statusLabel(l.status)"
              :style="{ borderLeftColor: hashColor(l.courseId) }">
           {{ l.courseName || l.className }} {{ l.startTime?.slice(0,5) }}
         </div>
@@ -49,6 +51,10 @@ const cells = computed(() => {
     if (!byDay.has(k)) byDay.set(k, [])
     byDay.get(k)!.push(l)
   }
+  // 同日内按开始时间排序（后端默认仅按日期排，日内顺序不定；与 WeeklyCalendar/DailyTimeline 保持一致）
+  for (const arr of byDay.values()) {
+    arr.sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')))
+  }
 
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
@@ -83,6 +89,11 @@ function hashColor(id: number | null): string {
   if (!id) return colors[0]
   return colors[Math.abs(id ^ (id >> 4)) % colors.length]
 }
+
+const statusText: Record<number, string> = { 1: '待上课', 2: '已完成', 3: '已取消', 4: '已调课' }
+function statusLabel(status: number): string {
+  return statusText[status] || ''
+}
 </script>
 
 <style scoped>
@@ -97,5 +108,7 @@ function hashColor(id: number | null): string {
 .mo-today { background:#e0f2fe }
 .mo-date { font-weight:600; color:#303133; margin-bottom:2px }
 .mo-lesson { padding:1px 4px; margin:1px 0; border-left:3px solid; border-radius:2px; background:#f0f9ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:default }
-.mo-more { font-size:11px; color:#909399; cursor:pointer; margin-top:1px }
+.mo-lesson.st-2 { opacity:.55 }
+.mo-lesson.st-3, .mo-lesson.st-4 { opacity:.5; text-decoration:line-through }
+.mo-more { font-size:11px; color:#909399; margin-top:1px }
 </style>

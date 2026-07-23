@@ -63,7 +63,8 @@
           </el-select>
         </el-form-item>
         <el-form-item label="总课时"><el-input-number v-model="form.totalLessons" :min="1" /></el-form-item>
-        <el-form-item label="时长(分钟)"><el-input-number v-model="form.lessonDuration" :min="1" /></el-form-item>
+        <!-- 后端 updateCourse 白名单不含 lessonDuration，编辑态禁用避免假成功 -->
+        <el-form-item label="时长(分钟)"><el-input-number v-model="form.lessonDuration" :min="1" :disabled="isEdit" /></el-form-item>
         <el-form-item label="价格"><el-input-number v-model="form.price" :min="0" :precision="2" /></el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status"><el-option :value="1" label="启用" /><el-option :value="0" label="停用" /></el-select>
@@ -98,10 +99,12 @@ const form = reactive<any>({ name: '', category: '', totalLessons: 1, lessonDura
 
 async function loadData() {
   loading.value = true
-  const res = await courseApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-  tableData.value = res.data.records
-  total.value = res.data.total
-  loading.value = false
+  try {
+    const res = await courseApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    tableData.value = res.data.records
+    total.value = res.data.total
+  } catch (e) { showError(e, '加载课程列表失败') }
+  finally { loading.value = false }
 }
 
 function handleSearch() { pageNum.value = 1; loadData() }
@@ -120,16 +123,16 @@ function openDialog(row: any) {
   dialogVisible.value = true
 }
 
-/** 拉取全量课程，提取去重的分类列表 */
+/** 拉取课程（后端 pageSize 上限 200，超出被静默钳制），提取去重的分类列表 */
 async function loadCategoryOptions() {
   try {
-    const res = await courseApi.list({ pageNum: 1, pageSize: 1000 })
+    const res = await courseApi.list({ pageNum: 1, pageSize: 200 })
     const set = new Set<string>()
     ;(res.data?.records || []).forEach((c: any) => {
       if (c.category) set.add(c.category)
     })
     categoryOptions.value = Array.from(set).sort()
-  } catch (e) { /* ignore */ }
+  } catch (e) { showError(e, '加载课程分类失败') }
 }
 
 async function handleSave() {

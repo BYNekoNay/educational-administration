@@ -111,20 +111,24 @@ public class ExportService {
                 throw new com.pzhu.eduadmin.common.BusinessException(400, "month 日期格式不正确，应为 yyyy-MM");
             }
         }
+        // L1 fix: 空白 month 视为"全部月份"，避免查询条件变成 salary_month='' 导出空表
+        boolean hasMonth = month != null && !month.isBlank();
         List<TeacherSalary> records = teacherSalaryMapper.selectList(
                 new LambdaQueryWrapper<TeacherSalary>()
-                        .eq(month != null, TeacherSalary::getSalaryMonth, month)
+                        .eq(hasMonth, TeacherSalary::getSalaryMonth, month)
                         .orderByDesc(TeacherSalary::getSalaryMonth));
 
         setResponseHeader(response, "薪资结算单.xlsx");
         try (SXSSFWorkbook wb = new SXSSFWorkbook(100); OutputStream os = response.getOutputStream()) {
             Sheet sheet = wb.createSheet("薪资结算");
-            String[] headers = {"ID", "教师ID", "月份", "主讲课时", "代课课时", "基础工资", "奖金", "应发工资", "状态", "核算时间"};
+            // M2 fix: 补充"代课金额"列，否则 基础工资+奖金≠应发工资，薪资单无法对账
+            String[] headers = {"ID", "教师ID", "月份", "主讲课时", "代课课时", "基础工资", "代课金额", "奖金", "应发工资", "状态", "核算时间"};
             Row headerRow = sheet.createRow(0);
             CellStyle hs = headerStyle(wb);
             for (int i = 0; i < headers.length; i++) { Cell c = headerRow.createCell(i); c.setCellValue(headers[i]); c.setCellStyle(hs); }
 
-            String[] statusLabels = {"", "待确认", "已确认", "", "已撤销"};
+            // M1 fix: status=3 为"已发放"，原数组该位置为空导致已发放薪资导出为空白单元格
+            String[] statusLabels = {"", "待确认", "已确认", "已发放", "已撤销"};
             for (int i = 0; i < records.size(); i++) {
                 TeacherSalary r = records.get(i);
                 Row row = sheet.createRow(i + 1);
@@ -134,11 +138,12 @@ public class ExportService {
                 row.createCell(3).setCellValue(r.getLessonCount() != null ? r.getLessonCount().doubleValue() : 0);
                 row.createCell(4).setCellValue(r.getSubstituteCount() != null ? r.getSubstituteCount().doubleValue() : 0);
                 row.createCell(5).setCellValue(r.getBaseAmount() != null ? r.getBaseAmount().doubleValue() : 0);
-                row.createCell(6).setCellValue(r.getBonusAmount() != null ? r.getBonusAmount().doubleValue() : 0);
-                row.createCell(7).setCellValue(r.getTotalAmount() != null ? r.getTotalAmount().doubleValue() : 0);
+                row.createCell(6).setCellValue(r.getSubstituteAmount() != null ? r.getSubstituteAmount().doubleValue() : 0);
+                row.createCell(7).setCellValue(r.getBonusAmount() != null ? r.getBonusAmount().doubleValue() : 0);
+                row.createCell(8).setCellValue(r.getTotalAmount() != null ? r.getTotalAmount().doubleValue() : 0);
                 int st = r.getStatus() != null ? r.getStatus() : 0;
-                row.createCell(8).setCellValue(st >= 1 && st <= 4 ? statusLabels[st] : "");
-                row.createCell(9).setCellValue(r.getCalcSnapshotTime() != null ? r.getCalcSnapshotTime().toString() : "");
+                row.createCell(9).setCellValue(st >= 1 && st <= 4 ? statusLabels[st] : "");
+                row.createCell(10).setCellValue(r.getCalcSnapshotTime() != null ? r.getCalcSnapshotTime().toString() : "");
             }
             wb.write(os);
             wb.dispose();

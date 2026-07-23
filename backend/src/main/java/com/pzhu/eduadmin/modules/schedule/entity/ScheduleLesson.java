@@ -31,6 +31,12 @@ public class ScheduleLesson {
 
     private Long sourceLessonId;
 
+    /** 课节时段ID（半封闭模式），null 表示自由时间排课 */
+    private Long periodId;
+
+    /** 连堂数（>=1），仅 periodId 非空时生效 */
+    private Integer periodCount;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
@@ -61,4 +67,8 @@ public class ScheduleLesson {
     /** 课程ID（从 class_group.course_id 回查，前端按此分组） */
     @TableField(exist = false)
     private Long courseId;
+
+    /** 时段名称（仅 periodId 非空时填充） */
+    @TableField(exist = false)
+    private String periodName;
 }

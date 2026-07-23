@@ -11,9 +11,11 @@ import com.pzhu.eduadmin.modules.attendance.entity.LeaveRequest;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
 import com.pzhu.eduadmin.modules.attendance.mapper.LeaveRequestMapper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
+import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
+import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.finance.entity.LessonAccount;
 import com.pzhu.eduadmin.modules.finance.entity.LessonFlow;
 import com.pzhu.eduadmin.modules.finance.mapper.LessonAccountMapper;
@@ -39,6 +41,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,6 +58,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final ClassroomMapper classroomMapper;
     private final ClassStudentMapper classStudentMapper;
     private final ClassGroupMapper classGroupMapper;
+    private final CourseMapper courseMapper;
     private final LessonAccountMapper lessonAccountMapper;
     private final LessonFlowMapper lessonFlowMapper;
     private final OperationLogService operationLogService;
@@ -129,7 +133,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         return raw.stream()
                 .collect(Collectors.toMap(
                         m -> ((Number) m.get("id")).longValue(),
-                        m -> (String) m.get("name"),
+                        m -> m.get("name") != null ? (String) m.get("name") : "",
                         (a, b) -> a));
     }
 
@@ -154,8 +158,20 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     public List<Attendance> getByLessonId(Long lessonId) {
-        return attendanceMapper.selectList(
+        List<Attendance> list = attendanceMapper.selectList(
                 new LambdaQueryWrapper<Attendance>().eq(Attendance::getLessonId, lessonId));
+        if (!list.isEmpty()) {
+            Set<Long> studentIds = list.stream().map(Attendance::getStudentId).collect(Collectors.toSet());
+            List<Map<String, Object>> nameRows = studentMapper.selectNamesByIdsIncludeDeleted(studentIds);
+            Map<Long, String> nameMap = new HashMap<>();
+            for (Map<String, Object> row : nameRows) {
+                Object id = row.get("id");
+                Object name = row.get("name");
+                if (id != null && name != null) nameMap.put(((Number) id).longValue(), String.valueOf(name));
+            }
+            for (Attendance a : list) a.setStudentName(nameMap.get(a.getStudentId()));
+        }
+        return list;
     }
 
     @Override
@@ -188,10 +204,17 @@ public class AttendanceServiceImpl implements AttendanceService {
             throw new BusinessException(400, "无效的考勤状态（仅支持1=到课/2=迟到/3=请假/4=缺勤）");
         }
 
+        // Bug2 fix: 校验客户端传入的扣减课时数，防止非法值（负数或过大）；0 表示不扣课时，合法
+        if (attendance.getDeductLessons() != null
+                && (attendance.getDeductLessons().compareTo(BigDecimal.ZERO) < 0
+                    || attendance.getDeductLessons().compareTo(BigDecimal.TEN) > 0)) {
+            throw new BusinessException(400, "扣减课时数无效");
+        }
+
         // 1. 校验课次
         ScheduleLesson lesson = scheduleLessonMapper.selectById(attendance.getLessonId());
         if (lesson == null) throw new BusinessException(404, "课次不存在");
-        if (lesson.getStatus() != 1 && lesson.getStatus() != 2) {
+        if (!Integer.valueOf(1).equals(lesson.getStatus()) && !Integer.valueOf(2).equals(lesson.getStatus())) {
             throw new BusinessException(409, "该课次状态不允许考勤（非待上课/已完成）");
         }
 
@@ -216,6 +239,11 @@ public class AttendanceServiceImpl implements AttendanceService {
         // Default deductLessons before branching so both update and insert paths have it
         if (attendance.getDeductLessons() == null) {
             attendance.setDeductLessons(BigDecimal.ONE); // 默认扣1课时
+        }
+        // L2 fix: 请假(3)/缺勤(4)实际不扣课时（扣减仅对 status 1/2 执行），
+        // 持久化值必须为 0，否则报表/审计显示"请假却扣了1课时"，且未来冲销若漏判状态会多退课时
+        if (Integer.valueOf(3).equals(attendance.getStatus()) || Integer.valueOf(4).equals(attendance.getStatus())) {
+            attendance.setDeductLessons(BigDecimal.ZERO);
         }
 
         if (existing != null) {
@@ -244,15 +272,24 @@ public class AttendanceServiceImpl implements AttendanceService {
                         new LambdaQueryWrapper<Attendance>()
                                 .eq(Attendance::getLessonId, attendance.getLessonId())
                                 .eq(Attendance::getStudentId, attendance.getStudentId()));
-                if (conflicted != null) {
-                    reverseDeduct(conflicted);
-                    conflicted.setStatus(attendance.getStatus());
-                    conflicted.setDeductLessons(attendance.getDeductLessons());
-                    if (attendance.getCheckTime() != null) conflicted.setCheckTime(attendance.getCheckTime());
-                    if (attendance.getRemark() != null) conflicted.setRemark(attendance.getRemark());
-                    attendanceMapper.updateById(conflicted);
-                    attendance.setId(conflicted.getId());
+                if (conflicted == null) {
+                    // Bug3 fix: 冲突来自主键（客户端传入了已存在的id），不能吞掉异常继续扣课时
+                    throw new BusinessException(409, "考勤记录冲突，请重试");
                 }
+                // M6 fix: 并发分支同样需要请假保护——若并发请假审批已写入请假考勤(status=3, deduct=0)，
+                // 不可覆盖为到课/迟到，否则已批准请假被静默取消且会扣课时（绕过业务规则）
+                if (Integer.valueOf(3).equals(conflicted.getStatus())
+                        && BigDecimal.ZERO.compareTo(conflicted.getDeductLessons() != null ? conflicted.getDeductLessons() : BigDecimal.ZERO) == 0
+                        && (attendance.getStatus() == 1 || attendance.getStatus() == 2)) {
+                    throw new BusinessException(409, "该学员已通过请假审批，不可覆盖为到课/迟到；请先撤销请假审批");
+                }
+                reverseDeduct(conflicted);
+                conflicted.setStatus(attendance.getStatus());
+                conflicted.setDeductLessons(attendance.getDeductLessons());
+                if (attendance.getCheckTime() != null) conflicted.setCheckTime(attendance.getCheckTime());
+                if (attendance.getRemark() != null) conflicted.setRemark(attendance.getRemark());
+                attendanceMapper.updateById(conflicted);
+                attendance.setId(conflicted.getId());
             }
         }
 
@@ -313,8 +350,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         Set<Long> courseIds = classes.stream().map(ClassGroup::getCourseId).filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<Long, String> courseNameMap = courseIds.isEmpty() ? Collections.emptyMap()
-                : classGroupMapper.selectCourseNamesByIdsIncludeDeleted(courseIds).stream()
-                .collect(Collectors.toMap(m -> ((Number) m.get("id")).longValue(), m -> (String) m.get("name")));
+                : courseMapper.selectNamesByIdsIncludeDeleted(courseIds).stream()
+                .collect(Collectors.toMap(m -> ((Number) m.get("id")).longValue(), m -> (String) m.get("name"), (a, b) -> a));
 
         // 4. 一次性查教师姓名
         Set<Long> teacherIds = new java.util.HashSet<>();
@@ -381,11 +418,40 @@ public class AttendanceServiceImpl implements AttendanceService {
     }
 
     @Override
-    public Page<ScheduleLesson> pageTeacherLessons(Long teacherId, int pageNum, int pageSize) {
-        return scheduleLessonMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<ScheduleLesson>().eq(ScheduleLesson::getTeacherId, teacherId)
-                        .in(ScheduleLesson::getStatus, 1, 2)
-                        .orderByDesc(ScheduleLesson::getLessonDate));
+    public Page<ScheduleLesson> pageTeacherLessons(Long teacherId, int pageNum, int pageSize, String dateFrom, String dateTo) {
+        LambdaQueryWrapper<ScheduleLesson> wrapper = new LambdaQueryWrapper<ScheduleLesson>()
+                .eq(ScheduleLesson::getTeacherId, teacherId)
+                .in(ScheduleLesson::getStatus, 1, 2);
+        if (dateFrom != null && !dateFrom.isEmpty()) {
+            wrapper.ge(ScheduleLesson::getLessonDate, java.time.LocalDate.parse(dateFrom));
+        }
+        if (dateTo != null && !dateTo.isEmpty()) {
+            wrapper.le(ScheduleLesson::getLessonDate, java.time.LocalDate.parse(dateTo));
+        }
+        wrapper.orderByDesc(ScheduleLesson::getLessonDate);
+        Page<ScheduleLesson> page = scheduleLessonMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        if (!page.getRecords().isEmpty()) populateLessonDisplayNames(page.getRecords());
+        return page;
+    }
+
+    private void populateLessonDisplayNames(List<ScheduleLesson> list) {
+        Set<Long> classIds = list.stream().map(ScheduleLesson::getClassId).collect(Collectors.toSet());
+        Map<Long, ClassGroup> classMap = classGroupMapper.selectBatchIds(classIds).stream()
+                .collect(Collectors.toMap(ClassGroup::getId, c -> c, (a, b) -> a));
+        Set<Long> courseIds = classMap.values().stream().map(ClassGroup::getCourseId).filter(id -> id != null).collect(Collectors.toSet());
+        Map<Long, String> courseNameMap = new HashMap<>();
+        if (!courseIds.isEmpty()) {
+            List<Course> courses = courseMapper.selectBatchIds(courseIds);
+            for (Course c : courses) courseNameMap.put(c.getId(), c.getName());
+        }
+        for (ScheduleLesson s : list) {
+            ClassGroup cg = classMap.get(s.getClassId());
+            if (cg != null) {
+                s.setClassName(cg.getClassName());
+                s.setCourseId(cg.getCourseId());
+                s.setCourseName(courseNameMap.getOrDefault(cg.getCourseId(), ""));
+            }
+        }
     }
 
     @Override
@@ -395,6 +461,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)
                         .eq(ScheduleLesson::getLessonDate, today)
+                        .in(ScheduleLesson::getStatus, 1, 2)
                         .orderByAsc(ScheduleLesson::getStartTime));
         for (ScheduleLesson l : lessons) {
             l.setClassName(getClassNameSafe(l.getClassId()));
@@ -510,6 +577,15 @@ public class AttendanceServiceImpl implements AttendanceService {
                         .set(LessonAccount::getRemainingLessons, before.subtract(actualDeduct))
                         .set(LessonAccount::getVersion, account.getVersion() + 1));
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
+
+        // Bug1 fix: 将实际扣减数回写考勤记录，防止回冲时按请求数多退课时
+        if (actualDeduct.compareTo(deduct) != 0) {
+            attendance.setDeductLessons(actualDeduct);
+            attendanceMapper.update(null,
+                    new LambdaUpdateWrapper<Attendance>()
+                            .eq(Attendance::getId, attendance.getId())
+                            .set(Attendance::getDeductLessons, actualDeduct));
+        }
 
         // 写流水
         LessonFlow flow = new LessonFlow();

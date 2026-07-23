@@ -27,7 +27,16 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public SseEmitter subscribe(Long userId) {
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L); // 30分钟超时
-        emitters.put(userId, emitter);
+        // M4 fix: 替换前先 complete 旧 emitter，避免多标签页/多设备时旧连接被静默孤立
+        // （旧连接不关闭也不收到事件，直到 30 分钟超时才释放）
+        SseEmitter old = emitters.put(userId, emitter);
+        if (old != null) {
+            try {
+                old.complete();
+            } catch (Exception ignored) {
+                // 旧连接可能已断开，忽略
+            }
+        }
 
         // M15 fix: 条件移除，防止旧 emitter 超时回调误删新 emitter
         emitter.onCompletion(() -> emitters.remove(userId, emitter));
@@ -37,7 +46,7 @@ public class NotificationServiceImpl implements NotificationService {
         // 发送一条连接成功事件（可选）
         try {
             emitter.send(SseEmitter.event().name("connected").data("ok"));
-        } catch (IOException e) {
+        } catch (IOException | IllegalStateException e) {
             emitters.remove(userId, emitter);
         }
         return emitter;
@@ -72,7 +81,7 @@ public class NotificationServiceImpl implements NotificationService {
         if (emitter != null) {
             try {
                 emitter.send(SseEmitter.event().name("notification").data(notification));
-            } catch (IOException e) {
+            } catch (IOException | IllegalStateException e) {
                 emitters.remove(userId, emitter);
                 log.debug("SSE send failed for user {}, removed emitter", userId);
             }
@@ -120,7 +129,8 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void markRead(Long id, Long userId) {
         Notification n = notificationMapper.selectById(id);
-        if (n != null && n.getUserId().equals(userId)) {
+        // A6#3 fix: userId 来自当前登录用户必非空，反向调用 equals 避免 n.getUserId() 为 null 时 NPE
+        if (n != null && userId.equals(n.getUserId())) {
             n.setIsRead(1);
             notificationMapper.updateById(n);
         }

@@ -42,7 +42,7 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET:dev-local-secret-key-for-edu-admin-2026}
   expire-minutes: 120
 
 file:

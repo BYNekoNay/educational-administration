@@ -25,6 +25,7 @@ import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,14 +36,18 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SalaryServiceImpl implements SalaryService {
@@ -77,7 +82,8 @@ public class SalaryServiceImpl implements SalaryService {
     private void applyTeacherKeywordFilter(LambdaQueryWrapper<SalaryRule> wrapper, String keyword) {
         Set<Long> teacherIds = findTeacherIdsByName(keyword);
         if (teacherIds != null) {
-            wrapper.in(SalaryRule::getTeacherId, teacherIds);
+            // A5#1 fix: 空集合会生成非法 "teacher_id IN ()"，用 -1 哨兵确保合法地返回空结果
+            wrapper.in(SalaryRule::getTeacherId, teacherIds.isEmpty() ? Set.of(-1L) : teacherIds);
         }
     }
 
@@ -148,11 +154,18 @@ public class SalaryServiceImpl implements SalaryService {
     }
 
     @Override
-    public Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String keyword, String sortField, String sortOrder) {
+    public Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String keyword, Integer status, String month, String sortField, String sortOrder) {
         LambdaQueryWrapper<TeacherSalary> wrapper = new LambdaQueryWrapper<>();
         Set<Long> teacherIds = findTeacherIdsByName(keyword);
         if (teacherIds != null) {
-            wrapper.in(TeacherSalary::getTeacherId, teacherIds);
+            // A5#1 fix: 空集合会生成非法 "teacher_id IN ()"，用 -1 哨兵确保合法地返回空结果
+            wrapper.in(TeacherSalary::getTeacherId, teacherIds.isEmpty() ? Set.of(-1L) : teacherIds);
+        }
+        if (status != null) {
+            wrapper.eq(TeacherSalary::getStatus, status);
+        }
+        if (month != null && !month.isBlank()) {
+            wrapper.eq(TeacherSalary::getSalaryMonth, month);
         }
         QueryHelper.applySort(wrapper, sortField, sortOrder, SALARY_SORT_MAP, () -> wrapper.orderByDesc(TeacherSalary::getSalaryMonth));
         Page<TeacherSalary> page = teacherSalaryMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
@@ -191,7 +204,12 @@ public class SalaryServiceImpl implements SalaryService {
     public TeacherSalary calculateSalary(String salaryMonth, Long teacherId, BigDecimal bonusAmount) {
         if (bonusAmount == null) bonusAmount = BigDecimal.ZERO;
 
-        YearMonth ym = YearMonth.parse(salaryMonth);
+        YearMonth ym;
+        try {
+            ym = YearMonth.parse(salaryMonth);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(400, "salaryMonth格式不正确，应为yyyy-MM");
+        }
         LocalDateTime calcSnapshot = LocalDateTime.now();
 
         // 核算月份日期范围
@@ -253,10 +271,14 @@ public class SalaryServiceImpl implements SalaryService {
         substituteLessons.forEach(l -> classIds.add(l.getClassId()));
         Map<Long, Long> classCourseMap;
         if (!classIds.isEmpty()) {
-            classCourseMap = classGroupMapper.selectList(
-                            new LambdaQueryWrapper<ClassGroup>().in(ClassGroup::getId, classIds))
-                    .stream()
-                    .collect(Collectors.toMap(ClassGroup::getId, ClassGroup::getCourseId, (a, b) -> a));
+            // A5#4 fix: 班级可能已软删，selectList 遵循 @TableLogic 会漏掉历史课次的班级 → 误用默认规则算错薪资。
+            // 逐个用绕过逻辑删除的 selectCourseIdByIdIncludeDeleted 解析 class→course
+            classCourseMap = new java.util.HashMap<>();
+            for (Long cid : classIds) {
+                if (cid == null) continue;
+                Long courseId = classGroupMapper.selectCourseIdByIdIncludeDeleted(cid);
+                if (courseId != null) classCourseMap.put(cid, courseId);
+            }
         } else {
             classCourseMap = Map.of();
         }
@@ -307,6 +329,10 @@ public class SalaryServiceImpl implements SalaryService {
                 throw new BusinessException(409, "该月薪资已确认，不可覆盖。请先作废后再重新核算");
             }
         }
+        // H2 fix: salary 是 existing 的别名，下方 setStatus(1) 会改写同一对象，
+        // 必须在改写前先捕获原始状态，否则 CAS 条件恒为 status=1，
+        // 导致"作废(status=4)后重新核算"流程必然 409 卡死。
+        Integer originalStatus = existing != null ? existing.getStatus() : null;
         TeacherSalary salary = (existing != null) ? existing : new TeacherSalary();
 
         salary.setTeacherId(teacherId);
@@ -321,7 +347,15 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setCalcSnapshotTime(calcSnapshot);
 
         if (existing != null) {
-            teacherSalaryMapper.updateById(salary);
+            // M1 fix: 条件更新（CAS on status），防止并发确认(1→2)/作废(→4)被核算写回覆盖。
+            // 仅当状态仍等于核算开始时读到的状态才允许写回，否则说明已被其他操作改变。
+            LambdaUpdateWrapper<TeacherSalary> updateWrapper = new LambdaUpdateWrapper<TeacherSalary>()
+                    .eq(TeacherSalary::getId, existing.getId())
+                    .eq(originalStatus != null, TeacherSalary::getStatus, originalStatus);
+            int updated = teacherSalaryMapper.update(salary, updateWrapper);
+            if (updated == 0) {
+                throw new BusinessException(409, "薪资状态已变更（可能已被确认或作废），请刷新后重试");
+            }
         } else {
             try {
                 teacherSalaryMapper.insert(salary);
@@ -330,6 +364,66 @@ public class SalaryServiceImpl implements SalaryService {
             }
         }
         return salary;
+    }
+
+    @Override
+    public Map<String, Object> calculateBatchSalary(String salaryMonth, BigDecimal bonusAmount) {
+        if (!StringUtils.hasText(salaryMonth)) {
+            throw new BusinessException(400, "salaryMonth不能为空");
+        }
+        // 拉取所有在职（status=1）TEACHER 角色的用户
+        List<User> teachers = userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getRoleCode, "TEACHER")
+                        .eq(User::getStatus, 1)
+                        .orderByAsc(User::getId));
+        if (teachers.isEmpty()) {
+            throw new BusinessException(404, "暂无在职教师，无需批量结算");
+        }
+
+        int successCount = 0, failedCount = 0;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<Map<String, Object>> errors = new ArrayList<>();
+        List<Map<String, Object>> successes = new ArrayList<>();
+
+        for (User teacher : teachers) {
+            try {
+                TeacherSalary salary = calculateSalary(salaryMonth, teacher.getId(), bonusAmount != null ? bonusAmount : BigDecimal.ZERO);
+                successCount++;
+                if (salary.getTotalAmount() != null) {
+                    totalAmount = totalAmount.add(salary.getTotalAmount());
+                }
+                Map<String, Object> ok = new LinkedHashMap<>();
+                ok.put("teacherId", teacher.getId());
+                ok.put("teacherName", teacher.getRealName() != null ? teacher.getRealName() : teacher.getUsername());
+                ok.put("totalAmount", salary.getTotalAmount());
+                ok.put("lessonCount", salary.getLessonCount());
+                ok.put("substituteCount", salary.getSubstituteCount());
+                successes.add(ok);
+            } catch (Exception e) {
+                // 单教师失败不阻断整体：仅记录明细、计入失败数
+                failedCount++;
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("teacherId", teacher.getId());
+                err.put("teacherName", teacher.getRealName() != null ? teacher.getRealName() : teacher.getUsername());
+                err.put("message", e.getMessage() != null ? e.getMessage() : "未知错误");
+                errors.add(err);
+                log.warn("[batch salary] teacher={} month={} failed: {}", teacher.getId(), salaryMonth, e.getMessage());
+            }
+        }
+
+        operationLogService.log("薪资管理", String.format("一键结算（月份=%s，成功=%d，失败=%d，合计=¥%s）",
+                salaryMonth, successCount, failedCount, totalAmount.setScale(2, RoundingMode.HALF_UP)));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("salaryMonth", salaryMonth);
+        result.put("totalTeachers", teachers.size());
+        result.put("successCount", successCount);
+        result.put("failedCount", failedCount);
+        result.put("totalAmount", totalAmount.setScale(2, RoundingMode.HALF_UP));
+        result.put("successes", successes);
+        result.put("errors", errors);
+        return result;
     }
 
     @Override
@@ -351,8 +445,12 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setStatus(2);
 
         // 操作日志
-        operationLogService.log("薪资管理", "确认薪资（教师=" + nameResolver.getUserDisplayName(salary.getTeacherId())
-                + "，月份=" + salary.getSalaryMonth() + "，金额=" + salary.getTotalAmount() + "，id=" + id + "）");
+        try {
+            operationLogService.log("薪资管理", "确认薪资（教师=" + nameResolver.getUserDisplayName(salary.getTeacherId())
+                    + "，月份=" + salary.getSalaryMonth() + "，金额=" + salary.getTotalAmount() + "，id=" + id + "）");
+        } catch (Exception e) {
+            log.warn("操作日志记录失败: {}", e.getMessage());
+        }
 
         return salary;
     }
@@ -375,8 +473,41 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setStatus(4);
 
         // 操作日志
-        operationLogService.log("薪资管理", "撤销薪资（教师=" + nameResolver.getUserDisplayName(salary.getTeacherId())
-                + "，月份=" + salary.getSalaryMonth() + "，id=" + id + "）");
+        try {
+            operationLogService.log("薪资管理", "撤销薪资（教师=" + nameResolver.getUserDisplayName(salary.getTeacherId())
+                    + "，月份=" + salary.getSalaryMonth() + "，id=" + id + "）");
+        } catch (Exception e) {
+            log.warn("操作日志记录失败: {}", e.getMessage());
+        }
+
+        return salary;
+    }
+
+    @Override
+    public TeacherSalary paySalary(Long id) {
+        TeacherSalary salary = teacherSalaryMapper.selectById(id);
+        if (salary == null) throw new BusinessException(404, "薪资记录不存在");
+        if (salary.getStatus() == 3) throw new BusinessException(409, "薪资已发放");
+        if (salary.getStatus() != 2) throw new BusinessException(409, "仅已确认的薪资可发放");
+
+        // CAS 原子更新：防止并发发放
+        int updated = teacherSalaryMapper.update(null,
+                new LambdaUpdateWrapper<TeacherSalary>()
+                        .eq(TeacherSalary::getId, id)
+                        .eq(TeacherSalary::getStatus, 2)
+                        .set(TeacherSalary::getStatus, 3));
+        if (updated == 0) {
+            throw new BusinessException(409, "薪资状态已变更，请刷新后重试");
+        }
+        salary.setStatus(3);
+
+        // 操作日志
+        try {
+            operationLogService.log("薪资管理", "发放薪资（教师=" + nameResolver.getUserDisplayName(salary.getTeacherId())
+                    + "，月份=" + salary.getSalaryMonth() + "，金额=" + salary.getTotalAmount() + "，id=" + id + "）");
+        } catch (Exception e) {
+            log.warn("操作日志记录失败: {}", e.getMessage());
+        }
 
         return salary;
     }
@@ -390,6 +521,11 @@ public class SalaryServiceImpl implements SalaryService {
         if (adjustAmount == null || adjustAmount.compareTo(BigDecimal.ZERO) == 0) {
             throw new BusinessException(400, "调整金额不能为空或为零");
         }
+        // L fix: 允许负向调整（更正）但禁止把薪资总额减为负数
+        if (salary.getTotalAmount() != null
+                && salary.getTotalAmount().add(adjustAmount).compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException(400, "调整金额过大会导致薪资总额为负，请核对");
+        }
 
         SalaryAdjustment adj = new SalaryAdjustment();
         adj.setTeacherSalaryId(salaryId);
@@ -400,10 +536,15 @@ public class SalaryServiceImpl implements SalaryService {
 
         // H12 fix: 原子 SQL 递增 totalAmount，防止并发调整丢失更新
         // （原 read-sum-write 在 REPEATABLE_READ 下并发时 SUM 仅见自身插入）
-        teacherSalaryMapper.update(null,
+        // Medium fix: 更新条件附带 status=2，防止并发 voidSalary 后调整落到已作废薪资上
+        int updated = teacherSalaryMapper.update(null,
                 new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<TeacherSalary>()
                         .eq(TeacherSalary::getId, salaryId)
+                        .eq(TeacherSalary::getStatus, 2)
                         .setSql("total_amount = total_amount + " + adjustAmount.toPlainString()));
+        if (updated == 0) {
+            throw new BusinessException(409, "薪资状态已变更（可能已被作废），调整失败");
+        }
 
         return adj;
     }

@@ -41,6 +41,7 @@
       "pages": [
         { "path": "schedule", "style": { "navigationBarTitleText": "我的课表" } },
         { "path": "attendance", "style": { "navigationBarTitleText": "课堂考勤" } },
+        { "path": "attendance-records", "style": { "navigationBarTitleText": "考勤记录" } },
         { "path": "learning", "style": { "navigationBarTitleText": "学情管理" } },
         { "path": "statistics", "style": { "navigationBarTitleText": "课时统计" } },
         { "path": "adjust-request", "style": { "navigationBarTitleText": "调课申请" } }

@@ -51,9 +51,13 @@ public class AuthService implements IAuthService {
     @Override
     public LoginResponse login(LoginRequest request) {
         String username = request.getUsername();
+        // M fix: 锁定计数键归一化（trim+lowercase）。DB 用大小写/尾空格不敏感的排序规则，
+        // admin/Admin/"admin " 解析到同一用户，若按原始串计数会各自独立计数，攻击者可借大小写/空格变体
+        // 成倍扩大暴力破解额度。归一化后统一计数（DB 查询仍用原始 username）。
+        String lockKey = lockKey(username);
 
         // 暴力破解防护：检查是否被锁定
-        LoginAttemptInfo attemptInfo = loginAttempts.get(username);
+        LoginAttemptInfo attemptInfo = loginAttempts.get(lockKey);
         if (attemptInfo != null && attemptInfo.isLocked()) {
             throw new BusinessException(429, "账号已锁定，请 15 分钟后再试");
         }
@@ -75,7 +79,7 @@ public class AuthService implements IAuthService {
         }
 
         // 登录成功，清除失败计数
-        loginAttempts.remove(username);
+        loginAttempts.remove(lockKey);
 
         // H1 fix: 仅更新 lastLoginTime，避免 updateById 将 stale status/version 写回覆盖并发操作
         userMapper.update(null, new LambdaUpdateWrapper<User>()
@@ -132,11 +136,34 @@ public class AuthService implements IAuthService {
 
         // 3. 过滤：SUPER_ADMIN 可见全部；其余按权限码匹配
         boolean isSuperAdmin = "SUPER_ADMIN".equals(roleCode);
-        List<Menu> visibleMenus = isSuperAdmin ? allMenus
-                : allMenus.stream()
-                        .filter(m -> m.getPermissionCode() == null || m.getPermissionCode().isBlank()
-                                || permSet.contains(m.getPermissionCode()))
-                        .collect(Collectors.toList());
+        List<Menu> visibleMenus;
+        if (isSuperAdmin) {
+            visibleMenus = allMenus;
+        } else {
+            Map<Long, Menu> menuById = allMenus.stream()
+                    .collect(Collectors.toMap(Menu::getId, m -> m, (a, b) -> a));
+            Set<Long> visibleIds = allMenus.stream()
+                    .filter(m -> m.getPermissionCode() == null || m.getPermissionCode().isBlank()
+                            || permSet.contains(m.getPermissionCode()))
+                    .map(Menu::getId)
+                    .collect(Collectors.toSet());
+            // A1#1 fix: 目录节点即使自身权限码未授予，只要含可见子菜单也必须保留，
+            // 否则子菜单挂在被过滤掉的父节点下，从根(parentId=0)不可达而整体消失（如 TEACHER 丢失排课/教室/考勤菜单）
+            Set<Long> withAncestors = new HashSet<>(visibleIds);
+            for (Long vid : visibleIds) {
+                Menu node = menuById.get(vid);
+                Long pid = node == null ? null : node.getParentId();
+                Set<Long> guard = new HashSet<>();
+                while (pid != null && pid != 0L && guard.add(pid)) {
+                    withAncestors.add(pid);
+                    Menu p = menuById.get(pid);
+                    pid = p == null ? null : p.getParentId();
+                }
+            }
+            visibleMenus = allMenus.stream()
+                    .filter(m -> withAncestors.contains(m.getId()))
+                    .collect(Collectors.toList());
+        }
 
         // 4. 构建 parentId → children 映射
         Map<Long, List<MenuTreeNode>> childrenMap = new HashMap<>();
@@ -203,13 +230,18 @@ public class AuthService implements IAuthService {
     private void recordFailedAttempt(String username) {
         // Bug #37/#38: 每次记录前清理过期条目，防止内存无限增长
         cleanExpiredAttempts();
-        loginAttempts.compute(username, (key, info) -> {
+        loginAttempts.compute(lockKey(username), (key, info) -> {
             if (info == null) {
                 info = new LoginAttemptInfo();
             }
             info.increment();
             return info;
         });
+    }
+
+    /** 锁定计数键归一化：trim + lowercase（ROOT），与 DB 大小写/尾空格不敏感排序规则对齐 */
+    private static String lockKey(String username) {
+        return username == null ? "" : username.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     /** 登录尝试信息内部类 */

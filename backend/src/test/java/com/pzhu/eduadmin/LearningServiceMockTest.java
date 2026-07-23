@@ -265,15 +265,15 @@ class LearningServiceMockTest {
     // ============ getStudentArchive — 出勤率分母 (Bug #20) ============
 
     @Test
-    @DisplayName("getStudentArchive — 出勤率分母应排除缺勤(status=4)和null状态")
+    @DisplayName("getStudentArchive — 出勤率分母含出勤/迟到/请假/缺勤(1-4)，仅排除null状态")
     void getStudentArchive_attendanceRate_excludesAbsentAndNull() {
         Long studentId = 1L;
 
-        // 构造出勤记录: status=1(出勤), status=3(迟到), status=4(缺勤), status=null
+        // 构造出勤记录: status=1(出勤), status=3(请假), status=4(缺勤), status=null
         Attendance a1 = new Attendance(); a1.setStatus(1); // present
         Attendance a2 = new Attendance(); a2.setStatus(1); // present
-        Attendance a3 = new Attendance(); a3.setStatus(3); // late (counts in denominator)
-        Attendance a4 = new Attendance(); a4.setStatus(4); // absent (excluded from denominator)
+        Attendance a3 = new Attendance(); a3.setStatus(3); // leave (counts in denominator)
+        Attendance a4 = new Attendance(); a4.setStatus(4); // absent (M11: now counts in denominator)
         Attendance a5 = new Attendance(); a5.setStatus(null); // null (excluded from denominator)
 
         when(attendanceMapper.selectList(any(LambdaQueryWrapper.class)))
@@ -286,10 +286,10 @@ class LearningServiceMockTest {
 
         Map<String, Object> archive = learningService.getStudentArchive(studentId);
 
-        // present = 2 (status 1,1), total = 3 (status 1,1,3 — excludes 4 and null)
-        // rate = 2/3 = 0.67 (rounded to 2 decimal places)
+        // present = 2 (status 1,1), total = 4 (status 1,1,3,4 — M11 统一口径含缺勤，仅排除 null)
+        // rate = 2/4 = 0.5
         double rate = (double) archive.get("attendanceRate");
-        assertThat(rate).isEqualTo(0.67);
+        assertThat(rate).isEqualTo(0.5);
     }
 
     @Test

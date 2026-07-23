@@ -11,15 +11,15 @@
     </div>
     <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-      <el-table-column prop="title" label="标题" min-width="180" sortable />
-      <el-table-column prop="noticeType" label="类型" width="100" sortable>
+      <el-table-column prop="title" label="标题" min-width="180" sortable="custom" />
+      <el-table-column prop="noticeType" label="类型" width="100">
         <template #default="{ row }">
           <el-tag :type="tagStyle(row.noticeType)" size="small">
             {{ noticeTypeLabel(row.noticeType) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="receiverType" label="接收范围" width="100" sortable>
+      <el-table-column prop="receiverType" label="接收范围" width="100">
         <template #default="{ row }">
           {{ receiverTypeLabel(row.receiverType) }}
         </template>
@@ -106,8 +106,10 @@ function receiverTypeLabel(v: any): string {
 
 async function loadData() {
   loading.value = true
+  try {
     const res = await noticeApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-    tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+    tableData.value = res.data?.records || []; total.value = res.data?.total || 0
+  } catch (e) { showError(e, '加载公告失败') } finally { loading.value = false }
 }
 
 function handleSearch() { pageNum.value = 1; loadData() }
@@ -135,12 +137,21 @@ function showDialog(row: any) {
 }
 
 async function handleSave() {
+  if (!form.title || !form.title.trim()) {
+    ElMessage.warning('标题不能为空')
+    return
+  }
+  if (!form.content || !form.content.trim()) {
+    ElMessage.warning('内容不能为空')
+    return
+  }
   saving.value = true
   try {
-    const payload = { ...form, publishTime: new Date().toISOString().slice(0, 19) }
+    const payload: any = { ...form }
     if (editing.value?.id) {
       await noticeApi.update(editing.value.id, payload)
     } else {
+      payload.publishTime = formatLocalTime(new Date())
       await noticeApi.create(payload)
     }
     ElMessage.success(editing.value?.id ? '已更新' : '已发布')
@@ -148,10 +159,18 @@ async function handleSave() {
   } catch (e) { showError(e, '操作失败') } finally { saving.value = false }
 }
 
+function formatLocalTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 async function handleDelete(id: number) {
-  ElMessageBox.confirm('确认删除？', '提示', { confirmButtonText: '确认', type: 'warning' }).then(async () => {
+  try {
+    await ElMessageBox.confirm('确认删除？', '提示', { confirmButtonText: '确认', type: 'warning' })
+  } catch { return } // 用户取消
+  try {
     await noticeApi.delete(id); ElMessage.success('已删除'); loadData()
-  }).catch(() => {})
+  } catch (e) { showError(e, '删除失败') }
 }
 
 onMounted(loadData)

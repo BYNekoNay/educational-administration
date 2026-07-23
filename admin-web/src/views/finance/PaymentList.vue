@@ -11,15 +11,15 @@
     </div>
     <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-      <el-table-column prop="studentName" label="学员" min-width="80" sortable />
-      <el-table-column prop="courseName" label="课程" min-width="100" sortable />
+      <el-table-column prop="studentName" label="学员" min-width="80" />
+      <el-table-column prop="courseName" label="课程" min-width="100" />
       <el-table-column prop="lessonCount" label="课时数" width="80" sortable="custom" />
       <el-table-column prop="amount" label="金额" width="100" sortable="custom" />
-      <el-table-column prop="payType" label="支付方式" width="100" sortable>
+      <el-table-column prop="payType" label="支付方式" width="100">
         <template #default="{ row }">{{ row.payType === 1 ? '现金' : row.payType === 2 ? '模拟支付' : '其他' }}</template>
       </el-table-column>
       <el-table-column prop="payTime" label="缴费时间" width="170" sortable="custom" />
-      <el-table-column prop="remark" label="备注" sortable />
+      <el-table-column prop="remark" label="备注" />
     </el-table>
     <el-pagination
       style="margin-top: 16px; justify-content: flex-end"
@@ -32,22 +32,22 @@
     <el-dialog title="收费登记" v-model="dialogVisible" width="450px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="报名记录">
-          <el-select v-model="form.enrollmentId" filterable style="width:100%" placeholder="搜索选择报名记录">
-            <el-option v-for="e in enrollmentList" :key="e.id" :label="`${e.studentName || '学员' + e.studentId} - ${e.courseName || '课程' + e.courseId}`" :value="e.id" />
+          <el-select v-model="form.enrollmentId" filterable style="width:100%" placeholder="搜索选择报名记录" @change="onEnrollmentChange">
+            <el-option v-for="e in payableEnrollments" :key="e.id" :label="`${e.studentName || '学员' + e.studentId} - ${e.courseName || '课程' + e.courseId}`" :value="e.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="学员">
-          <el-select v-model="form.studentId" placeholder="请选择学员" filterable style="width:100%">
+          <el-select v-model="form.studentId" placeholder="由报名记录自动带出" filterable disabled style="width:100%">
             <el-option v-for="s in studentList" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="课程">
-          <el-select v-model="form.courseId" placeholder="请选择课程" filterable style="width:100%">
+          <el-select v-model="form.courseId" placeholder="由报名记录自动带出" filterable disabled style="width:100%">
             <el-option v-for="c in courseList" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="课时数"><el-input-number v-model="form.lessonCount" :min="1" :precision="2" /></el-form-item>
-        <el-form-item label="金额"><el-input-number v-model="form.amount" :min="0" :precision="2" /></el-form-item>
+        <el-form-item label="金额"><el-input-number v-model="form.amount" :min="0.01" :precision="2" /></el-form-item>
         <el-form-item label="支付方式">
           <el-select v-model="form.payType"><el-option :value="2" label="模拟支付" /><el-option :value="1" label="现金" /><el-option :value="3" label="其他" /></el-select>
         </el-form-item>
@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import { paymentApi } from '@/api/finance'
@@ -76,7 +76,15 @@ const dialogVisible = ref(false)
 const studentList = ref<any[]>([])
 const courseList = ref<any[]>([])
 const enrollmentList = ref<any[]>([])
-const form = reactive<any>({ enrollmentId: 1, studentId: null, courseId: null, lessonCount: 24, amount: 2400, payType: 2, remark: '' })
+// 后端仅允许 status=2(审核通过)/3(已缴费，续费) 的报名缴费，其余状态会 409，这里提前过滤避免无效选项
+const payableEnrollments = computed(() => enrollmentList.value.filter((e: any) => e.status === 2 || e.status === 3))
+// 后端会强制用报名记录的 studentId/courseId 覆盖前端传值，选择报名后自动带出，禁止手工改动
+function onEnrollmentChange(id: any) {
+  const e = enrollmentList.value.find((x: any) => x.id === id)
+  form.studentId = e ? e.studentId : null
+  form.courseId = e ? e.courseId : null
+}
+const form = reactive<any>({ enrollmentId: null, studentId: null, courseId: null, lessonCount: 24, amount: 2400, payType: 2, remark: '' })
 
 async function loadOptions() {
   try {
@@ -105,22 +113,42 @@ function handleSortChange({ prop, order }: any) {
   pageNum.value = 1; loadData()
 }
 
+function formatLocalTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  // 必须输出 ISO-8601（日期与时间之间为 'T'）：后端 payTime 为 LocalDateTime 且无 @JsonFormat/全局日期配置，
+  // Jackson 仅接受 'T' 分隔符，空格分隔会被拒绝为 400，导致管理端收费始终失败
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 function showPaymentDialog() {
+  // 每次打开都复位表单，避免上次取消/提交后的残留值被误用到新收费单
+  form.enrollmentId = null
+  form.studentId = null
+  form.courseId = null
+  form.lessonCount = 24
+  form.amount = 2400
+  form.payType = 2
+  form.remark = ''
   if (studentList.value.length === 0) loadOptions()
   dialogVisible.value = true
 }
 
 async function handleCreatePayment() {
+  if (form.enrollmentId == null) { ElMessage.warning('请选择报名记录'); return }
+  if (form.amount == null || Number(form.amount) <= 0) { ElMessage.warning('缴费金额必须大于零'); return }
   saving.value = true
   try {
     await paymentApi.create({
       enrollmentId: form.enrollmentId, studentId: form.studentId, courseId: form.courseId,
       lessonCount: form.lessonCount, amount: form.amount, payType: form.payType,
-      payTime: new Date().toISOString().slice(0, 19).replace('T', ' '), remark: form.remark
+      payTime: formatLocalTime(new Date()), remark: form.remark
     })
     ElMessage.success('收费成功，已自动开通课时账户并写入流水')
     dialogVisible.value = false
+    pageNum.value = 1
     loadData()
+  } catch (e) {
+    showError(e, '收费失败')
   } finally { saving.value = false }
 }
 

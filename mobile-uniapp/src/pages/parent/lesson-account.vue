@@ -86,8 +86,8 @@
           <text class="cell-desc">余额 {{ f.afterBalance }}</text>
         </view>
         <view class="cell-footer">
-          <text class="tag" :class="f.changeType === 1 ? 'tag-success' : 'tag-danger'">
-            {{ f.changeType === 1 ? '+' + f.changeAmount : '-' + f.changeAmount }}
+          <text class="tag" :class="Number(f.changeType) === 1 ? 'tag-success' : 'tag-danger'">
+            {{ Number(f.changeType) === 1 ? '+' + f.changeAmount : f.changeAmount }}
           </text>
         </view>
       </view>
@@ -98,6 +98,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api, getCurrentStudentId } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const accounts = ref([])
@@ -123,7 +124,9 @@ function calcPercent(a) {
 
 function isExpiringSoon(a) {
   if (!a.expireDate) return false
-  const expire = new Date(a.expireDate)
+  // 'YYYY-MM-DD' 直接 new Date 会按 UTC 零点解析，东八区会偏差一整天；
+  // 转成 'YYYY/MM/DD' 按本地时间解析（iOS Safari 亦兼容）
+  const expire = new Date(String(a.expireDate).replace(/-/g, '/'))
   const now = new Date()
   const diff = (expire - now) / (1000 * 60 * 60 * 24)
   return diff <= 30 && diff > 0
@@ -157,15 +160,19 @@ function onStudentChange(id) {
 
 async function loadData() {
   if (!studentId.value) return
+  const sid = studentId.value
   try {
     const [aR, fR] = await Promise.all([
-      api({ url: `/api/finance/parent/students/${studentId.value}/lesson-account` }),
-      api({ url: `/api/finance/parent/students/${studentId.value}/lesson-flows` })
+      api({ url: `/api/finance/parent/students/${sid}/lesson-account` }),
+      api({ url: `/api/finance/parent/students/${sid}/lesson-flows` })
     ])
+    // 竞态守卫：加载期间切换学员时丢弃旧学员响应，避免账户/流水串号
+    if (sid !== studentId.value) return
     accounts.value = aR.data || []
     flows.value = fR.data || []
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+  } catch (e) {
+    // request.js 已对业务/HTTP 错误弹过提示（_handled），此处仅兜底未处理异常
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '加载失败'), icon: 'none' })
   }
 }
 

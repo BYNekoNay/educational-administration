@@ -60,7 +60,7 @@
       :title="editingRole ? '编辑角色' : '新增角色'"
       v-model="roleDialogVisible"
       width="460px"
-      @closed="roleForm.roleCode = ''; roleForm.roleName = ''; editingRole = null"
+      @closed="onRoleDialogClosed"
     >
       <el-form :model="roleForm" label-width="90px">
         <el-form-item label="角色编码" required>
@@ -87,7 +87,7 @@
       :title="`分配权限 — ${permRole?.roleName || ''}`"
       v-model="permDialogVisible"
       width="700px"
-      @closed="permRole = null; checkedPermissions = []; originalPermissions = []"
+      @closed="onPermDialogClosed"
     >
       <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 10px">
         <el-button size="small" @click="handleSelectAll">全选</el-button>
@@ -173,6 +173,7 @@ const PERM_LABEL_MAP: Record<string, string> = {
   'menu:class': '班级管理',
   'menu:enrollment': '报名管理',
   'menu:schedule': '排课管理',
+  'menu:big-schedule': '大课表',
   'menu:adjust': '调课管理',
   'menu:classroom': '教室管理',
   'menu:attendance': '考勤管理',
@@ -188,10 +189,12 @@ const PERM_LABEL_MAP: Record<string, string> = {
 interface PermItem { code: string; label: string }
 interface PermGroup { name: string; icon: string; perms: PermItem[] }
 
+// 注意：分组必须覆盖 permission 表中的全部权限码，漏列的码在弹窗中不可见，
+// "清空→保存"会随全量覆盖（后端先删后插）被静默移除。新增权限码时务必同步此表。
 const PERM_CATEGORIES: { name: string; icon: string; codes: string[] }[] = [
   { name: '运营看板', icon: '📊', codes: ['menu:dashboard'] },
-  { name: '系统管理', icon: '⚙️', codes: ['menu:user', 'menu:role', 'menu:menu', 'menu:organization', 'menu:notice', 'menu:log'] },
-  { name: '教务管理', icon: '📚', codes: ['menu:student', 'menu:course', 'menu:class', 'menu:enrollment', 'menu:schedule', 'menu:classroom', 'menu:attendance', 'menu:exam'] },
+  { name: '系统管理', icon: '⚙️', codes: ['menu:user', 'menu:role', 'menu:menu', 'menu:permission', 'menu:organization', 'menu:notice', 'menu:log'] },
+  { name: '教务管理', icon: '📚', codes: ['menu:student', 'menu:course', 'menu:class', 'menu:enrollment', 'menu:schedule', 'menu:big-schedule', 'menu:adjust', 'menu:classroom', 'menu:attendance', 'menu:exam'] },
   { name: '财务管理', icon: '💰', codes: ['menu:payment', 'menu:refund', 'menu:lesson-flow', 'menu:salary', 'menu:revenue'] },
 ]
 
@@ -220,6 +223,20 @@ const originalPermissions = ref<string[]>([])
 const saving = ref(false)
 const allPermissions = ref<PermItem[]>([])
 
+/** 角色弹窗关闭后复位（避免在模板中对 const 绑定直接赋值） */
+function onRoleDialogClosed() {
+  roleForm.roleCode = ''
+  roleForm.roleName = ''
+  editingRole.value = null
+}
+
+/** 分配权限弹窗关闭后复位 */
+function onPermDialogClosed() {
+  permRole.value = null
+  checkedPermissions.value = []
+  originalPermissions.value = []
+}
+
 const permGroups = computed<PermGroup[]>(() => {
   return PERM_CATEGORIES.map(cat => ({
     name: cat.name,
@@ -246,7 +263,7 @@ async function loadRoles() {
   try {
     const res = await roleApi.list()
     roles.value = res.data || []
-  } catch { ElMessage.error('加载角色列表失败') }
+  } catch (e) { showError(e, '加载角色列表失败') }
   finally { loading.value = false }
 }
 
@@ -262,7 +279,11 @@ async function loadAllPermissions(): Promise<PermItem[]> {
       code: p.permissionCode,
       label: PERM_LABEL_MAP[p.permissionCode] || p.permissionCode.replace('menu:', ''),
     }))
-  } catch { return [] }
+  } catch (e) {
+    // 不能静默吞掉：allPermissions 为空时"全选→保存"会把角色权限清空（后端先删后插）
+    showError(e, '加载权限列表失败')
+    return []
+  }
 }
 
 // === 角色增删改 ===
@@ -282,6 +303,10 @@ function showRoleDialog(role?: RoleItem) {
 async function handleRoleSave() {
   if (!roleForm.roleCode || !roleForm.roleName) {
     ElMessage.warning('角色编码和角色名称不能为空')
+    return
+  }
+  if (!editingRole.value && !/^[A-Za-z][A-Za-z0-9_]*$/.test(roleForm.roleCode)) {
+    ElMessage.warning('角色编码须以字母开头，仅含字母、数字、下划线')
     return
   }
   roleSaving.value = true
@@ -314,6 +339,15 @@ async function handleRoleDelete(id: number) {
 // === 权限分配 ===
 async function openPermDialog(role: RoleItem) {
   permRole.value = role
+  // 权限全量列表为空（onMounted 加载失败）时先重试；仍为空则不打开弹窗——
+  // 否则"全选"会置空、保存将清空角色原有权限（后端先删后插）
+  if (allPermissions.value.length === 0) {
+    allPermissions.value = await loadAllPermissions()
+    if (allPermissions.value.length === 0) {
+      ElMessage.error('权限列表加载失败，无法分配权限，请刷新页面重试')
+      return
+    }
+  }
   try {
     const res = await roleApi.permissions(role.id)
     const codes: string[] = res.data?.permissionCodes || []
@@ -321,8 +355,8 @@ async function openPermDialog(role: RoleItem) {
     originalPermissions.value = [...codes]
   } catch (e) {
     showError(e, '加载权限失败')
-    checkedPermissions.value = []
-    originalPermissions.value = []
+    // 加载失败时不得打开弹窗：空勾选状态下保存会覆盖角色原有权限（后端先删后插）
+    return
   }
   permDialogVisible.value = true
 }
@@ -342,14 +376,12 @@ async function handlePermSave() {
   if (!permRole.value) return
   saving.value = true
   try {
-    console.log('save role permissions:', permRole.value.id, checkedPermissions.value)
     await roleApi.updatePermissions(permRole.value.id, checkedPermissions.value)
     originalPermissions.value = [...checkedPermissions.value]
     ElMessage.success(`已保存「${permRole.value.roleName}」的权限配置`)
     permDialogVisible.value = false
-  } catch (e: any) {
-    console.error('save failed:', e)
-    ElMessage.error(e?.message || '保存失败')
+  } catch (e) {
+    showError(e, '保存失败')
   } finally { saving.value = false }
 }
 

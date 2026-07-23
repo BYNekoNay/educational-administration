@@ -82,7 +82,7 @@
         </view>
         <view class="modal-btns">
           <button class="modal-btn cancel" @click="confirmVisible = false">取消</button>
-          <button class="modal-btn submit" :loading="submitting" @click="doRefund">确认申请</button>
+          <button class="modal-btn submit" :loading="submitting" :disabled="submitting" @click="doRefund">确认申请</button>
         </view>
       </view>
     </view>
@@ -92,6 +92,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api, getCurrentStudentId } from '@/utils/request'
+import { getErrorMessage } from '@/utils/error'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 
 const available = ref([])
@@ -145,8 +146,7 @@ async function doRefund() {
     confirmVisible.value = false
     loadData()
   } catch (e) {
-    const msg = e.data?.message || e.errMsg || '提交失败'
-    uni.showToast({ title: msg, icon: 'none' })
+    if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '提交失败'), icon: 'none' })
   } finally {
     submitting.value = false
   }
@@ -154,15 +154,17 @@ async function doRefund() {
 
 async function loadData() {
   if (!studentId.value) return
+  const sid = studentId.value
   try {
     const [availRes, recRes] = await Promise.all([
-      api({ url: `/api/parent/refunds/available?studentId=${studentId.value}` }),
-      api({ url: `/api/parent/refunds?studentId=${studentId.value}&pageNum=1&pageSize=50` })
+      api({ url: `/api/parent/refunds/available?studentId=${sid}` }),
+      api({ url: `/api/parent/refunds?studentId=${sid}&pageNum=1&pageSize=50` })
     ])
+    if (sid !== studentId.value) return
     available.value = availRes.data || []
     records.value = recRes.data?.records || []
-  } catch {
-    uni.showToast({ title: '加载失败', icon: 'none' })
+  } catch (e) {
+    if (!e || !e._handled) uni.showToast({ title: '加载失败', icon: 'none' })
   }
 }
 

@@ -128,6 +128,18 @@ public class UserServiceImpl implements UserService {
             if (roleMapper.selectCount(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, request.getRoleCode())) == 0) {
                 throw new BusinessException(400, "角色编码不存在: " + request.getRoleCode());
             }
+            // High fix: 保护最后一个 SUPER_ADMIN，角色降级会导致系统永久不可管理
+            // （M16 仅在 updateUserStatus 中防护，此处补齐角色变更路径）
+            if ("SUPER_ADMIN".equals(user.getRoleCode()) && !"SUPER_ADMIN".equals(request.getRoleCode())) {
+                Long activeSuperAdminCount = userMapper.selectCount(
+                        new LambdaQueryWrapper<User>()
+                                .eq(User::getRoleCode, "SUPER_ADMIN")
+                                .eq(User::getStatus, 1)
+                                .ne(User::getId, id));
+                if (activeSuperAdminCount == 0) {
+                    throw new BusinessException(400, "不能变更最后一个超级管理员的角色");
+                }
+            }
             user.setRoleCode(request.getRoleCode());
             roleChanged = true;
         }
@@ -137,10 +149,17 @@ public class UserServiceImpl implements UserService {
             userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
                     .eq(User::getId, id)
                     .setSql("version = version + 1"));
-            // C1 fix: 置空 version 防止 updateById 将旧值写回覆盖原子递增
-            user.setVersion(null);
         }
-        userMapper.updateById(user);
+        // 防止读改写覆盖并发操作：仅更新可编辑字段（username/realName/phone/roleCode），
+        // 避免 updateById 将 selectById 加载的陈旧 version/status/lastLoginTime 写回，
+        // 覆盖禁用/重置密码/登录等并发操作的递增
+        User update = new User();
+        update.setId(id);
+        if (usernameChanged) update.setUsername(user.getUsername());
+        if (request.getRealName() != null) update.setRealName(user.getRealName());
+        if (request.getPhone() != null) update.setPhone(user.getPhone());
+        if (roleChanged) update.setRoleCode(user.getRoleCode());
+        userMapper.updateById(update);
 
         // 处理角色变更时的教学特长
         if ("TEACHER".equals(user.getRoleCode())) {
@@ -196,8 +215,10 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(400, "新密码长度不能少于6位");
         }
         // H6 fix: BCrypt 有效上限 72 字节，超长密码会导致 CPU 密集型哈希（DoS 风险）
-        if (newPassword.length() > 72) {
-            throw new BusinessException(400, "新密码长度不能超过72位");
+        // L2 fix: 上限是 72「字节」而非 72 字符，多字节密码（如中文）按字符校验会超过 72 字节被 BCrypt
+        // 静默截断，导致前 72 字节相同的两个密码哈希一致。改用 UTF-8 字节长度校验。
+        if (newPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
+            throw new BusinessException(400, "新密码过长（超出72字节限制）");
         }
         User user = userMapper.selectById(id);
         if (user == null) {
@@ -217,7 +238,10 @@ public class UserServiceImpl implements UserService {
     private void saveSpecialties(Long userId, List<Long> courseIds) {
         teacherCourseMapper.realDeleteByUserId(userId);
         if (courseIds != null && !courseIds.isEmpty()) {
+            // A4#3 fix: 去重并剔除 null，避免重复插入触发唯一键冲突 / 插入非法空 courseId
+            java.util.Set<Long> seen = new java.util.LinkedHashSet<>();
             for (Long cid : courseIds) {
+                if (cid == null || !seen.add(cid)) continue;
                 TeacherCourse tc = new TeacherCourse();
                 tc.setUserId(userId);
                 tc.setCourseId(cid);

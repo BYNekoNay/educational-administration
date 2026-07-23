@@ -99,7 +99,7 @@ class EnrollmentServiceMockTest {
         when(enrollmentMapper.insert(any(Enrollment.class))).thenReturn(1);
         // P1-1: create 需校验学员/课程存在
         when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
-        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(courseMapper.selectById(20L)).thenReturn(activeCourse());
 
         Enrollment result = enrollmentService.create(enrollment);
 
@@ -119,7 +119,7 @@ class EnrollmentServiceMockTest {
         when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
         // P1-1: create 需校验学员/课程存在
         when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
-        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(courseMapper.selectById(20L)).thenReturn(activeCourse());
 
         assertThatThrownBy(() -> enrollmentService.create(enrollment))
                 .isInstanceOf(BusinessException.class)
@@ -168,7 +168,7 @@ class EnrollmentServiceMockTest {
                 .thenReturn(List.of(Map.of("id", 1L, "class_name", "硬笔书法A班")));
         when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
         when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
-        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(courseMapper.selectById(20L)).thenReturn(activeCourse());
 
         Enrollment enrollment = new Enrollment();
         enrollment.setStudentId(10L);
@@ -203,7 +203,7 @@ class EnrollmentServiceMockTest {
                 .thenReturn(List.of(Map.of("id", 1L, "class_name", "硬笔书法A班")));
         when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
         when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
-        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(courseMapper.selectById(20L)).thenReturn(activeCourse());
 
         Enrollment enrollment = new Enrollment();
         enrollment.setStudentId(10L);
@@ -235,7 +235,7 @@ class EnrollmentServiceMockTest {
         when(scheduleLessonMapper.selectList(any(LambdaQueryWrapper.class)))
                 .thenReturn(List.of(existing, target));
         when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
-        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(courseMapper.selectById(20L)).thenReturn(activeCourse());
         when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
         // 重复报名检查返回 0
         when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
@@ -269,7 +269,7 @@ class EnrollmentServiceMockTest {
         when(scheduleLessonMapper.selectList(any(LambdaQueryWrapper.class)))
                 .thenReturn(List.of(existing, target));
         when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
-        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(courseMapper.selectById(20L)).thenReturn(activeCourse());
         when(classGroupMapper.selectById(2L)).thenReturn(buildClassGroup(2L, 20L));
         when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(enrollmentMapper.insert(any(Enrollment.class))).thenReturn(1);
@@ -288,7 +288,7 @@ class EnrollmentServiceMockTest {
     @DisplayName("时间冲突-TC5: classId=null 应跳过冲突检测")
     void create_timeConflict_nullClassId_shouldSkip() {
         when(studentMapper.selectById(10L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
-        when(courseMapper.selectById(20L)).thenReturn(new com.pzhu.eduadmin.modules.course.entity.Course());
+        when(courseMapper.selectById(20L)).thenReturn(activeCourse());
         when(enrollmentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(enrollmentMapper.insert(any(Enrollment.class))).thenReturn(1);
 
@@ -402,7 +402,7 @@ class EnrollmentServiceMockTest {
         when(refundRecordMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(enrollmentMapper.selectById(5L)).thenReturn(enrollment);
         when(enrollmentMapper.deleteById(5L)).thenReturn(1);
-        when(classStudentMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(1);
+        when(classStudentMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         lenient().when(nameResolver.getStudentName(anyLong())).thenReturn("学员A");
         lenient().when(nameResolver.getCourseName(anyLong())).thenReturn("课程A");
 
@@ -410,7 +410,7 @@ class EnrollmentServiceMockTest {
 
         assertThat(result).isTrue();
         verify(enrollmentMapper).deleteById(5L);
-        verify(classStudentMapper).delete(any(LambdaQueryWrapper.class));
+        verify(classStudentMapper).update(any(), any(LambdaUpdateWrapper.class));
         verify(operationLogService).log(anyString(), anyString());
     }
 
@@ -488,6 +488,13 @@ class EnrollmentServiceMockTest {
         cg.setId(classId);
         cg.setCourseId(courseId);
         cg.setClassName("测试班级");
+        cg.setStatus(1); // r20: create() 校验班级须为开放状态
         return cg;
+    }
+
+    private com.pzhu.eduadmin.modules.course.entity.Course activeCourse() {
+        com.pzhu.eduadmin.modules.course.entity.Course c = new com.pzhu.eduadmin.modules.course.entity.Course();
+        c.setStatus(1); // r20: create() 校验课程须为启用状态
+        return c;
     }
 }

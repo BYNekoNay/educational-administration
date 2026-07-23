@@ -10,7 +10,6 @@ export function createAuthApiMocks() {
   return {
     authApi: {
       login: makeResolve({ token: 'fake-token', userId: 1, username: 'admin', realName: '管理员', roleCode: 'SUPER_ADMIN' }),
-      profile: makeResolve({ userId: 1, username: 'admin', realName: '管理员', roleCode: 'SUPER_ADMIN' }),
       logout: makeResolve({}),
     },
     userApi: {
@@ -137,6 +136,10 @@ export function createEduApiMocks() {
       create: makeResolve({}),
       audit: makeResolve({}),
     },
+    leaveRequestApi: {
+      list: makeResolve(emptyPage),
+      audit: makeResolve({}),
+    },
     examApi: {
       levels: makeResolve(emptyPage),
       createLevel: makeResolve({}),
@@ -169,7 +172,9 @@ export function createFinanceApiMocks() {
     salaryApi: {
       list: makeResolve(emptyPage),
       calculate: makeResolve({ lessonCount: 0, substituteCount: 0, totalAmount: 0 }),
+      calculateBatch: makeResolve({ totalTeachers: 0, successCount: 0, failedCount: 0, totalAmount: 0, successes: [], errors: [] }),
       confirm: makeResolve({}),
+      pay: makeResolve({}),
       void: makeResolve({}),
       rules: makeResolve(emptyPage),
       createRule: makeResolve({}),

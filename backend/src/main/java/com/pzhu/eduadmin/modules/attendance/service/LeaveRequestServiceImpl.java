@@ -140,6 +140,10 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
         if (lr.getStatus() != 1) {
             throw new BusinessException(409, "该请假申请已审核，不可重复操作");
         }
+        // A4#3 fix: audit_remark 列为 VARCHAR(200)，超长在 MySQL 严格模式抛 "Data too long" → 500
+        if (remark != null && remark.length() > 200) {
+            throw new BusinessException(400, "审核备注不能超过200字");
+        }
 
         // CAS 原子更新防止并发审核
         int updated = leaveRequestMapper.update(null,
@@ -199,11 +203,13 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
                             .eq(Attendance::getLessonId, lesson.getId())
                             .eq(Attendance::getStudentId, lr.getStudentId()));
             if (existing != null) {
-                // H4 fix: 若已有出勤/迟到记录且有扣减，需反向回冲后改为请假状态
-                if ((existing.getStatus() == 1 || existing.getStatus() == 2)
-                        && existing.getDeductLessons() != null
-                        && existing.getDeductLessons().compareTo(BigDecimal.ZERO) > 0) {
-                    reverseAttendanceDeduction(existing, lesson);
+                // H4 + L7 fix: 已批准请假覆盖出勤/迟到记录时统一改为请假状态(status=3)保持一致；
+                // 仅当原记录确有扣减(deduct>0)时才做课时回冲，零扣减记录只改状态不回冲
+                if (existing.getStatus() == 1 || existing.getStatus() == 2) {
+                    if (existing.getDeductLessons() != null
+                            && existing.getDeductLessons().compareTo(BigDecimal.ZERO) > 0) {
+                        reverseAttendanceDeduction(existing, lesson);
+                    }
                     existing.setStatus(3);
                     existing.setDeductLessons(BigDecimal.ZERO);
                     existing.setRemark("请假审批覆盖原出勤记录");
@@ -224,7 +230,22 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
             try {
                 attendanceMapper.insert(attendance);
             } catch (DuplicateKeyException e) {
-                // 已有记录被并发创建，跳过
+                // M7 fix: 插入输给并发考勤插入时不能简单跳过——否则请假已批准但考勤仍是"到课"且扣减保留。
+                // 重新读取并套用同样的覆盖/回冲逻辑。
+                Attendance conflicted = attendanceMapper.selectOne(
+                        new LambdaQueryWrapper<Attendance>()
+                                .eq(Attendance::getLessonId, lesson.getId())
+                                .eq(Attendance::getStudentId, lr.getStudentId()));
+                if (conflicted != null && (conflicted.getStatus() == 1 || conflicted.getStatus() == 2)) {
+                    if (conflicted.getDeductLessons() != null
+                            && conflicted.getDeductLessons().compareTo(BigDecimal.ZERO) > 0) {
+                        reverseAttendanceDeduction(conflicted, lesson);
+                    }
+                    conflicted.setStatus(3);
+                    conflicted.setDeductLessons(BigDecimal.ZERO);
+                    conflicted.setRemark("请假审批覆盖原出勤记录");
+                    attendanceMapper.updateById(conflicted);
+                }
             }
         }
 
@@ -337,7 +358,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
             studentNames = raw.stream()
                     .collect(Collectors.toMap(
                             m -> ((Number) m.get("id")).longValue(),
-                            m -> (String) m.get("name"),
+                            m -> m.get("name") != null ? (String) m.get("name") : "",
                             (a, b) -> a));
         }
         for (LeaveRequest lr : list) {
@@ -349,12 +370,14 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
      * H4 fix: 回冲已有出勤记录的课时扣减（请假审批覆盖出勤时调用）。
      */
     private void reverseAttendanceDeduction(Attendance attendance, ScheduleLesson lesson) {
-        com.pzhu.eduadmin.modules.course.entity.ClassGroup cg = classGroupMapper.selectById(lesson.getClassId());
-        if (cg == null) return;
+        // A4#2 fix: 班级可能已软删，绕过 @TableLogic 查 courseId（与 AttendanceServiceImpl.reverseDeduct 一致），
+        // 否则软删班级时此处静默 return 但调用方仍置 deduct=0，导致已扣课时永久丢失
+        Long courseId = classGroupMapper.selectCourseIdByIdIncludeDeleted(lesson.getClassId());
+        if (courseId == null) return;
         com.pzhu.eduadmin.modules.finance.entity.LessonAccount account = lessonAccountMapper.selectOne(
                 new LambdaQueryWrapper<com.pzhu.eduadmin.modules.finance.entity.LessonAccount>()
                         .eq(com.pzhu.eduadmin.modules.finance.entity.LessonAccount::getStudentId, attendance.getStudentId())
-                        .eq(com.pzhu.eduadmin.modules.finance.entity.LessonAccount::getCourseId, cg.getCourseId()));
+                        .eq(com.pzhu.eduadmin.modules.finance.entity.LessonAccount::getCourseId, courseId));
         if (account == null) return;
 
         BigDecimal before = account.getRemainingLessons();

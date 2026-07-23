@@ -200,6 +200,17 @@ CREATE TABLE `room_booking` (
   INDEX idx_classroom_time (classroom_id, start_time, end_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='教室预约（非常规占用）';
 
+DROP TABLE IF EXISTS `period`;
+CREATE TABLE `period` (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(10) NOT NULL COMMENT '第1节~第10节',
+  slot_order INT NOT NULL COMMENT '排序 1-10',
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课节时段';
+
 DROP TABLE IF EXISTS `schedule_lesson`;
 CREATE TABLE `schedule_lesson` (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -211,6 +222,8 @@ CREATE TABLE `schedule_lesson` (
   end_time TIME NOT NULL,
   status TINYINT NOT NULL DEFAULT 1 COMMENT '1-待上课，2-已完成，3-已取消，4-已调课',
   source_lesson_id BIGINT COMMENT '调课后新课次回填原课次ID',
+  period_id BIGINT COMMENT '关联时段表，null 表示自由时间模式',
+  period_count INT DEFAULT 1 COMMENT '连堂数（>=1，如 90min 课=2）',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,

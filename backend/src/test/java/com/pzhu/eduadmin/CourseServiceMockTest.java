@@ -436,14 +436,16 @@ class CourseServiceMockTest {
         cs.setStatus(1);
 
         when(classStudentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(cs));
-        when(classStudentMapper.deleteById(1L)).thenReturn(1);
+        when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
         when(nameResolver.getClassName(10L)).thenReturn("测试班级");
         when(nameResolver.getStudentName(100L)).thenReturn("测试学员");
 
         boolean result = courseService.removeStudentFromClass(10L, 100L);
 
         assertThat(result).isTrue();
-        verify(classStudentMapper).deleteById(1L);
+        // Critical fix 后改为置 status=3 并 updateById（保留记录用于流失统计）
+        assertThat(cs.getStatus()).isEqualTo(3);
+        verify(classStudentMapper).updateById(cs);
         verify(operationLogService).log(anyString(), anyString());
     }
 
@@ -474,6 +476,7 @@ class CourseServiceMockTest {
         classGroup.setMaxStudentCount(20);
 
         when(classGroupMapper.selectById(10L)).thenReturn(classGroup);
+        when(studentMapper.selectById(100L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
         when(classStudentMapper.selectCount(any(LambdaQueryWrapper.class)))
                 .thenReturn(0L)  // 重复检查：不存在
                 .thenReturn(5L); // 当前人数：5人
@@ -497,6 +500,7 @@ class CourseServiceMockTest {
         classGroup.setMaxStudentCount(10);
 
         when(classGroupMapper.selectById(10L)).thenReturn(classGroup);
+        when(studentMapper.selectById(100L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
         when(classStudentMapper.selectCount(any(LambdaQueryWrapper.class)))
                 .thenReturn(0L)   // 重复检查：不存在
                 .thenReturn(10L); // 当前人数：10人（已满）
@@ -521,6 +525,7 @@ class CourseServiceMockTest {
         classGroup.setMaxStudentCount(20);
 
         when(classGroupMapper.selectById(10L)).thenReturn(classGroup);
+        when(studentMapper.selectById(100L)).thenReturn(new com.pzhu.eduadmin.modules.student.entity.Student());
         when(classStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 
         assertThatThrownBy(() -> courseService.addStudentToClass(cs))

@@ -11,11 +11,11 @@
     </div>
     <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-      <el-table-column prop="studentName" label="学员" min-width="80" sortable />
+      <el-table-column prop="studentName" label="学员" min-width="80" />
       <el-table-column prop="amount" label="退费金额" width="110" sortable="custom">
         <template #default="{ row }">¥{{ row.amount ? Number(row.amount).toFixed(2) : '0.00' }}</template>
       </el-table-column>
-      <el-table-column prop="lessonCount" label="课时数" width="80" sortable="custom" />
+      <el-table-column prop="lessonCount" label="课时数" width="80" />
       <el-table-column prop="status" label="状态" width="90" sortable="custom">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'warning' : row.status === 2 ? 'success' : 'danger'" size="small">
@@ -23,7 +23,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="applicantName" label="申请人" min-width="80" sortable />
+      <el-table-column prop="applicantName" label="申请人" min-width="80" />
       <el-table-column prop="createTime" label="申请时间" width="170" sortable="custom" />
       <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
@@ -99,7 +99,7 @@ const dialogVisible = ref(false)
 const studentList = ref<any[]>([])
 const enrollmentList = ref<any[]>([])
 const paymentList = ref<any[]>([])
-const form = reactive<any>({ studentId: null, enrollmentId: 1, paymentRecordId: 1, lessonCount: 0, amount: 0 })
+const form = reactive<any>({ studentId: null, enrollmentId: null, paymentRecordId: null, lessonCount: 0, amount: 0 })
 
 async function loadOptions() {
   try {
@@ -136,6 +136,8 @@ function showRefundDialog() {
 }
 
 async function handleCreateRefund() {
+  if (!form.enrollmentId) { ElMessage.warning('请选择报名记录'); return }
+  if (!form.paymentRecordId) { ElMessage.warning('请选择缴费记录'); return }
   saving.value = true
   try {
     await refundApi.create({ ...form })

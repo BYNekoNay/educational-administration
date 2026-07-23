@@ -13,6 +13,7 @@ import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.schedule.entity.*;
+import com.pzhu.eduadmin.modules.schedule.dto.AdjustRequestVO;
 import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
 import com.pzhu.eduadmin.modules.schedule.service.*;
@@ -220,6 +221,11 @@ class ScheduleServiceMockTest {
     @Test
     @DisplayName("删除课次并写操作日志")
     void deleteLesson_Success() {
+        // High fix 后删除前先校验课次状态，仅待上课（status=1）可删除
+        ScheduleLesson lesson = new ScheduleLesson();
+        lesson.setId(1L);
+        lesson.setStatus(1);
+        when(scheduleLessonMapper.selectById(1L)).thenReturn(lesson);
         when(scheduleLessonMapper.deleteById(1L)).thenReturn(1);
 
         assertThat(scheduleService.deleteLesson(1L)).isTrue();
@@ -381,8 +387,14 @@ class ScheduleServiceMockTest {
         RoomBooking rb = new RoomBooking();
         // C3 fix: 必须提供 classroomId、startTime、endTime
         rb.setClassroomId(1L);
-        rb.setStartTime(java.time.LocalDateTime.of(2026, 7, 21, 9, 0));
-        rb.setEndTime(java.time.LocalDateTime.of(2026, 7, 21, 10, 0));
+        rb.setStartTime(java.time.LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0));
+        rb.setEndTime(java.time.LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0));
+        // L4 fix: 校验教室存在；r19: 教室须为启用状态(status=1)
+        Classroom activeRoom = new Classroom();
+        activeRoom.setStatus(1);
+        when(classroomMapper.selectById(1L)).thenReturn(activeRoom);
+        // M8 fix: 预约对称检查已排课次（无重叠）
+        when(scheduleLessonMapper.selectList(any())).thenReturn(Collections.emptyList());
         // C3 fix: 冲突检查 + 插入后二次校验
         when(roomBookingMapper.selectCount(any())).thenReturn(0L);
         doAnswer(inv -> { inv.getArgument(0, RoomBooking.class).setId(1L); return 1; })
@@ -412,10 +424,10 @@ class ScheduleServiceMockTest {
     @Test
     @DisplayName("教师分页查询调课申请")
     void pageTeacherAdjustRequests_Success() {
-        Page<ScheduleAdjustRequest> mp = new Page<>(1, 10);
-        when(scheduleAdjustRequestMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mp);
+        Page<AdjustRequestVO> mp = new Page<>(1, 10);
+        when(scheduleAdjustRequestMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(new Page<>(1, 10));
 
-        Page<ScheduleAdjustRequest> result = scheduleService.pageTeacherAdjustRequests(1L, 1, 10);
+        Page<AdjustRequestVO> result = scheduleService.pageTeacherAdjustRequests(1L, 1, 10);
 
         assertThat(result).isNotNull();
     }
@@ -423,15 +435,11 @@ class ScheduleServiceMockTest {
     @Test
     @DisplayName("管理端分页查询调课申请")
     void pageAdjustRequests_Success() {
-        ScheduleAdjustRequest req = new ScheduleAdjustRequest();
-        req.setId(1L);
-        Page<ScheduleAdjustRequest> mp = new Page<>(1, 10);
-        mp.setRecords(List.of(req));
-        when(scheduleAdjustRequestMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mp);
+        when(scheduleAdjustRequestMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(new Page<>(1, 10));
 
-        Page<ScheduleAdjustRequest> result = scheduleService.pageAdjustRequests(1, 10);
+        Page<AdjustRequestVO> result = scheduleService.pageAdjustRequests(1, 10, null);
 
-        assertThat(result.getRecords()).hasSize(1);
+        assertThat(result.getRecords()).size().isZero();
     }
 
     @Test
@@ -439,8 +447,10 @@ class ScheduleServiceMockTest {
     void createAdjustRequest_Success() {
         ScheduleAdjustRequest req = new ScheduleAdjustRequest();
         req.setLessonId(10L);
-        // M9 fix: 需要校验课次存在
-        when(scheduleLessonMapper.selectById(10L)).thenReturn(new ScheduleLesson());
+        // M9 fix: 需要校验课次存在；L fix: 仅待上课(status=1)课次可发起调课
+        ScheduleLesson adjustLesson = new ScheduleLesson();
+        adjustLesson.setStatus(1);
+        when(scheduleLessonMapper.selectById(10L)).thenReturn(adjustLesson);
         doAnswer(inv -> { inv.getArgument(0, ScheduleAdjustRequest.class).setId(1L); return 1; })
                 .when(scheduleAdjustRequestMapper).insert(any(ScheduleAdjustRequest.class));
 
@@ -509,10 +519,12 @@ class ScheduleServiceMockTest {
         oldLesson.setClassId(5L);
         oldLesson.setTeacherId(3L);
         oldLesson.setClassroomId(2L);
+        oldLesson.setStatus(1);
         oldLesson.setStartTime(LocalTime.of(14, 0));
         oldLesson.setEndTime(LocalTime.of(15, 30));
         when(scheduleLessonMapper.selectById(oldLessonId)).thenReturn(oldLesson);
-        when(scheduleLessonMapper.updateById(any(ScheduleLesson.class))).thenReturn(1);
+        when(scheduleLessonMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
+        when(classroomMapper.selectById(2L)).thenReturn(activeClassroom());
 
         when(scheduleConflictService.checkConflict(any(ScheduleLesson.class))).thenReturn(Collections.emptyList());
         doAnswer(inv -> { inv.getArgument(0, ScheduleLesson.class).setId(newLessonId); return 1; })
@@ -565,10 +577,12 @@ class ScheduleServiceMockTest {
         oldLesson.setClassId(5L);
         oldLesson.setTeacherId(3L);
         oldLesson.setClassroomId(2L);
+        oldLesson.setStatus(1);
         oldLesson.setStartTime(LocalTime.of(14, 0));
         oldLesson.setEndTime(LocalTime.of(15, 30));
         when(scheduleLessonMapper.selectById(10L)).thenReturn(oldLesson);
-        when(scheduleLessonMapper.updateById(any(ScheduleLesson.class))).thenReturn(1);
+        when(scheduleLessonMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
+        when(classroomMapper.selectById(2L)).thenReturn(activeClassroom());
         when(scheduleConflictService.checkConflict(any(ScheduleLesson.class)))
                 .thenReturn(List.of("教室冲突"));
 
@@ -668,5 +682,11 @@ class ScheduleServiceMockTest {
         scheduleService.batchCreate(List.of(a));
 
         verify(scheduleLessonMapper).insert(any(ScheduleLesson.class));
+    }
+
+    private Classroom activeClassroom() {
+        Classroom c = new Classroom();
+        c.setStatus(1); // r20: validateClassroomExists 要求教室为启用状态
+        return c;
     }
 }

@@ -12,6 +12,7 @@ import lombok.Data;
 public class RegisterRequest {
 
     @NotBlank(message = "用户名不能为空")
+    @Size(max = 50, message = "用户名长度不能超过50位")
     private String username;
 
     @NotBlank(message = "密码不能为空")
@@ -19,6 +20,7 @@ public class RegisterRequest {
     private String password;
 
     @NotBlank(message = "姓名不能为空")
+    @Size(max = 50, message = "姓名长度不能超过50位")
     private String realName;
 
     @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")

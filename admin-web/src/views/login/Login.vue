@@ -52,15 +52,24 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, shallowRef } from 'vue'
-import { useRouter } from 'vue-router'
+import { reactive, ref, shallowRef, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import { authApi } from '@/api/auth'
 import { User, Lock } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+
+// 路由守卫在"已登录但无看板权限"时会清除登录态并跳转 /login?reason=no_permission，
+// 这里给出明确提示，避免用户陷入"登录即被弹回、不知原因"的困惑（同组件实例 query 变化需用 watch）
+watch(() => route.query.reason, (reason) => {
+  if (reason === 'no_permission') {
+    ElMessage.warning('当前账号无管理后台访问权限，请联系管理员')
+  }
+}, { immediate: true })
 
 const UserIcon = shallowRef(User)
 const LockIcon = shallowRef(Lock)
@@ -91,7 +100,13 @@ async function handleLogin() {
 
     authStore.setLogin(token, { userId, username, realName, roleCode }, permissions)
     ElMessage.success('登录成功')
-    router.push('/admin/dashboard')
+    // 路由守卫对未登录深链接会携带 ?redirect= 原路径；仅接受站内路径，
+    // 拒绝 '//host' 这类协议相对地址，避免开放重定向
+    const redirect = route.query.redirect
+    const target = typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+      ? redirect
+      : '/admin/dashboard'
+    router.push(target)
   } catch (e: any) {
     if (e?.message) ElMessage.error(e.message)
   } finally {
