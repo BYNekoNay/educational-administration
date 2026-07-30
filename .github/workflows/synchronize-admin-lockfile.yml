@@ -1,6 +1,14 @@
 name: Synchronize admin lockfile
 
 on:
+  push:
+    branches:
+      - master
+      - 'codex/**'
+    paths:
+      - admin-web/package.json
+      - admin-web/package-lock.json
+      - .github/workflows/synchronize-admin-lockfile.yml
   workflow_dispatch:
 
 permissions:
