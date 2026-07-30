@@ -177,3 +177,8 @@ educational-administration/
 ## 许可证
 
 本项目仅用于毕业设计学术目的。
+
+## CI/CD 与部署
+
+GitHub Actions 的构建、镜像发布和服务器部署配置说明见
+[`docs/18-GitHub-CI-CD-部署指南.md`](docs/18-GitHub-CI-CD-部署指南.md)。
