@@ -81,6 +81,7 @@ jobs:
           scp deploy/docker-compose.production.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.yml"
           scp deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/Caddyfile"
           scp sql/schema.sql sql/data.sql "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "chmod 644 '$DEPLOY_PATH/schema.sql' '$DEPLOY_PATH/data.sql'"
       - name: Deploy containers
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
