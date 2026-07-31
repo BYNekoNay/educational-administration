@@ -25,9 +25,9 @@ concurrency:
 env:
   # Example: registry.cn-hangzhou.aliyuncs.com. Configure these per GitHub
   # Environment so staging and production can use isolated ACR namespaces.
-  REGISTRY: ${{ secrets.ACR_REGISTRY }}
-  BACKEND_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-backend
-  WEB_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-web
+  REGISTRY: crpi-r0gqy992cwxfir87.cn-chengdu.personal.cr.aliyuncs.com
+  BACKEND_IMAGE: crpi-r0gqy992cwxfir87.cn-chengdu.personal.cr.aliyuncs.com/educational-administration/educational-administration-backend
+  WEB_IMAGE: crpi-r0gqy992cwxfir87.cn-chengdu.personal.cr.aliyuncs.com/educational-administration/educational-administration-web
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
 
 jobs:
@@ -86,7 +86,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_REGISTRY: crpi-r0gqy992cwxfir87.cn-chengdu.personal.cr.aliyuncs.com
           ACR_USERNAME: 15208311978niki
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
