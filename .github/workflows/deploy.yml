@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Log in to Alibaba Cloud Container Registry
         env:
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_USERNAME: 15208311978niki
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         run: printf '%s' "$ACR_PASSWORD" | docker login "$REGISTRY" -u "$ACR_USERNAME" --password-stdin
       - name: Build and push backend image
@@ -87,7 +87,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_USERNAME: 15208311978niki
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
           MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
