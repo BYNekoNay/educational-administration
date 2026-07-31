@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.vscode
+.claude
+.codebuddy
+.omc
+.workbuddy
+**/node_modules
+**/target
+**/dist
+**/uploads
+**/*.log
+**/*.txt
+docs
+test_*.py
+acceptance_test.sh
