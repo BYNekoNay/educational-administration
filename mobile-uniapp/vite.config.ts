@@ -8,6 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   plugins: [uni()],
   root: __dirname,
+  base: process.env.VITE_BASE || '/',
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src')

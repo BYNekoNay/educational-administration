@@ -1,0 +1,109 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment to deploy to
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: Optional image tag; defaults to the selected commit SHA
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  # Example: registry.cn-hangzhou.aliyuncs.com. Configure these per GitHub
+  # Environment so staging and production can use isolated ACR namespaces.
+  REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  BACKEND_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-backend
+  WEB_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-web
+  IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+
+jobs:
+  publish-images:
+    name: Build and publish images
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Log in to Alibaba Cloud Container Registry
+        env:
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: printf '%s' "$ACR_PASSWORD" | docker login "$REGISTRY" -u "$ACR_USERNAME" --password-stdin
+      - name: Build and push backend image
+        run: |
+          docker build --file deploy/Dockerfile.backend --tag "$BACKEND_IMAGE:$IMAGE_TAG" .
+          docker push "$BACKEND_IMAGE:$IMAGE_TAG"
+          docker tag "$BACKEND_IMAGE:$IMAGE_TAG" "$BACKEND_IMAGE:latest"
+          docker push "$BACKEND_IMAGE:latest"
+      - name: Build and push web image
+        run: |
+          docker build --file deploy/Dockerfile.web --tag "$WEB_IMAGE:$IMAGE_TAG" .
+          docker push "$WEB_IMAGE:$IMAGE_TAG"
+          docker tag "$WEB_IMAGE:$IMAGE_TAG" "$WEB_IMAGE:latest"
+          docker push "$WEB_IMAGE:latest"
+
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    needs: publish-images
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload deployment manifest
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+          scp deploy/docker-compose.production.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.yml"
+          scp deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/Caddyfile"
+          scp sql/schema.sql sql/data.sql "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+      - name: Deploy containers
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DEPLOY_SITE_ADDRESS: ${{ secrets.DEPLOY_SITE_ADDRESS }}
+          DEPLOY_ORIGIN: ${{ secrets.DEPLOY_ORIGIN }}
+        run: |
+          cat <<EOF | base64 | ssh "$DEPLOY_USER@$DEPLOY_HOST" "base64 --decode > '$DEPLOY_PATH/.env'"
+          MYSQL_DATABASE=edu_admin
+          MYSQL_USER=edu_admin
+          MYSQL_PASSWORD=$MYSQL_PASSWORD
+          MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
+          JWT_SECRET=$JWT_SECRET
+          SITE_ADDRESS=$DEPLOY_SITE_ADDRESS
+          APP_ORIGIN=$DEPLOY_ORIGIN
+          BACKEND_IMAGE=$BACKEND_IMAGE:$IMAGE_TAG
+          WEB_IMAGE=$WEB_IMAGE:$IMAGE_TAG
+          EOF
+          printf '%s' "$ACR_PASSWORD" | ssh "$DEPLOY_USER@$DEPLOY_HOST" "docker login '$ACR_REGISTRY' -u '$ACR_USERNAME' --password-stdin && cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans && docker compose ps"
