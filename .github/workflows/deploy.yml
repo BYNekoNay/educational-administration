@@ -17,28 +17,31 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 env:
-  REGISTRY: ghcr.io
-  # OCI repository names must be lowercase. Keep this explicit because the
-  # current GitHub owner name contains uppercase characters.
-  BACKEND_IMAGE: ghcr.io/bynekonay/educational-administration-backend
-  WEB_IMAGE: ghcr.io/bynekonay/educational-administration-web
+  # Example: registry.cn-hangzhou.aliyuncs.com. Configure these per GitHub
+  # Environment so staging and production can use isolated ACR namespaces.
+  REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  BACKEND_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-backend
+  WEB_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-web
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
 
 jobs:
   publish-images:
     name: Build and publish images
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Log in to GitHub Container Registry
-        run: echo "${{ github.token }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+      - name: Log in to Alibaba Cloud Container Registry
+        env:
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: printf '%s' "$ACR_PASSWORD" | docker login "$REGISTRY" -u "$ACR_USERNAME" --password-stdin
       - name: Build and push backend image
         run: |
           docker build --file deploy/Dockerfile.backend --tag "$BACKEND_IMAGE:$IMAGE_TAG" .
@@ -83,12 +86,14 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
           MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          DEPLOY_DOMAIN: ${{ secrets.DEPLOY_DOMAIN }}
+          DEPLOY_SITE_ADDRESS: ${{ secrets.DEPLOY_SITE_ADDRESS }}
+          DEPLOY_ORIGIN: ${{ secrets.DEPLOY_ORIGIN }}
         run: |
           cat <<EOF | base64 | ssh "$DEPLOY_USER@$DEPLOY_HOST" "base64 --decode > '$DEPLOY_PATH/.env'"
           MYSQL_DATABASE=edu_admin
@@ -96,9 +101,9 @@ jobs:
           MYSQL_PASSWORD=$MYSQL_PASSWORD
           MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
           JWT_SECRET=$JWT_SECRET
-          DOMAIN=$DEPLOY_DOMAIN
-          APP_ORIGIN=https://$DEPLOY_DOMAIN
+          SITE_ADDRESS=$DEPLOY_SITE_ADDRESS
+          APP_ORIGIN=$DEPLOY_ORIGIN
           BACKEND_IMAGE=$BACKEND_IMAGE:$IMAGE_TAG
           WEB_IMAGE=$WEB_IMAGE:$IMAGE_TAG
           EOF
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin && docker compose pull && docker compose up -d --remove-orphans && docker compose ps"
+          printf '%s' "$ACR_PASSWORD" | ssh "$DEPLOY_USER@$DEPLOY_HOST" "docker login '$ACR_REGISTRY' -u '$ACR_USERNAME' --password-stdin && cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans && docker compose ps"
