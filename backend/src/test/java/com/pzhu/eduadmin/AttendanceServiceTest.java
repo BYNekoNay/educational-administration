@@ -472,8 +472,9 @@ class AttendanceServiceTest {
         mockPage.setTotal(1);
 
         when(scheduleLessonMapper.selectPage(any(Page.class), any())).thenReturn(mockPage);
+        when(classGroupMapper.selectBatchIds(any())).thenReturn(Collections.emptyList());
 
-        Page<ScheduleLesson> result = attendanceService.pageTeacherLessons(2L, 1, 10);
+        Page<ScheduleLesson> result = attendanceService.pageTeacherLessons(2L, 1, 10, null, null);
 
         assertThat(result.getRecords()).hasSize(1);
         assertThat(result.getRecords().get(0).getTeacherId()).isEqualTo(2L);
