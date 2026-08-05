@@ -35,9 +35,11 @@ jobs:
       - name: Require a successful CI run for this commit
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
           successful_run="$(gh run list \
+            --repo "$GH_REPO" \
             --workflow ci.yml \
             --commit "$COMMIT_SHA" \
             --status success \
