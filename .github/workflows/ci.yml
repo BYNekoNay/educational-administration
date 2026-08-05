@@ -172,10 +172,18 @@ jobs:
         if: always()
         run: |
           mkdir -p ci-evidence
-          docker compose --file deploy/docker-compose.production.yml ps --all \
+          compose=(docker compose --file deploy/docker-compose.production.yml)
+          "${compose[@]}" ps --all \
             > ci-evidence/compose-ps.txt 2>&1 || true
-          docker compose --file deploy/docker-compose.production.yml logs \
+          "${compose[@]}" logs \
             --no-color --timestamps --tail 500 > ci-evidence/compose-logs.txt 2>&1 || true
+          for service in mysql backend web caddy; do
+            container_id="$("${compose[@]}" ps -q "$service" 2>/dev/null || true)"
+            if [[ -n "$container_id" ]]; then
+              docker inspect --format '{{json .State}}' "$container_id" \
+                > "ci-evidence/$service-state.json" 2>&1 || true
+            fi
+          done
       - name: Upload container evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

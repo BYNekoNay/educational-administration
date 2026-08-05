@@ -59,8 +59,10 @@ collect_evidence() {
     printf '%s\n' "$current_step" > "$evidence_directory/failed-step.txt"
     compose ps --all > "$evidence_directory/compose-ps.txt" 2>&1
     compose logs --no-color --timestamps --tail 500 > "$evidence_directory/compose-logs.txt" 2>&1
-    docker inspect "$(container_id backend)" > "$evidence_directory/backend-inspect.json" 2>&1
-    docker inspect "$(container_id web)" > "$evidence_directory/web-inspect.json" 2>&1
+    docker inspect --format '{{json .State}}' "$(container_id backend)" \
+      > "$evidence_directory/backend-state.json" 2>&1
+    docker inspect --format '{{json .State}}' "$(container_id web)" \
+      > "$evidence_directory/web-state.json" 2>&1
     chmod -R go-rwx "$evidence_directory" 2>/dev/null || true
   fi
   printf 'Release failed during %s (exit %s). Evidence: %s\n' \
