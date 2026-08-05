@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Validate Bash syntax
         run: bash -n acceptance_test.sh deploy/scripts/*.sh
+      - name: Validate Python interpreter portability
+        run: bash deploy/scripts/test-acceptance-python-runtime.sh
 
   backend:
     name: Backend

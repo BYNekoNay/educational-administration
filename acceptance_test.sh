@@ -11,7 +11,13 @@ FAIL=0
 PASS=0
 TOTAL=0
 
-for command_name in curl python mktemp rm; do
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+if [ -z "$PYTHON_BIN" ]; then
+  echo "ERROR: 缺少命令 python3 或 python" >&2
+  exit 1
+fi
+
+for command_name in curl mktemp rm; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "ERROR: 缺少命令 $command_name" >&2
     exit 1
@@ -44,7 +50,7 @@ login() {
   password_file="$TEMPORARY_DIRECTORY/password-$LOGIN_SEQUENCE"
   payload_file="$TEMPORARY_DIRECTORY/login-$LOGIN_SEQUENCE.json"
   printf '%s' "$password" > "$password_file"
-  python - "$username" "$password_file" > "$payload_file" <<'PY'
+  "$PYTHON_BIN" - "$username" "$password_file" > "$payload_file" <<'PY'
 import json
 import sys
 
@@ -56,7 +62,7 @@ PY
     "$BASE/api/auth/login" -H "Content-Type: application/json" \
     --data-binary "@$payload_file")" \
     || return 1
-  printf '%s' "$response" | python -c '
+  printf '%s' "$response" | "$PYTHON_BIN" -c '
 import json, sys
 payload = json.load(sys.stdin)
 if payload.get("code") != 0 or not isinstance(payload.get("data"), dict) or not payload["data"].get("token"):
@@ -87,7 +93,7 @@ check() {
   RESPONSE=$(curl -s -w $'\n%{http_code}' -X "$1" "$BASE$2" -H "Authorization: Bearer $3")
   CODE=${RESPONSE##*$'\n'}
   BODY=${RESPONSE%$'\n'*}
-  BUSINESS_CODE=$(printf '%s' "$BODY" | python -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null || true)
+  BUSINESS_CODE=$(printf '%s' "$BODY" | "$PYTHON_BIN" -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null || true)
   if [ "$CODE" = "200" ] && [ "$BUSINESS_CODE" = "0" ]; then
     PASS=$((PASS + 1))
     echo "  PASS  HTTP $CODE / code $BUSINESS_CODE | $4"
@@ -180,7 +186,7 @@ check "GET" "/api/parent/payments" "$TP" "缴费记录"
 check "GET" "/api/parent/refunds/available" "$TP" "可退费(新)"
 check "GET" "/api/parent/notices" "$TP" "家长机构公告"
 check "GET" "/api/notifications?pageNum=1&pageSize=10" "$TP" "家长个人通知"
-SP=$(curl -s "$BASE/api/parent/students" -H "Authorization: Bearer $TP" | python -c "import sys,json; d=json.load(sys.stdin); rows=d.get('data') or []; print(rows[0]['id'] if rows else '')")
+SP=$(curl -s "$BASE/api/parent/students" -H "Authorization: Bearer $TP" | "$PYTHON_BIN" -c "import sys,json; d=json.load(sys.stdin); rows=d.get('data') or []; print(rows[0]['id'] if rows else '')")
 if [ -n "$SP" ]; then
   check "GET" "/api/parent/students/$SP/homeworks" "$TP" "家长全部作业"
 else
