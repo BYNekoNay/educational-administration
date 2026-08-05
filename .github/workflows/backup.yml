@@ -22,13 +22,11 @@ jobs:
       - name: Configure SSH
         env:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           test -n "$DEPLOY_SSH_PRIVATE_KEY"
-          test -n "$DEPLOY_KNOWN_HOSTS"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' '8.145.58.241 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEE598cBascGv8MagM9SVQZX4HR8Lfe4NOGxlQ/DdEI7' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
       - name: Create and retrieve encrypted backup
         id: backup
