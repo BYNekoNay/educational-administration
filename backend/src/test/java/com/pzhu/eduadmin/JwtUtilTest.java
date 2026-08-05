@@ -78,12 +78,12 @@ class JwtUtilTest {
     }
 
     @Test
-    @DisplayName("短密钥自动填充到 32 字节（key() 方法）")
-    void key_ShortSecretAutoPad() throws Exception {
+    @DisplayName("JWT secret shorter than 32 UTF-8 bytes is rejected")
+    void key_ShortSecretRejected() throws Exception {
         setField("secret", "short");
-        // key() 是 private，通过 generate+parse 间接验证
-        String token = jwtUtil.generateToken(1L, "admin", "SUPER_ADMIN", 0);
-        Claims claims = jwtUtil.parseToken(token);
-        assertThat(claims.getSubject()).isEqualTo("1");
+
+        assertThatThrownBy(() -> jwtUtil.generateToken(1L, "admin", "SUPER_ADMIN", 0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("at least 32 UTF-8 bytes");
     }
 }

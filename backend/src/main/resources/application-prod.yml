@@ -1,3 +1,56 @@
+spring:
+  datasource:
+    password: ${DB_PASSWORD:}
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 5
+    baseline-description: pre-flyway production schema
+    validate-on-migrate: true
+    clean-disabled: true
+    out-of-order: false
+    locations: classpath:db/migration
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+
+jwt:
+  secret: ${JWT_SECRET:}
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
+
+info:
+  app:
+    image-tag: ${APP_IMAGE_TAG:unknown}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  info:
+    env:
+      enabled: true
+
 logging:
   level:
     com.pzhu.eduadmin: info

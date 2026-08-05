@@ -1,8 +1,11 @@
 package com.pzhu.eduadmin.modules.enrollment.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.modules.enrollment.dto.ParentClassVO;
+import com.pzhu.eduadmin.modules.enrollment.dto.ParentEnrollmentSnapshotVO;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 
+import java.util.List;
 import java.util.Map;
 
 public interface EnrollmentService {
@@ -33,4 +36,14 @@ public interface EnrollmentService {
 
     /** 时间冲突校验（用于报名准入），若有冲突则抛 BusinessException(409) */
     void checkTimeConflict(Long studentId, Long targetClassId);
+
+    /** 家长报名选班展示所需的开放班级及实时容量。 */
+    List<ParentClassVO> listParentCourseClasses(Long courseId);
+
+    /** 当前家长和指定学员的一致性报名决策快照。 */
+    ParentEnrollmentSnapshotVO getParentEnrollmentSnapshot(Long parentUserId, Long studentId);
+
+    /** 校验快照仍有效且决策数据未变化后创建家长报名。 */
+    Enrollment createParentEnrollmentFromSnapshot(
+            Long parentUserId, Enrollment enrollment, String versionToken);
 }

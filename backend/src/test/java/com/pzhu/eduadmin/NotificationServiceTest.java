@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.mapper.NotificationMapper;
 import com.pzhu.eduadmin.modules.notification.service.NotificationServiceImpl;
+import com.pzhu.eduadmin.observability.BusinessMetrics;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import org.junit.jupiter.api.*;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.*;
 class NotificationServiceTest {
 
     @Mock private NotificationMapper notificationMapper;
+    @Mock private BusinessMetrics businessMetrics;
     @InjectMocks private NotificationServiceImpl notificationService;
 
     @BeforeAll

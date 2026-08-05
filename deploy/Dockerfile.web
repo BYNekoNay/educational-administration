@@ -2,7 +2,7 @@ FROM node:22-bookworm AS admin-build
 
 WORKDIR /workspace/admin-web
 COPY admin-web/package.json admin-web/package-lock.json ./
-RUN npm install
+RUN npm ci
 COPY admin-web ./
 RUN npm run build
 

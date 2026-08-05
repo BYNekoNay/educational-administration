@@ -19,6 +19,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  delivery-scripts:
+    name: Delivery scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate Bash syntax
+        run: bash -n acceptance_test.sh deploy/scripts/*.sh
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -70,15 +78,107 @@ jobs:
           cache-dependency-path: mobile-uniapp/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Run tests
+        run: npm test
       - name: Build H5
         run: npm run build:h5
 
   container-images:
-    name: Container images
+    name: Container release gate
     runs-on: ubuntu-latest
+    needs:
+      - delivery-scripts
+      - backend
+      - admin-web
+      - mobile-uniapp
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: eduadmin-ci-${{ github.run_id }}
+      MYSQL_DATABASE: edu_admin
+      MYSQL_USER: edu_admin
+      MYSQL_PASSWORD: ci-database-password-2026
+      MYSQL_ROOT_PASSWORD: ci-root-database-password-2026
+      JWT_SECRET: ci-only-jwt-secret-with-at-least-32-bytes-2026
+      APP_ORIGIN: https://ci.example.test
+      SITE_ADDRESS: ':80'
+      IMAGE_TAG: ${{ github.sha }}
+      BACKEND_IMAGE: eduadmin-backend:ci-${{ github.sha }}
+      WEB_IMAGE: eduadmin-web:ci-${{ github.sha }}
+      SMOKE_PASSWORD: '123456'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build backend image
-        run: docker build --file deploy/Dockerfile.backend --tag eduadmin-backend:ci .
+        run: docker build --file deploy/Dockerfile.backend --tag "$BACKEND_IMAGE" .
       - name: Build web image
-        run: docker build --file deploy/Dockerfile.web --tag eduadmin-web:ci .
+        run: docker build --file deploy/Dockerfile.web --tag "$WEB_IMAGE" .
+      - name: Validate Compose configuration
+        run: docker compose --file deploy/docker-compose.production.yml config --quiet
+      - name: Start isolated production stack
+        run: |
+          mkdir -p ci-evidence
+          docker compose --file deploy/docker-compose.production.yml up -d --wait --wait-timeout 180
+      - name: Verify migrations, probes, pages, roles, and critical journey
+        run: |
+          compose=(docker compose --file deploy/docker-compose.production.yml)
+
+          schema_version="$(${compose[@]} exec -T mysql sh -ceu '
+            MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root --batch --skip-column-names \
+              "$MYSQL_DATABASE" --execute \
+              "SELECT COALESCE(MAX(CAST(version AS UNSIGNED)), 0) FROM flyway_schema_history WHERE success = 1"
+          ')"
+          test "$schema_version" = '7'
+
+          curl --fail --silent --show-error --retry 10 --retry-delay 2 \
+            http://localhost/healthz > ci-evidence/readiness.json
+          curl --fail --silent --show-error \
+            http://localhost/version > ci-evidence/build-info.json
+          grep -Fq "$IMAGE_TAG" ci-evidence/build-info.json
+          ${compose[@]} exec -T backend curl --fail --silent --show-error \
+            http://localhost:8080/actuator/prometheus > ci-evidence/prometheus.txt
+          for metric in \
+            eduadmin_login_failures_total \
+            eduadmin_enrollment_failures_total \
+            eduadmin_payment_failures_total \
+            eduadmin_lesson_account_cas_failures_total \
+            eduadmin_schedule_conflicts_total \
+            eduadmin_notification_failures_total \
+            eduadmin_refunds_pending
+          do
+            grep -Fq "$metric" ci-evidence/prometheus.txt
+          done
+          curl --fail --silent --show-error --location \
+            http://localhost/ > ci-evidence/admin-index.html
+          curl --fail --silent --show-error --location \
+            http://localhost/mobile/ > ci-evidence/mobile-index.html
+          grep -Eiq '<!doctype html|<html' ci-evidence/admin-index.html
+          grep -Eiq '<!doctype html|<html' ci-evidence/mobile-index.html
+
+          bash acceptance_test.sh http://localhost \
+            | tee ci-evidence/five-role-smoke.txt
+          JOURNEY_PASSWORD="$SMOKE_PASSWORD" \
+            bash deploy/scripts/critical-journey-ci.sh http://localhost \
+            | tee ci-evidence/critical-journey.txt
+
+          invariant_violations="$(${compose[@]} exec -T mysql sh -ceu '
+            MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root --batch --skip-column-names "$MYSQL_DATABASE"
+          ' < sql/verify_high_value_invariants.sql)"
+          test -z "${invariant_violations//[[:space:]]/}"
+      - name: Collect container evidence
+        if: always()
+        run: |
+          mkdir -p ci-evidence
+          docker compose --file deploy/docker-compose.production.yml ps --all \
+            > ci-evidence/compose-ps.txt 2>&1 || true
+          docker compose --file deploy/docker-compose.production.yml logs \
+            --no-color --timestamps --tail 500 > ci-evidence/compose-logs.txt 2>&1 || true
+      - name: Upload container evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: container-release-gate-${{ github.run_id }}
+          path: ci-evidence
+          if-no-files-found: error
+          retention-days: 14
+      - name: Stop isolated production stack
+        if: always()
+        run: docker compose --file deploy/docker-compose.production.yml down --volumes --remove-orphans

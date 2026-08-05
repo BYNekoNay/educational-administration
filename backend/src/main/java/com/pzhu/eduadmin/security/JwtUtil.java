@@ -4,8 +4,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -19,8 +17,6 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    private static final Logger log = LoggerFactory.getLogger(JwtUtil.class);
-
     @Value("${jwt.secret}")
     private String secret;
 
@@ -30,11 +26,7 @@ public class JwtUtil {
     private SecretKey key() {
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < 32) {
-            // M15: 短密钥零填充降低安全强度，生产环境必须配置 >= 32 字节的 jwt.secret
-            log.warn("JWT secret 长度不足 32 字节（当前 {} 字节），已零填充。生产环境请配置更长的密钥！", bytes.length);
-            byte[] padded = new byte[32];
-            System.arraycopy(bytes, 0, padded, 0, bytes.length);
-            bytes = padded;
+            throw new IllegalStateException("JWT secret must be at least 32 UTF-8 bytes");
         }
         return Keys.hmacShaKeyFor(bytes);
     }

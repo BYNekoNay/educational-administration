@@ -10,6 +10,7 @@
 | `schema.sql` | 建表脚本（参考，已合入 reset.sql） |
 | `data.sql` | 初始化数据（参考，已合入 reset.sql） |
 | `migrate_functional_gaps.sql` | 已有数据库增量升级：证书字段、通知表、提醒幂等键及排课事务锁 |
+| `verify_high_value_invariants.sql` | 发布和恢复演练使用的只读数据不变量检查；无异常时不返回记录 |
 | `reset-all.ps1` | Windows PowerShell 快捷方式（效果与直灌 reset.sql 相同） |
 
 ## 使用方式
@@ -28,6 +29,10 @@ Get-Content sql\reset.sql | mysql -uroot -p123456
 ```bash
 mysql -uroot -p123456 edu_admin < sql/migrate_functional_gaps.sql
 ```
+
+生产数据库从版本 5 起由后端 Flyway 管理。不要再手工执行
+`backend/src/main/resources/db/migration` 下的脚本；发布前先运行
+`verify_high_value_invariants.sql`，再由应用启动按版本顺序迁移。V7 会在数据库层保证同一报名最多存在一条有效的待审核退费。若历史数据不满足检查，先停止发布并修复数据，禁止跳过迁移或盲目回滚数据库。
 
 ## 初始化账号（密码均为 `123456`，已按 BCrypt 加密存储）
 

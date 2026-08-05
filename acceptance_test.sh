@@ -3,15 +3,66 @@
 # 用法: bash acceptance_test.sh [BASE_URL]
 # 默认 BASE_URL=http://localhost:8080
 
+set -uo pipefail
+set +x
+
 BASE="${1:-http://localhost:8080}"
 FAIL=0
 PASS=0
 TOTAL=0
 
+for command_name in curl python mktemp rm; do
+  command -v "$command_name" >/dev/null 2>&1 || {
+    echo "ERROR: 缺少命令 $command_name" >&2
+    exit 1
+  }
+done
+
+if [ -n "${SMOKE_PASSWORD_FILE:-}" ]; then
+  [ -f "$SMOKE_PASSWORD_FILE" ] && [ ! -L "$SMOKE_PASSWORD_FILE" ] || {
+    echo "ERROR: SMOKE_PASSWORD_FILE 必须是普通文件且不能是符号链接" >&2
+    exit 1
+  }
+  SMOKE_PASSWORD="$(<"$SMOKE_PASSWORD_FILE")"
+fi
+: "${SMOKE_PASSWORD:?SMOKE_PASSWORD 或 SMOKE_PASSWORD_FILE 必须由 CI 或 GitHub Environment 显式提供}"
+SMOKE_ADMIN_USERNAME="${SMOKE_ADMIN_USERNAME:-admin}"
+SMOKE_EDU_USERNAME="${SMOKE_EDU_USERNAME:-edu}"
+SMOKE_FINANCE_USERNAME="${SMOKE_FINANCE_USERNAME:-finance}"
+SMOKE_TEACHER_USERNAME="${SMOKE_TEACHER_USERNAME:-teacher1}"
+SMOKE_PARENT_USERNAME="${SMOKE_PARENT_USERNAME:-parent1}"
+TEMPORARY_DIRECTORY="$(mktemp -d)"
+trap 'rm -rf -- "$TEMPORARY_DIRECTORY"' EXIT INT TERM
+LOGIN_SEQUENCE=0
+
 # 动态登录获取 token
 login() {
-  curl -s "$BASE/api/auth/login" -H "Content-Type: application/json" \
-    -d "{\"username\":\"$1\",\"password\":\"$2\"}" | python -c "import sys,json;d=json.load(sys.stdin);print(d['data']['token'])"
+  local username="$1"
+  local password="$2"
+  local response password_file payload_file
+  LOGIN_SEQUENCE=$((LOGIN_SEQUENCE + 1))
+  password_file="$TEMPORARY_DIRECTORY/password-$LOGIN_SEQUENCE"
+  payload_file="$TEMPORARY_DIRECTORY/login-$LOGIN_SEQUENCE.json"
+  printf '%s' "$password" > "$password_file"
+  python - "$username" "$password_file" > "$payload_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[2], encoding="utf-8") as source:
+    password = source.read()
+json.dump({"username": sys.argv[1], "password": password}, sys.stdout)
+PY
+  response="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+    "$BASE/api/auth/login" -H "Content-Type: application/json" \
+    --data-binary "@$payload_file")" \
+    || return 1
+  printf '%s' "$response" | python -c '
+import json, sys
+payload = json.load(sys.stdin)
+if payload.get("code") != 0 or not isinstance(payload.get("data"), dict) or not payload["data"].get("token"):
+    raise SystemExit(1)
+print(payload["data"]["token"])
+' || return 1
 }
 
 echo "========== 五角色权限验收矩阵 =========="
@@ -19,11 +70,16 @@ echo "BASE: $BASE"
 echo ""
 
 # 获取所有角色token
-TA=$(login "admin" "123456")
-TE=$(login "edu" "123456")
-TF=$(login "finance" "123456")
-TT=$(login "teacher1" "123456")
-TP=$(login "parent1" "123456")
+TA=$(login "$SMOKE_ADMIN_USERNAME" "${SMOKE_ADMIN_PASSWORD:-$SMOKE_PASSWORD}") \
+  || { echo "ERROR: 超级管理员冒烟账号登录失败" >&2; exit 1; }
+TE=$(login "$SMOKE_EDU_USERNAME" "${SMOKE_EDU_PASSWORD:-$SMOKE_PASSWORD}") \
+  || { echo "ERROR: 教务冒烟账号登录失败" >&2; exit 1; }
+TF=$(login "$SMOKE_FINANCE_USERNAME" "${SMOKE_FINANCE_PASSWORD:-$SMOKE_PASSWORD}") \
+  || { echo "ERROR: 财务冒烟账号登录失败" >&2; exit 1; }
+TT=$(login "$SMOKE_TEACHER_USERNAME" "${SMOKE_TEACHER_PASSWORD:-$SMOKE_PASSWORD}") \
+  || { echo "ERROR: 教师冒烟账号登录失败" >&2; exit 1; }
+TP=$(login "$SMOKE_PARENT_USERNAME" "${SMOKE_PARENT_PASSWORD:-$SMOKE_PASSWORD}") \
+  || { echo "ERROR: 家长冒烟账号登录失败" >&2; exit 1; }
 
 check() {
   local RESPONSE BODY CODE BUSINESS_CODE

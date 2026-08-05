@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.mapper.NotificationMapper;
+import com.pzhu.eduadmin.observability.BusinessMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationMapper notificationMapper;
+    private final BusinessMetrics businessMetrics;
     private final Map<Long, SseEmitter> emitters = new ConcurrentHashMap<>();
 
     @Override
@@ -40,13 +42,20 @@ public class NotificationServiceImpl implements NotificationService {
 
         // M15 fix: 条件移除，防止旧 emitter 超时回调误删新 emitter
         emitter.onCompletion(() -> emitters.remove(userId, emitter));
-        emitter.onTimeout(() -> emitters.remove(userId, emitter));
-        emitter.onError(e -> emitters.remove(userId, emitter));
+        emitter.onTimeout(() -> {
+            businessMetrics.recordNotificationConnectionFailure("timeout");
+            emitters.remove(userId, emitter);
+        });
+        emitter.onError(e -> {
+            businessMetrics.recordNotificationConnectionFailure("connection_error");
+            emitters.remove(userId, emitter);
+        });
 
         // 发送一条连接成功事件（可选）
         try {
             emitter.send(SseEmitter.event().name("connected").data("ok"));
         } catch (IOException | IllegalStateException e) {
+            businessMetrics.recordNotificationConnectionFailure("connect");
             emitters.remove(userId, emitter);
         }
         return emitter;
@@ -82,6 +91,7 @@ public class NotificationServiceImpl implements NotificationService {
             try {
                 emitter.send(SseEmitter.event().name("notification").data(notification));
             } catch (IOException | IllegalStateException e) {
+                businessMetrics.recordNotificationConnectionFailure("emit");
                 emitters.remove(userId, emitter);
                 log.debug("SSE send failed for user {}, removed emitter", userId);
             }
@@ -105,6 +115,7 @@ public class NotificationServiceImpl implements NotificationService {
                 copy.setDedupeKey(baseKey != null ? baseKey + ":" + userId : null);
                 send(userId, copy);
             } catch (Exception e) {
+                businessMetrics.recordNotificationConnectionFailure("dispatch");
                 log.error("通知发送失败, userId={}", userId, e);
             }
         }
