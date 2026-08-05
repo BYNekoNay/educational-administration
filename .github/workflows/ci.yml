@@ -111,6 +111,11 @@ jobs:
         run: docker build --file deploy/Dockerfile.backend --tag "$BACKEND_IMAGE" .
       - name: Build web image
         run: docker build --file deploy/Dockerfile.web --tag "$WEB_IMAGE" .
+      - name: Prepare production deployment layout
+        run: |
+          cp sql/schema.sql sql/data.sql deploy/
+          test -f deploy/schema.sql
+          test -f deploy/data.sql
       - name: Validate Compose configuration
         run: docker compose --file deploy/docker-compose.production.yml config --quiet
       - name: Start isolated production stack
