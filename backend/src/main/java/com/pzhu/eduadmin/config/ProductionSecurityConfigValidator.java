@@ -16,15 +16,19 @@ import java.util.Set;
 public class ProductionSecurityConfigValidator {
 
     private static final int MIN_SECRET_BYTES = 32;
-    private static final int MIN_DATABASE_PASSWORD_BYTES = 12;
-    private static final String DEVELOPMENT_JWT_SECRET = "dev-local-secret-key-for-edu-admin-2026";
+    private static final int MIN_DATABASE_PASSWORD_BYTES = 16;
+    private static final Set<String> DEVELOPMENT_JWT_SECRETS = Set.of(
+            "dev-local-secret-key-for-edu-admin-2026",
+            "demo-secret-key-change-in-prod"
+    );
     private static final Set<String> DEVELOPMENT_DATABASE_PASSWORDS = Set.of(
             "123456",
             "admin",
             "changeme",
             "change-me",
             "password",
-            "root"
+            "root",
+            "edu_admin"
     );
 
     private final String jwtSecret;
@@ -55,7 +59,7 @@ public class ProductionSecurityConfigValidator {
         if (jwtSecret.getBytes(StandardCharsets.UTF_8).length < MIN_SECRET_BYTES) {
             throw invalid("JWT secret must be at least 32 UTF-8 bytes");
         }
-        if (DEVELOPMENT_JWT_SECRET.equals(jwtSecret)) {
+        if (DEVELOPMENT_JWT_SECRETS.contains(jwtSecret)) {
             throw invalid("JWT secret must not use the development default");
         }
     }

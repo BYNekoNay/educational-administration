@@ -48,7 +48,8 @@ class ProductionSecurityConfigValidatorTest {
     @ParameterizedTest(name = "weak JWT secret [{index}] is rejected")
     @ValueSource(strings = {
             "short-secret",
-            "dev-local-secret-key-for-edu-admin-2026"
+            "dev-local-secret-key-for-edu-admin-2026",
+            "demo-secret-key-change-in-prod"
     })
     void weakOrDevelopmentJwtSecretIsRejected(String jwtSecret) {
         ProductionSecurityConfigValidator validator = validator(
@@ -64,7 +65,7 @@ class ProductionSecurityConfigValidatorTest {
 
     @ParameterizedTest(name = "unsafe database password [{index}] is rejected")
     @NullAndEmptySource
-    @ValueSource(strings = {" ", "123456", "password", "short"})
+    @ValueSource(strings = {" ", "123456", "password", "short", "twelve-bytes", "edu_admin"})
     void unsafeDatabasePasswordIsRejected(String databasePassword) {
         ProductionSecurityConfigValidator validator = validator(
                 VALID_JWT_SECRET,
@@ -104,6 +105,20 @@ class ProductionSecurityConfigValidatorTest {
         assertThatThrownBy(validator::validate)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("wildcards");
+    }
+
+    @Test
+    @DisplayName("empty CORS list elements are rejected")
+    void blankCorsListElementIsRejected() {
+        ProductionSecurityConfigValidator validator = validator(
+                VALID_JWT_SECRET,
+                VALID_DATABASE_PASSWORD,
+                VALID_ALLOWED_ORIGIN + ","
+        );
+
+        assertThatThrownBy(validator::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("CORS origins");
     }
 
     @ParameterizedTest(name = "development CORS origin [{index}] is rejected")

@@ -7,7 +7,7 @@ them to a `.env` file.
 
 | GitHub Environment secret | Requirement | Runtime variable |
 | --- | --- | --- |
-| `MYSQL_PASSWORD` | Strong application database password; must not be a development default. | `DB_PASSWORD` |
+| `MYSQL_PASSWORD` | Strong application database password; at least 16 UTF-8 bytes and not a development default. | `DB_PASSWORD` |
 | `MYSQL_ROOT_PASSWORD` | Strong MySQL administrative password, distinct from `MYSQL_PASSWORD`. | `MYSQL_ROOT_PASSWORD` |
 | `JWT_SECRET` | Random secret of at least 32 UTF-8 bytes; do not reuse development values. | `JWT_SECRET` |
 | `DEPLOY_ORIGIN` | One or more exact comma-separated HTTP(S) origins, such as `https://admin.example.com,https://app.example.com`. Wildcards are rejected. | `APP_CORS_ALLOWED_ORIGINS` |
