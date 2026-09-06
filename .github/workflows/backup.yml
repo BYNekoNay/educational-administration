@@ -1,0 +1,92 @@
+name: Production backup
+
+on:
+  schedule:
+    - cron: '15 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Encrypted ECS backup
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$DEPLOY_SSH_PRIVATE_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' '8.145.58.241 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEE598cBascGv8MagM9SVQZX4HR8Lfe4NOGxlQ/DdEI7' > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Create and retrieve encrypted backup
+        id: backup
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set +x
+          umask 077
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_PATH" != '/' ]]
+          test -n "$BACKUP_ENCRYPTION_KEY"
+
+          local_directory="$(mktemp -d "$RUNNER_TEMP/eduadmin-backup.XXXXXX")"
+          local_key_file="$local_directory/backup-key"
+          remote_key_file="$DEPLOY_PATH/.backup-key-$GITHUB_RUN_ID"
+          remote_key_uploaded=0
+          cleanup() {
+            local status=$?
+            trap - EXIT
+            if [[ "$remote_key_uploaded" == '1' ]]; then
+              ssh "$DEPLOY_USER@$DEPLOY_HOST" "rm -f -- '$remote_key_file'" >/dev/null 2>&1 || true
+            fi
+            rm -rf -- "$local_directory"
+            exit "$status"
+          }
+          trap cleanup EXIT
+          printf '%s' "$BACKUP_ENCRYPTION_KEY" > "$local_key_file"
+          chmod 600 "$local_key_file"
+          scp "$local_key_file" "$DEPLOY_USER@$DEPLOY_HOST:$remote_key_file"
+          remote_key_uploaded=1
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "chmod 600 '$remote_key_file'"
+
+          if [[ "$(TZ=Asia/Shanghai date +%d)" == '01' ]]; then
+            run_restore_drill=1
+          else
+            run_restore_drill=0
+          fi
+          artifact_path="$(ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "RUN_RESTORE_DRILL='$run_restore_drill' \
+             bash '$DEPLOY_PATH/scripts/run-scheduled-backup.sh' '$remote_key_file'")"
+          [[ "$artifact_path" == "$DEPLOY_PATH/backups/"* ]]
+          artifact_name="${artifact_path##*/}"
+          [[ "$artifact_name" =~ ^edu-admin-[0-9]{8}T[0-9]{6}Z\.tar\.enc$ ]]
+
+          local_artifact="$local_directory/$artifact_name"
+          scp "$DEPLOY_USER@$DEPLOY_HOST:$artifact_path" "$local_artifact"
+          test -s "$local_artifact"
+          chmod 600 "$local_artifact"
+          persistent_artifact="$RUNNER_TEMP/$artifact_name"
+          mv "$local_artifact" "$persistent_artifact"
+          printf 'artifact_path=%s\n' "$persistent_artifact" >> "$GITHUB_OUTPUT"
+          printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
+      - name: Store off-host encrypted copy
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.backup.outputs.artifact_name }}
+          path: ${{ steps.backup.outputs.artifact_path }}
+          if-no-files-found: error
+          retention-days: 30
