@@ -31,10 +31,8 @@ public class JwtUtil {
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < 32) {
             // M15: 短密钥零填充降低安全强度，生产环境必须配置 >= 32 字节的 jwt.secret
-            log.warn("JWT secret 长度不足 32 字节（当前 {} 字节），已零填充。生产环境请配置更长的密钥！", bytes.length);
-            byte[] padded = new byte[32];
-            System.arraycopy(bytes, 0, padded, 0, bytes.length);
-            bytes = padded;
+            log.error("JWT secret is shorter than the required 32 UTF-8 bytes (current: {})", bytes.length);
+            throw new IllegalStateException("JWT secret must be at least 32 UTF-8 bytes");
         }
         return Keys.hmacShaKeyFor(bytes);
     }
