@@ -69,6 +69,22 @@
       <artifactId>flyway-mysql</artifactId>
     </dependency>
 
+    <!-- 可观测性：actuator 健康/就绪端点 + Prometheus 指标 + 结构化 JSON 日志 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>7.4</version>
+    </dependency>
+
     <!-- 仅使用 BCrypt 密码加密能力，不引入完整 Spring Security 过滤器链，
          鉴权统一走本项目自定义 JWT 拦截器（见 security 包） -->
     <dependency>
