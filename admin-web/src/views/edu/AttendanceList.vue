@@ -24,9 +24,9 @@
           <el-table-column prop="remark" label="备注" min-width="120" />
         </el-table>
         <el-pagination
-          v-model:current-page="pageNum" :total="total" :page-size="pageSize"
+          v-model:current-page="pageNum" :total="total" v-model:page-size="pageSize"
           layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"
-          @current-change="loadData" style="margin-top:16px"
+          @current-change="loadData" @size-change="handleSizeChange" style="margin-top:16px"
         />
       </el-tab-pane>
 
@@ -59,9 +59,9 @@
           </el-table-column>
         </el-table>
         <el-pagination
-          v-model:current-page="leavePageNum" :total="leaveTotal" :page-size="leavePageSize"
+          v-model:current-page="leavePageNum" :total="leaveTotal" v-model:page-size="leavePageSize"
           layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"
-          @current-change="loadLeaveData" style="margin-top:16px"
+          @current-change="loadLeaveData" @size-change="handleLeaveSizeChange" style="margin-top:16px"
         />
       </el-tab-pane>
     </el-tabs>
@@ -210,6 +210,11 @@ async function loadData() {
   finally { loading.value = false }
 }
 
+function handleSizeChange() {
+  pageNum.value = 1
+  loadData()
+}
+
 function handleSortChange({ prop, order }: any) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
@@ -261,6 +266,11 @@ async function loadLeaveData() {
     leaveTotal.value = r.data?.total || 0
   } catch (e) { showError(e, '加载请假数据失败') }
   finally { leaveLoading.value = false }
+}
+
+function handleLeaveSizeChange() {
+  leavePageNum.value = 1
+  loadLeaveData()
 }
 
 async function handleApprove(row: any) {

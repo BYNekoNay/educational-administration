@@ -95,7 +95,7 @@ const routes: RouteRecordRaw[] = [
         path: 'edu/adjust-audit',
         name: 'AdjustAudit',
         component: () => import('@/views/edu/AdjustAudit.vue'),
-        meta: { title: '调课审核', permission: 'menu:adjust-audit' }
+        meta: { title: '调课审核', permission: 'menu:adjust' }
       },
       {
         path: 'edu/classrooms',
