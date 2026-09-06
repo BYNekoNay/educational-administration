@@ -31,9 +31,34 @@ env:
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
 
 jobs:
+  test:
+    name: Run backend and admin-web tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Backend tests (mvn test)
+        working-directory: backend
+        run: mvn --batch-mode --no-transfer-progress test
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: admin-web/package-lock.json
+      - name: Admin-web tests (vitest run)
+        working-directory: admin-web
+        run: npm ci && npm test
+
   publish-images:
     name: Build and publish images
     runs-on: ubuntu-latest
+    needs: test
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -107,3 +132,28 @@ jobs:
           WEB_IMAGE=$WEB_IMAGE:$IMAGE_TAG
           EOF
           printf '%s' "$ACR_PASSWORD" | ssh "$DEPLOY_USER@$DEPLOY_HOST" "docker login '$ACR_REGISTRY' -u '$ACR_USERNAME' --password-stdin && cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans && docker compose ps"
+      - name: Smoke test login API
+        env:
+          DEPLOY_SITE_ADDRESS: ${{ secrets.DEPLOY_SITE_ADDRESS }}
+        run: |
+          probe() {
+            curl -sS -o /tmp/smoke-body.json -w '%{http_code}' \
+              --max-time 15 \
+              -X POST "https://$DEPLOY_SITE_ADDRESS/api/auth/login" \
+              -H 'Content-Type: application/json' \
+              -d '{"username":"no-such-user","password":"smoke-probe"}'
+          }
+          code=""
+          for attempt in $(seq 1 12); do
+            code="$(probe || true)"
+            if [ "$code" = "200" ]; then
+              echo "smoke ok (attempt $attempt): HTTP $code"
+              cat /tmp/smoke-body.json
+              exit 0
+            fi
+            echo "attempt $attempt: HTTP $code (backoff 10s)"
+            sleep 10
+          done
+          echo "::error::login smoke probe failed after 12 attempts, last HTTP $code"
+          cat /tmp/smoke-body.json 2>/dev/null || true
+          exit 1
