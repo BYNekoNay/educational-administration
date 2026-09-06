@@ -167,7 +167,9 @@ CREATE TABLE `enrollment` (
   is_deleted TINYINT NOT NULL DEFAULT 0,
   INDEX idx_student_id (student_id),
   INDEX idx_class_id (class_id),
-  INDEX idx_status_hold (status, hold_expire_time)
+  INDEX idx_status_hold (status, hold_expire_time),
+  INDEX idx_parent_status_created (parent_user_id, status, is_deleted, create_time),
+  INDEX idx_course_status_class (course_id, status, class_id, is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='报名申请';
 
 -- ------------------------------------------------------------
@@ -246,7 +248,8 @@ CREATE TABLE `schedule_adjust_request` (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
   INDEX idx_lesson_id (lesson_id),
-  INDEX idx_status (status)
+  INDEX idx_status (status),
+  INDEX idx_status_deleted_created (status, is_deleted, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='调课申请';
 
 -- ------------------------------------------------------------
@@ -348,7 +351,8 @@ CREATE TABLE `lesson_flow` (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
   INDEX idx_student_time (student_id, create_time),
-  INDEX idx_source (source_type, source_id)
+  INDEX idx_source (source_type, source_id),
+  INDEX idx_account_time (account_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课时流水';
 
 -- ------------------------------------------------------------
@@ -373,7 +377,8 @@ CREATE TABLE `payment_record` (
   is_deleted TINYINT NOT NULL DEFAULT 0,
   INDEX idx_pay_time (pay_time),
   INDEX idx_student_id (student_id),
-  INDEX idx_enrollment_id (enrollment_id)
+  INDEX idx_enrollment_id (enrollment_id),
+  INDEX idx_enrollment_deleted_time (enrollment_id, is_deleted, pay_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收费记录';
 
 DROP TABLE IF EXISTS `refund_record`;
@@ -391,8 +396,14 @@ CREATE TABLE `refund_record` (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
+  pending_enrollment_id BIGINT GENERATED ALWAYS AS (
+    CASE WHEN status = 1 AND is_deleted = 0 THEN enrollment_id ELSE NULL END
+  ) STORED,
   INDEX idx_payment_record_id (payment_record_id),
-  INDEX idx_enrollment_id (enrollment_id)
+  INDEX idx_enrollment_id (enrollment_id),
+  INDEX idx_status_deleted_created (status, is_deleted, create_time),
+  INDEX idx_enrollment_status_deleted (enrollment_id, status, is_deleted),
+  UNIQUE KEY uk_refund_pending_enrollment (pending_enrollment_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退费记录';
 
 DROP TABLE IF EXISTS `teacher_course`;

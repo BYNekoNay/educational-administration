@@ -1,6 +1,16 @@
 spring:
   datasource:
     password: ${DB_PASSWORD:}
+  flyway:
+    # 版本化迁移只对生产启用：既有库以 V5 为基线，schema.sql 仅用于全新建库
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 5
+    baseline-description: pre-flyway production schema
+    validate-on-migrate: true
+    clean-disabled: true
+    out-of-order: false
+    locations: classpath:db/migration
 
 jwt:
   secret: ${JWT_SECRET:}

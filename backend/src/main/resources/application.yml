@@ -31,6 +31,10 @@ spring:
     redis:
       host: localhost
       port: 6379
+  flyway:
+    # 数据库迁移是生产环境的显式契约。本地/演示库继续由 sql/schema.sql
+    # 管理（schema.sql 已含 V6/V7 的索引与约束），除非 profile 显式启用。
+    enabled: false
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
   configuration:

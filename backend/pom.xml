@@ -59,6 +59,16 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- Flyway 版本化数据库迁移（仅 prod profile 启用，见 application-prod.yml） -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-mysql</artifactId>
+    </dependency>
+
     <!-- 仅使用 BCrypt 密码加密能力，不引入完整 Spring Security 过滤器链，
          鉴权统一走本项目自定义 JWT 拦截器（见 security 包） -->
     <dependency>
