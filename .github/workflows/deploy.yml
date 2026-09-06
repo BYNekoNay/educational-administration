@@ -102,10 +102,12 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/scripts'"
           scp deploy/docker-compose.production.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.yml"
           scp deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/Caddyfile"
-          scp sql/schema.sql sql/data.sql "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          scp sql/schema.sql sql/data.sql sql/verify_high_value_invariants.sql "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          scp deploy/scripts/backup-common.sh deploy/scripts/backup-production.sh deploy/scripts/restore-drill.sh deploy/scripts/restore-production.sh deploy/scripts/run-scheduled-backup.sh deploy/scripts/release-production.sh deploy/scripts/rollback-images.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/scripts/"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "chmod +x '$DEPLOY_PATH'/scripts/*.sh"
       - name: Deploy containers
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
