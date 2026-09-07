@@ -1,0 +1,7 @@
+stateDiagram-v2
+    [*] --> DRAFT: 财务发起月度核算
+    DRAFT --> CONFIRMED: 确认(仅 DRAFT 可确认, CAS)
+    CONFIRMED --> PAID: 发放
+    PAID --> [*]
+    CONFIRMED --> DRAFT: 撤销(回核算)
+    PAID --> CONFIRMED: 撤销(回确认)

@@ -1,0 +1,15 @@
+sequenceDiagram
+    autonumber
+    participant U as 家长(移动端)
+    participant S as 后端报名服务
+    participant E as 教务管理员
+    participant F as 财务管理员
+    U->>S: 提交报名(携带快照版本 If-Match)
+    S-->>U: 校验快照/时间冲突/名额
+    S->>E: 生成待审核报名
+    E->>S: 报名审核(通过/驳回, CAS)
+    U->>S: 缴费(模拟支付)
+    S->>S: 课时账户充值 + 缴费记录
+    U->>S: 发起退费申请
+    F->>S: 退费审核(CAS + 单 pending 唯一约束)
+    S->>U: 退费到账 + 课时回冲

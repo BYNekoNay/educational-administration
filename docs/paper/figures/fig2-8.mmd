@@ -1,0 +1,35 @@
+erDiagram
+    student ||--o{ class_student : "在班"
+    class_group ||--o{ class_student : "包含"
+    class_group ||--o{ schedule_lesson : "生成"
+    schedule_lesson ||--o{ attendance : "记录"
+    student ||--o{ attendance : "考勤"
+    student ||--o{ lesson_account : "持有"
+    student ||--o{ payment_record : "缴费"
+    class_group ||--o{ payment_record : "收费"
+    student ||--o{ teacher_salary : "关联(经教师授课)"
+    class_group {
+        bigint id PK
+        bigint course_id FK
+        string class_name
+    }
+    schedule_lesson {
+        bigint id PK
+        bigint class_id FK
+        bigint classroom_id FK
+        bigint teacher_id FK
+        date lesson_date
+        time start_time
+        int status
+    }
+    attendance {
+        bigint id PK
+        bigint lesson_id FK
+        bigint student_id FK
+        int status
+    }
+    lesson_account {
+        bigint id PK
+        bigint student_id FK
+        int remaining_lessons
+    }
