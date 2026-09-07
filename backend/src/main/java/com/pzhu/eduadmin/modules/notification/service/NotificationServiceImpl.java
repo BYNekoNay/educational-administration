@@ -2,6 +2,8 @@ package com.pzhu.eduadmin.modules.notification.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.modules.notification.channel.NotificationChannelDispatcher;
+import com.pzhu.eduadmin.modules.notification.channel.OutboundEnvelope;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.mapper.NotificationMapper;
 import com.pzhu.eduadmin.observability.BusinessMetrics;
@@ -9,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -24,7 +27,11 @@ public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationMapper notificationMapper;
     private final BusinessMetrics businessMetrics;
+    private final NotificationChannelDispatcher channelDispatcher;
     private final Map<Long, SseEmitter> emitters = new ConcurrentHashMap<>();
+
+    /** 心跳周期配置项（毫秒），默认 25s；低于 60s 的 nginx read 超时即可被刷新 */
+    public static final String HEARTBEAT_MS_PROPERTY = "${app.notification.sse.heartbeat-ms:25000}";
 
     @Override
     public SseEmitter subscribe(Long userId) {
@@ -69,6 +76,7 @@ public class NotificationServiceImpl implements NotificationService {
         notificationMapper.insert(notification);
 
         emit(userId, notification);
+        dispatchAfterPersist(userId, notification);
     }
 
     @Override
@@ -82,7 +90,77 @@ public class NotificationServiceImpl implements NotificationService {
             return false;
         }
         emit(userId, notification);
+        dispatchAfterPersist(userId, notification);
         return true;
+    }
+
+    /**
+     * 站内通知入库成功后，将信封交给外发通道派发器（模拟短信等）。
+     * 派发失败不影响主流程。
+     */
+    private void dispatchAfterPersist(Long userId, Notification notification) {
+        try {
+            if (channelDispatcher == null) {
+                return;
+            }
+            channelDispatcher.dispatch(OutboundEnvelope.builder()
+                    .userId(userId)
+                    .phone(null)
+                    .title(notification.getTitle())
+                    .content(notification.getContent())
+                    .type(notification.getType())
+                    .relatedId(notification.getRelatedId())
+                    .dedupeKey(notification.getDedupeKey())
+                    // 站内入库已由本类完成，此处信封代表"可外发"的触达（本期为 SMS）
+                    .channelType("SMS")
+                    .build());
+        } catch (Exception e) {
+            log.warn("通知外发派发失败，已忽略: userId={}", userId, e);
+        }
+    }
+
+    // ==================== SSE 心跳 ====================
+
+    /**
+     * 周期心跳入口。周期性向所有在线连接发送注释行（对浏览器 EventSource 透明），
+     * 防止 nginx 反向代理因长连静默超时而断开 SSE。
+     */
+    @Scheduled(fixedRateString = HEARTBEAT_MS_PROPERTY)
+    public void sendHeartbeat() {
+        heartbeatAll();
+    }
+
+    /**
+     * 心跳执行体：遍历连接池逐个发送注释事件；失败连接移除并记指标。
+     * 抽出为 public 方法以便纯 Mockito 单测（测试与实现不在同一包）。
+     */
+    public void heartbeatAll() {
+        if (emitters.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<Long, SseEmitter> entry : emitters.entrySet()) {
+            heartbeatEmitter(entry.getKey(), entry.getValue());
+        }
+    }
+
+    /**
+     * 向单个连接发送心跳注释事件。
+     *
+     * @param userId  用户 ID
+     * @param emitter 目标 SSE 连接
+     */
+    public void heartbeatEmitter(Long userId, SseEmitter emitter) {
+        try {
+            emitter.send(SseEmitter.event().comment("hb"));
+        } catch (Exception e) {
+            businessMetrics.recordNotificationConnectionFailure("heartbeat");
+            emitters.remove(userId, emitter);
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {
+                // 已完成/断开的连接无需重复 complete
+            }
+        }
     }
 
     private void emit(Long userId, Notification notification) {

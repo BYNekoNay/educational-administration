@@ -3,6 +3,7 @@ package com.pzhu.eduadmin;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.modules.notification.channel.NotificationChannelDispatcher;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.mapper.NotificationMapper;
 import com.pzhu.eduadmin.modules.notification.service.NotificationServiceImpl;
@@ -27,6 +28,7 @@ class NotificationServiceTest {
 
     @Mock private NotificationMapper notificationMapper;
     @Mock private BusinessMetrics businessMetrics;
+    @Mock private NotificationChannelDispatcher notificationChannelDispatcher;
     @InjectMocks private NotificationServiceImpl notificationService;
 
     @BeforeAll
@@ -135,5 +137,56 @@ class NotificationServiceTest {
 
         Page<Notification> result = notificationService.listByUser(100L, 1, 10);
         assertThat(result.getRecords()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("sendOnce — 入库成功后将信封派发给外发通道")
+    void sendOnce_dispatchesAfterPersist() {
+        Notification n = new Notification();
+        n.setType("SCHEDULE_CHANGE");
+        n.setTitle("调课通知");
+        n.setContent("原周二 18:00 调至周四 18:00");
+        when(notificationMapper.insert(any(Notification.class))).thenReturn(1);
+
+        boolean sent = notificationService.sendOnce(100L, n, "SCHEDULE_CHANGE:100:10");
+
+        assertThat(sent).isTrue();
+        verify(notificationChannelDispatcher).dispatch(any());
+    }
+
+    @Test
+    @DisplayName("sendOnce — 幂等键重复时不做外发派发")
+    void sendOnce_duplicateDoesNotDispatch() {
+        Notification n = new Notification();
+        n.setType("SCHEDULE_CHANGE");
+        doThrow(new DuplicateKeyException("duplicate"))
+                .when(notificationMapper).insert(any(Notification.class));
+
+        boolean sent = notificationService.sendOnce(100L, n, "SCHEDULE_CHANGE:100:10");
+
+        assertThat(sent).isFalse();
+        verify(notificationChannelDispatcher, never()).dispatch(any());
+    }
+
+    // ==================== SSE 心跳 ====================
+
+    @Test
+    @DisplayName("heartbeatAll — 空连接池无副作用")
+    void heartbeatAll_emptyMapNoSideEffect() {
+        notificationService.heartbeatAll();
+        verify(businessMetrics, never()).recordNotificationConnectionFailure(anyString());
+    }
+
+    @Test
+    @DisplayName("heartbeatEmitter — 发送失败记录指标并移除连接")
+    void heartbeatEmitter_failureRemovesAndRecords() throws Exception {
+        // spy 一个真实 SseEmitter 并让 send 抛 IOException，模拟已断开/失效连接
+        SseEmitter broken = spy(new SseEmitter());
+        doThrow(new java.io.IOException("connection broken"))
+                .when(broken).send(any(SseEmitter.SseEventBuilder.class));
+
+        notificationService.heartbeatEmitter(7L, broken);
+
+        verify(businessMetrics).recordNotificationConnectionFailure("heartbeat");
     }
 }

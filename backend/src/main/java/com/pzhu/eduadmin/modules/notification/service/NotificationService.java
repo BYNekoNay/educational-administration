@@ -28,4 +28,7 @@ public interface NotificationService {
 
     /** 标记已读（只能标记自己的） */
     void markRead(Long id, Long userId);
+
+    /** 周期性 SSE 心跳：向在线连接发送注释事件，防止反代层静默断连 */
+    void sendHeartbeat();
 }

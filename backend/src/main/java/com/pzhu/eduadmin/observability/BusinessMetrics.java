@@ -56,10 +56,20 @@ public class BusinessMetrics {
 
     public void recordNotificationConnectionFailure(String stage) {
         String normalizedStage = switch (stage) {
-            case "connect", "emit", "timeout", "connection_error", "dispatch" -> stage;
+            case "connect", "emit", "timeout", "connection_error", "dispatch", "heartbeat" -> stage;
             default -> "unknown";
         };
         increment("eduadmin.notification.failures", normalizedStage);
+    }
+
+    /**
+     * 记录一次通知外发成功（如模拟短信），按通道类型打标。
+     *
+     * @param channel 通道类型，如 SMS / IN_APP
+     */
+    public void recordNotificationExternalDelivered(String channel) {
+        String normalized = channel == null || channel.isBlank() ? "unknown" : channel;
+        registry.counter("eduadmin.notification.external_delivered", "channel", normalized).increment();
     }
 
     private void increment(String name, String reason) {
