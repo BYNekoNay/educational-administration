@@ -54,6 +54,11 @@ export const scheduleApi = {
   checkConflict: (data: any) => request.post('/edu/schedules/check-conflict', data),
   batchCreate: (data: any) => request.post('/edu/schedules/batch', data),
   autoSchedule: (data: any) => request.post('/edu/schedules/auto', data),
+  /** P1 教务快速调课（拖拽）：{ lessonDate, startTime, endTime, reason } */
+  quickAdjust: (id: number, data: any) =>
+    request.post(`/edu/schedules/${id}/quick-adjust`, data),
+  /** P1 拖拽确认前查询影响范围：{ teacherId, teacherName, parentCount } */
+  notifyScope: (id: number) => request.get(`/edu/schedules/${id}/notify-scope`),
 }
 
 /** 课节时段 */

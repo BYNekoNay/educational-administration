@@ -20,9 +20,14 @@ import com.pzhu.eduadmin.modules.schedule.dto.AdjustRequestVO;
 import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
 import com.pzhu.eduadmin.modules.schedule.mapper.*;
 import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
+import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.service.NotificationService;
+import com.pzhu.eduadmin.modules.schedule.dto.QuickAdjustRequest;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
+import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
+import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +40,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,6 +67,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final NotificationService notificationService;
     private final AttendanceService attendanceService;
     private final PeriodMapper periodMapper;
+    private final ClassStudentMapper classStudentMapper;
+    private final ParentStudentMapper parentStudentMapper;
 
     private static final Map<String, SFunction<ScheduleLesson, ?>> LESSON_SORT_MAP = Map.of(
             "id", ScheduleLesson::getId,
@@ -875,6 +883,196 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
 
         return request;
+    }
+
+    // ============ P1 快速调课（教务拖拽） ============
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ScheduleLesson quickAdjustLesson(Long id, QuickAdjustRequest request) {
+        ScheduleLesson lesson = scheduleLessonMapper.selectById(id);
+        if (lesson == null) {
+            throw new BusinessException(404, "课次不存在或已删除");
+        }
+        // 仅待上课课次可快速调课；已完成/已取消/已调课需走对应专用流程
+        if (!Integer.valueOf(1).equals(lesson.getStatus())) {
+            throw new BusinessException(409, "仅待上课课次可快速调课，已完成/已取消/已调课课次请使用调课或取消流程");
+        }
+        if (lesson.getLessonDate() == null || lesson.getStartTime() == null || lesson.getEndTime() == null) {
+            throw new BusinessException(409, "课次缺少完整上课时间，无法调课");
+        }
+        LocalDate today = LocalDate.now();
+        // 已过去的课次不可调整
+        if (lesson.getLessonDate().isBefore(today)) {
+            throw new BusinessException(400, "已开始的过去课次不可调课");
+        }
+        // 今天且当前时间已过开始时间 → 已开始，禁止拖拽
+        if (lesson.getLessonDate().equals(today) && !lesson.getStartTime().isAfter(LocalTime.now())) {
+            throw new BusinessException(409, "该课次已开始，无法快速调课");
+        }
+        // 入参合法性
+        if (request.getLessonDate() == null || request.getStartTime() == null || request.getEndTime() == null) {
+            throw new BusinessException(400, "目标日期和起止时间不能为空");
+        }
+        if (!request.getEndTime().isAfter(request.getStartTime())) {
+            throw new BusinessException(400, "结束时间必须晚于开始时间");
+        }
+        if (request.getLessonDate().isBefore(today)) {
+            throw new BusinessException(400, "目标日期不能早于今天");
+        }
+        // 教室存在且启用（无物理外键，历史/停用教室需显式拦截）
+        validateClassroomExists(lesson.getClassroomId());
+
+        // 以原课次身份构造目标载荷做冲突预检（checkConflict 会忽略同 id 的自冲突）
+        ScheduleLesson probe = new ScheduleLesson();
+        probe.setId(lesson.getId());
+        probe.setClassId(lesson.getClassId());
+        probe.setTeacherId(lesson.getTeacherId());
+        probe.setClassroomId(lesson.getClassroomId());
+        probe.setLessonDate(request.getLessonDate());
+        probe.setStartTime(request.getStartTime());
+        probe.setEndTime(request.getEndTime());
+        List<String> conflicts = scheduleConflictService.checkConflict(probe);
+        if (!conflicts.isEmpty()) {
+            throw new BusinessException(409, "快速调课冲突：" + String.join("；", conflicts));
+        }
+
+        // CAS 原子更新（防并发覆盖）：
+        // 快速调课是"直接改时间、status 保持 1"，仅按 status=1 更新无法阻止同状态并发编辑——
+        // T1 先提交后 status 仍为 1，T2 的 CAS 若只校验 status 会静默覆盖 T1。
+        // 因此 WHERE 追加方法开头读取的"旧时间"条件：并发第二笔读到的仍是旧快照，
+        // 更新时旧时间已不匹配 → updated=0 → 409，避免丢失先提交教务的改动与其通知。
+        int updated = scheduleLessonMapper.update(null, new LambdaUpdateWrapper<ScheduleLesson>()
+                .eq(ScheduleLesson::getId, id)
+                .eq(ScheduleLesson::getStatus, 1)
+                .eq(ScheduleLesson::getLessonDate, lesson.getLessonDate())
+                .eq(ScheduleLesson::getStartTime, lesson.getStartTime())
+                .eq(ScheduleLesson::getEndTime, lesson.getEndTime())
+                .set(ScheduleLesson::getLessonDate, request.getLessonDate())
+                .set(ScheduleLesson::getStartTime, request.getStartTime())
+                .set(ScheduleLesson::getEndTime, request.getEndTime()));
+        if (updated == 0) {
+            throw new BusinessException(409, "课次已被其他教务调整，请刷新后重试");
+        }
+
+        // 旧时间信息用于文案/审计
+        LocalDate oldDate = lesson.getLessonDate();
+        LocalTime oldStart = lesson.getStartTime();
+        LocalTime oldEnd = lesson.getEndTime();
+
+        ScheduleLesson updatedLesson = scheduleLessonMapper.selectById(id);
+        populateScheduleNames(List.of(updatedLesson));
+
+        // 通知影响范围（在事务内解析，afterCommit 派发，避免幽灵通知）
+        Set<Long> parentIds = resolveParentIds(lesson.getClassId());
+        String reason = request.getReason() == null || request.getReason().isBlank()
+                ? "教务快速调课" : request.getReason().trim();
+
+        final String changeDesc = oldDate + " " + oldStart + "-" + oldEnd
+                + " 调整为 " + request.getLessonDate() + " " + request.getStartTime() + "-" + request.getEndTime();
+        final Long relatedId = id;
+
+        runAfterCommit(() -> {
+            try {
+                if (lesson.getTeacherId() != null) {
+                    Notification teacherNotification = new Notification();
+                    teacherNotification.setUserId(lesson.getTeacherId());
+                    teacherNotification.setType("SCHEDULE_CHANGE");
+                    teacherNotification.setTitle("课次时间已调整");
+                    teacherNotification.setContent(changeDesc + "（原因：" + reason + "）");
+                    teacherNotification.setRelatedId(relatedId);
+                    notificationService.send(lesson.getTeacherId(), teacherNotification);
+                }
+                if (!parentIds.isEmpty()) {
+                    Notification parentNotification = new Notification();
+                    parentNotification.setType("SCHEDULE_CHANGE");
+                    parentNotification.setTitle("课程时间调整通知");
+                    parentNotification.setContent("您孩子所在班级的课程时间已调整：" + changeDesc);
+                    parentNotification.setRelatedId(relatedId);
+                    notificationService.sendToUsers(new ArrayList<>(parentIds), parentNotification);
+                }
+            } catch (Exception e) {
+                log.warn("快速调课通知发送失败, lessonId={}", id, e);
+            }
+        });
+
+        // 操作日志（失败不影响主流程）
+        try {
+            operationLogService.log("排课管理", "快速调课（课次id=" + id + "，"
+                    + oldDate + " " + oldStart + "-" + oldEnd + " → "
+                    + request.getLessonDate() + " " + request.getStartTime() + "-" + request.getEndTime()
+                    + "，原因：" + reason + "）");
+        } catch (Exception e) {
+            log.warn("操作日志记录失败: {}", e.getMessage());
+        }
+
+        return updatedLesson;
+    }
+
+    @Override
+    public Map<String, Object> getNotifyScope(Long id) {
+        ScheduleLesson lesson = scheduleLessonMapper.selectById(id);
+        if (lesson == null) {
+            throw new BusinessException(404, "课次不存在或已删除");
+        }
+        Long teacherId = lesson.getTeacherId();
+        String teacherName = "";
+        if (teacherId != null) {
+            User teacher = userMapper.selectById(teacherId);
+            if (teacher != null) {
+                teacherName = teacher.getRealName() != null && !teacher.getRealName().isBlank()
+                        ? teacher.getRealName()
+                        : (teacher.getUsername() != null ? teacher.getUsername() : "");
+            }
+        }
+        int parentCount = resolveParentIds(lesson.getClassId()).size();
+        return Map.of(
+                "teacherId", teacherId == null ? 0L : teacherId,
+                "teacherName", teacherName,
+                "parentCount", parentCount);
+    }
+
+    /** 解析某班级在班学员的去重家长 userId 集合 */
+    private Set<Long> resolveParentIds(Long classId) {
+        if (classId == null || classStudentMapper == null || parentStudentMapper == null) {
+            return java.util.Collections.emptySet();
+        }
+        List<ClassStudent> classStudents = classStudentMapper.selectList(
+                new LambdaQueryWrapper<ClassStudent>()
+                        .eq(ClassStudent::getClassId, classId)
+                        .eq(ClassStudent::getStatus, 1));
+        if (classStudents.isEmpty()) {
+            return java.util.Collections.emptySet();
+        }
+        Set<Long> studentIds = classStudents.stream()
+                .map(ClassStudent::getStudentId).collect(Collectors.toSet());
+        return parentStudentMapper.selectList(
+                        new LambdaQueryWrapper<ParentStudent>().in(ParentStudent::getStudentId, studentIds))
+                .stream().map(ParentStudent::getParentUserId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    /** 有事务时 afterCommit 派发，无事务直接派发（通知失败不影响主业务） */
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        action.run();
+                    } catch (Exception ignored) {
+                        // 通知失败不影响主业务
+                    }
+                }
+            });
+        } else {
+            try {
+                action.run();
+            } catch (Exception ignored) {
+                // 通知失败不影响主业务
+            }
+        }
     }
 
     /** 判断两个课次是否在同一天且时间段有重叠（复用 ScheduleConflictServiceImpl 的重叠公式） */

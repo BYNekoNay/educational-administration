@@ -41,17 +41,47 @@
         <el-button size="small" @click="next" :icon="ArrowRight" circle />
         <el-button size="small" @click="goToday">今天</el-button>
       </div>
-      <el-radio-group v-model="viewMode" size="small" @change="loadLessons">
+      <el-radio-group v-model="viewMode" size="small" @change="onViewModeChange">
         <el-radio-button value="month">月</el-radio-button>
         <el-radio-button value="week">周</el-radio-button>
       </el-radio-group>
+      <el-switch
+        v-if="viewMode === 'week' && canEdit"
+        v-model="editMode"
+        active-text="编辑模式"
+        inline-prompt
+        style="margin-left: 12px"
+      />
     </div>
 
     <!-- 视图 -->
     <div v-loading="loading" style="min-height:300px">
       <MonthlyCalendar v-if="viewMode === 'month'" :lessons="lessons" :year="year" :month="month" />
-      <WeeklyCalendar v-if="viewMode === 'week'" :lessons="lessons" :weekDays="weekDayLabels" />
+      <EditableWeekGrid
+        v-else-if="viewMode === 'week' && editMode"
+        :lessons="lessons"
+        :weekDays="weekDayLabels"
+        :weekDates="weekDateStrs"
+        :can-edit="true"
+        @schedule-move="onScheduleMove"
+      />
+      <WeeklyCalendar v-else-if="viewMode === 'week'" :lessons="lessons" :weekDays="weekDayLabels" />
     </div>
+
+    <!-- 拖拽调课确认弹窗 -->
+    <el-dialog v-model="moveDialogVisible" title="确认快速调课" width="520px">
+      <div v-if="pendingMove" class="move-confirm">
+        <p class="move-line"><span class="move-label">原时间</span>{{ fmtLessonTime(pendingMove.lesson) }}</p>
+        <p class="move-line"><span class="move-label">新时间</span>{{ pendingMove.target.lessonDate }} {{ sliceTime(pendingMove.target.startTime) }}-{{ sliceTime(pendingMove.target.endTime) }}</p>
+        <p class="move-line"><span class="move-label">班级/教师/教室</span>{{ pendingMove.lesson.className || '—' }} / {{ pendingMove.lesson.teacherName || '—' }} / {{ pendingMove.lesson.classroomName || '—' }}</p>
+        <p class="move-line"><span class="move-label">影响范围</span>将通知 {{ notifyScope.parentCount }} 位家长{{ notifyScope.teacherName ? ' 与教师 ' + notifyScope.teacherName : '' }}</p>
+        <el-input v-model="moveReason" type="textarea" :rows="2" placeholder="调整原因（可选，将写入操作日志与通知内容）" />
+      </div>
+      <template #footer>
+        <el-button @click="moveDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="moving" @click="confirmQuickAdjust">确认调课</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -61,13 +91,21 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, ArrowRight, Search } from '@element-plus/icons-vue'
 import { scheduleApi, courseApi, classApi, teacherApi, classroomApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import { useAuthStore } from '@/stores/auth'
 import MonthlyCalendar from './components/MonthlyCalendar.vue'
 import WeeklyCalendar from './components/WeeklyCalendar.vue'
+import EditableWeekGrid from './components/EditableWeekGrid.vue'
+import { buildQuickAdjustPayload } from './components/useScheduleDrag'
 
 // 模式
 const viewMode = ref<'month' | 'week'>('week')
 const currentDate = ref(new Date())
 const loading = ref(false)
+
+// P1 拖拽编辑：仅教务管理员/超级管理员可开启（后端 quick-adjust 亦校验角色，双保险）
+const authStore = useAuthStore()
+const canEdit = computed(() => ['SUPER_ADMIN', 'EDU_ADMIN'].includes(authStore.roleCode))
+const editMode = ref(false)
 
 // 关键字搜索（防抖 300ms）
 const keyword = ref('')
@@ -102,6 +140,15 @@ const lessons = ref<any[]>([])
 const year = computed(() => currentDate.value.getFullYear())
 const month = computed(() => currentDate.value.getMonth() + 1)
 
+// 当前周的 7 个日期（周一~周日，yyyy-MM-dd），供可编辑周网格按列定位
+const weekDateStrs = computed(() => {
+  const mon = getMonday(currentDate.value)
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i)
+    return toDateStr(d)
+  })
+})
+
 // 周范围标签
 const rangeLabel = computed(() => {
   if (viewMode.value === 'month') return `${year.value}年${month.value}月`
@@ -121,6 +168,13 @@ const weekDayLabels = computed(() => {
   })
 })
 
+// P1 快速调课对话框状态
+const moveDialogVisible = ref(false)
+const pendingMove = ref<{ lesson: any; target: { lessonDate: string; startTime: string; endTime: string } } | null>(null)
+const notifyScope = reactive({ teacherId: 0, teacherName: '', parentCount: 0 })
+const moveReason = ref('')
+const moving = ref(false)
+
 function toDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -128,6 +182,62 @@ function toDateStr(d: Date) {
 function getMonday(d: Date): Date {
   const day = d.getDay() || 7
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() - day + 1)
+}
+
+// 展示时间："HH:mm:ss" → "HH:mm"
+function sliceTime(t?: string | null): string {
+  return t ? String(t).slice(0, 5) : ''
+}
+
+// 展示原时间：yyyy-MM-dd HH:mm-HH:mm
+function fmtLessonTime(lesson: any): string {
+  if (!lesson) return ''
+  return `${lesson.lessonDate || ''} ${sliceTime(lesson.startTime)}-${sliceTime(lesson.endTime)}`
+}
+
+// 切换月/周视图时退出编辑模式并按新视图刷新
+function onViewModeChange() {
+  editMode.value = false
+  loadLessons()
+}
+
+// 网格 drop 后的处理：查询影响范围并弹出确认对话框
+async function onScheduleMove(payload: { lesson: any; target: { lessonDate: string; startTime: string; endTime: string } }) {
+  if (!canEdit.value || !payload || !payload.lesson) return
+  pendingMove.value = payload
+  moveReason.value = ''
+  notifyScope.teacherId = 0
+  notifyScope.teacherName = ''
+  notifyScope.parentCount = 0
+  moveDialogVisible.value = true
+  try {
+    const res = await scheduleApi.notifyScope(payload.lesson.id)
+    const scope = res.data || {}
+    notifyScope.teacherId = scope.teacherId ?? 0
+    notifyScope.teacherName = scope.teacherName || ''
+    notifyScope.parentCount = scope.parentCount ?? 0
+  } catch (e) {
+    showError(e, '查询影响范围失败')
+  }
+}
+
+// 确认快速调课：直接更新原课次时间（免审批），成功后刷新课表
+async function confirmQuickAdjust() {
+  const move = pendingMove.value
+  if (!move) return
+  moving.value = true
+  try {
+    const data = buildQuickAdjustPayload(move.lesson, move.target, moveReason.value)
+    await scheduleApi.quickAdjust(move.lesson.id, data)
+    ElMessage.success('调课成功，原课次时间已更新并通知相关人员')
+    moveDialogVisible.value = false
+    pendingMove.value = null
+    loadLessons()
+  } catch (e) {
+    showError(e, '快速调课失败')
+  } finally {
+    moving.value = false
+  }
 }
 
 function prev() {
@@ -207,3 +317,9 @@ onMounted(async () => {
   loadLessons()
 })
 </script>
+
+<style scoped>
+.move-confirm { font-size: 14px; color: #303133; }
+.move-line { display: flex; gap: 8px; margin: 8px 0; line-height: 1.6; }
+.move-label { flex-shrink: 0; color: #909399; }
+</style>

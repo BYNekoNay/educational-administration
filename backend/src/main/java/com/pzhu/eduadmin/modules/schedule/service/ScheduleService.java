@@ -7,9 +7,11 @@ import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.dto.AdjustRequestVO;
 import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
+import com.pzhu.eduadmin.modules.schedule.dto.QuickAdjustRequest;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 public interface ScheduleService {
 
@@ -26,6 +28,12 @@ public interface ScheduleService {
     ScheduleLesson updateLesson(ScheduleLesson lesson);
 
     boolean deleteLesson(Long id);
+
+    /** P1 教务快速调课：直接更新原课次时间（免审批、不置 4、不生成 sourceLessonId） */
+    ScheduleLesson quickAdjustLesson(Long id, QuickAdjustRequest request);
+
+    /** P1 拖拽确认前查询影响范围（该班教师 + 在班学员家长去重数） */
+    Map<String, Object> getNotifyScope(Long id);
 
     // 冲突检测与批量排课
     List<String> checkConflict(ScheduleLesson lesson);

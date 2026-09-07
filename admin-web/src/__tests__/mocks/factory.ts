@@ -53,6 +53,10 @@ export function createAuthApiMocks() {
       classActivity: makeResolve([]),
       courseProfit: makeResolve([]),
       paymentRate: makeResolve([]),
+      riskWarnings: makeResolve({ records: [], total: 0, pageNum: 1, pageSize: 10 }),
+      riskSummary: makeResolve({ total: 0, high: 0, medium: 0, low: 0, byLevel: [] }),
+      riskFollowUp: makeResolve({}),
+      riskNotify: makeResolve({ parentCount: 0, notifiedParentCount: 0 }),
     },
     noticeApi: {
       list: makeResolve(emptyPage),
@@ -104,9 +108,17 @@ export function createEduApiMocks() {
       checkConflict: makeResolve({}),
       batchCreate: makeResolve({}),
       autoSchedule: makeResolve([]),
+      quickAdjust: makeResolve({}),
+      notifyScope: makeResolve({ teacherId: 0, teacherName: '', parentCount: 0 }),
     },
     teacherApi: {
       list: makeResolve([]),
+    },
+    periodApi: {
+      list: makeResolve([]),
+      create: makeResolve({}),
+      update: makeResolve({}),
+      delete: makeResolve({}),
     },
     attendanceApi: {
       list: makeResolve(emptyPage),

@@ -10,6 +10,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.dto.AdjustRequestVO;
 import com.pzhu.eduadmin.modules.schedule.dto.AutoScheduleRequest;
+import com.pzhu.eduadmin.modules.schedule.dto.QuickAdjustRequest;
 import com.pzhu.eduadmin.modules.schedule.service.ScheduleService;
 import com.pzhu.eduadmin.modules.notification.entity.Notification;
 import com.pzhu.eduadmin.modules.notification.service.NotificationService;
@@ -161,6 +162,23 @@ public class ScheduleController {
         lesson.setCreateTime(null);
         lesson.setUpdateTime(null);
         return Result.success(scheduleService.updateLesson(lesson));
+    }
+
+    /** P1 教务快速调课：直接更新原课次时间（免审批），成功后通知该班教师与学员家长 */
+    @PostMapping("/schedules/{id}/quick-adjust")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
+    public Result<ScheduleLesson> quickAdjust(@PathVariable Long id,
+                                              @Valid @RequestBody QuickAdjustRequest request) {
+        // 快速调课只接受 目标日期/起止时间/原因，天然无 mass-assignment 面；
+        // 禁止改班级/教师/教室/状态/来源课次等字段。
+        return Result.success(scheduleService.quickAdjustLesson(id, request));
+    }
+
+    /** P1 拖拽确认前查询影响范围（该班教师 + 在班学员家长去重数） */
+    @GetMapping("/schedules/{id}/notify-scope")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
+    public Result<Map<String, Object>> notifyScope(@PathVariable Long id) {
+        return Result.success(scheduleService.getNotifyScope(id));
     }
 
     @DeleteMapping("/schedules/{id}")
