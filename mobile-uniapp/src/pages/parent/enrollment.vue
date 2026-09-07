@@ -6,9 +6,15 @@
 
     <text class="section-header">可报名课程</text>
 
-    <view v-if="courses.length === 0" class="empty-state"><text>暂无可用课程</text></view>
+    <view v-if="snapshotLoading" class="empty-state"><text>课程加载中...</text></view>
+    <view v-else-if="snapshotLoadFailed" class="empty-state">
+      <text>课程加载失败</text>
+      <button class="retry-button" size="mini" @click="fetchEnrollmentSnapshot">重新加载</button>
+    </view>
+    <view v-else-if="!studentId" class="empty-state"><text>暂无关联学员</text></view>
+    <view v-else-if="courses.length === 0" class="empty-state"><text>暂无可用课程</text></view>
 
-    <view class="cell-group">
+    <view v-else class="cell-group">
       <view
         v-for="course in courses"
         :key="course.id"
@@ -45,8 +51,7 @@
 
         <!-- 展开：班级列表 -->
         <view v-if="expandedCourseId === course.id" class="class-list">
-          <view v-if="loadingClasses" class="class-loading"><text>加载班级中...</text></view>
-          <view v-else-if="!classList.length" class="class-loading"><text>暂无可报名班级</text></view>
+          <view v-if="!classList.length" class="class-loading"><text>暂无可报名班级</text></view>
           <view
             v-for="cls in classList"
             :key="cls.id"
@@ -121,19 +126,29 @@
 import { ref, onMounted } from 'vue'
 import { api, getCurrentStudentId, getMyStudents } from '@/utils/request'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
+import {
+  createSnapshotRequestGuard,
+  loadEnrollmentSnapshot,
+} from './enrollment-snapshot'
 
 const courses = ref([])
 const classCountMap = ref({})      // courseId -> 开班数
 const enrolledCourseIds = ref(new Set()) // 已报名的课程 ID 集合
+const classesByCourseId = ref({})
+const conflictsByCourseId = ref({})
 const expandedCourseId = ref(null)
 const classList = ref([])
-const loadingClasses = ref(false)
 const selectedCourse = ref(null)
 const selectedClass = ref(null)
 const submitting = ref(false)
 const showSheet = ref(false)
 const studentId = ref(getCurrentStudentId())
 const studentName = ref('')
+const snapshotVersionToken = ref('')
+const snapshotExpiresAt = ref(null)
+const snapshotLoading = ref(false)
+const snapshotLoadFailed = ref(false)
+const snapshotRequestGuard = createSnapshotRequestGuard()
 /** classId → { className, conflictClassName, description } 时间冲突信息 */
 const conflictMap = ref({})
 
@@ -179,7 +194,8 @@ function formatDate(d) {
 function onStudentChange(id) {
   studentId.value = id
   refreshStudentName()
-  checkAllEnrollments()
+  clearSnapshotState()
+  fetchEnrollmentSnapshot()
 }
 
 function refreshStudentName() {
@@ -188,44 +204,62 @@ function refreshStudentName() {
   studentName.value = s?.name || '未选择'
 }
 
-async function fetchCourses() {
-  try {
-    const res = await api({ url: '/api/parent/courses' })
-    courses.value = res.data || []
-    // 一次性预取每个课程的开班数量（让首页能直接显示"X 个开班"）
-    classCountMap.value = {}
-    for (const c of courses.value) {
-      try {
-        const r = await api({ url: `/api/parent/courses/${c.id}/classes` })
-        classCountMap.value[c.id] = (r.data || []).length
-      } catch {
-        // 失败时不写 0：模板按 key 是否存在决定展示，写 0 会误显示"0 个开班可选"
-      }
-    }
-    // 标记已报名课程
-    await checkAllEnrollments()
-  } catch (e) {
-    if (!e || !e._handled) uni.showToast({ title: '加载失败', icon: 'none' })
-  }
+function clearSnapshotState() {
+  courses.value = []
+  classCountMap.value = {}
+  enrolledCourseIds.value = new Set()
+  classesByCourseId.value = {}
+  conflictsByCourseId.value = {}
+  snapshotVersionToken.value = ''
+  snapshotExpiresAt.value = null
+  expandedCourseId.value = null
+  classList.value = []
+  conflictMap.value = {}
+  closePopup()
 }
 
-/** 为当前学员逐一检查各课程是否已有活跃报名 */
-async function checkAllEnrollments() {
+function applySnapshotState(state) {
+  courses.value = state.courses
+  classCountMap.value = state.classCountMap
+  enrolledCourseIds.value = state.enrolledCourseIds
+  classesByCourseId.value = state.classesByCourseId
+  conflictsByCourseId.value = state.conflictsByCourseId
+  snapshotVersionToken.value = state.versionToken
+  snapshotExpiresAt.value = state.snapshotExpiresAt
+}
+
+async function fetchEnrollmentSnapshot() {
   const sid = studentId.value
-  if (!sid) { enrolledCourseIds.value = new Set(); return }
-  const set = new Set()
-  for (const c of courses.value) {
-    try {
-      const r = await api({ url: `/api/parent/enrollments/check/${sid}/${c.id}` })
-      if (r.data) set.add(c.id)
-    } catch { /* skip */ }
+  clearSnapshotState()
+  snapshotLoadFailed.value = false
+  if (!sid) {
+    snapshotRequestGuard.invalidate()
+    snapshotLoading.value = false
+    return
   }
-  // 竞态守卫：循环期间若已切换学员，丢弃本次（旧学员）结果，避免覆盖新学员状态
-  if (sid !== studentId.value) return
-  enrolledCourseIds.value = set
+  snapshotLoading.value = true
+
+  const result = await loadEnrollmentSnapshot({
+    studentId: sid,
+    guard: snapshotRequestGuard,
+    fetchSnapshot: currentStudentId => api({
+      url: `/api/parent/enrollments/snapshot?studentId=${currentStudentId}`,
+    }),
+    getCurrentStudentId: () => studentId.value,
+    onSuccess: state => applySnapshotState(state),
+    onError: error => {
+      snapshotLoadFailed.value = true
+      if (!error || !error._handled) {
+        uni.showToast({ title: '课程加载失败', icon: 'none' })
+      }
+    },
+  })
+  if (result.status !== 'stale') {
+    snapshotLoading.value = false
+  }
 }
 
-async function toggleCourse(course) {
+function toggleCourse(course) {
   if (enrolledCourseIds.value.has(course.id)) {
     uni.showToast({ title: '已报名该课程，请查看报名记录', icon: 'none' })
     return
@@ -236,34 +270,8 @@ async function toggleCourse(course) {
     return
   }
   expandedCourseId.value = course.id
-  loadingClasses.value = true
-  classList.value = []
-  conflictMap.value = {}
-  try {
-    const [classRes] = await Promise.all([
-      api({ url: `/api/parent/courses/${course.id}/classes` }),
-      fetchConflictsForCourse(course.id),
-    ])
-    classList.value = classRes.data || []
-  } catch (e) {
-    if (!e || !e._handled) uni.showToast({ title: '班级加载失败', icon: 'none' })
-  } finally {
-    loadingClasses.value = false
-  }
-}
-
-/** 拉取当前课程下所有班级的时间冲突信息 */
-async function fetchConflictsForCourse(courseId) {
-  const sid = studentId.value
-  if (!sid) return
-  try {
-    const r = await api({ url: `/api/parent/enrollments/conflicts/${sid}?courseId=${courseId}` })
-    const map = {}
-    ;(r.data || []).forEach(c => { map[c.classId] = c })
-    // 竞态守卫：请求期间切换学员时丢弃旧学员的冲突结果
-    if (sid !== studentId.value) return
-    conflictMap.value = map
-  } catch { /* 接口失败不影响班级展示 */ }
+  classList.value = classesByCourseId.value[course.id] || []
+  conflictMap.value = conflictsByCourseId.value[course.id] || {}
 }
 
 function selectClass(cls) {
@@ -289,13 +297,20 @@ function closePopup() {
 async function handleSubmit() {
   if (!selectedCourse.value || !selectedClass.value) return
   if (!studentId.value) { uni.showToast({ title: '未找到学员', icon: 'none' }); return }
+  const expiresAt = snapshotExpiresAt.value ? Date.parse(snapshotExpiresAt.value) : NaN
+  if (!snapshotVersionToken.value || (Number.isFinite(expiresAt) && expiresAt <= Date.now())) {
+    uni.showToast({ title: '报名信息已过期，正在刷新', icon: 'none' })
+    await fetchEnrollmentSnapshot()
+    return
+  }
   const sid = studentId.value
-  const courseId = selectedCourse.value.id
+  const snapshotVersion = snapshotVersionToken.value
   submitting.value = true
   try {
     await api({
       url: '/api/parent/enrollments',
       method: 'POST',
+      header: { 'If-Match': snapshotVersion },
       data: {
         studentId: sid,
         courseId: selectedCourse.value.id,
@@ -303,18 +318,14 @@ async function handleSubmit() {
       },
     })
     uni.showToast({ title: '报名成功，等待审核', icon: 'success' })
-    // 竞态守卫：提交期间若已切换学员，不能把"已报名"记到新学员头上
-    if (sid === studentId.value) {
-      enrolledCourseIds.value = new Set([...enrolledCourseIds.value, courseId])
-    } else {
-      checkAllEnrollments()
-    }
     closePopup()
-    expandedCourseId.value = null
-    classList.value = []
+    await fetchEnrollmentSnapshot()
   } catch (e) {
     // api() 已对业务/网络错误弹过具体提示（_handled），此处仅兜底未处理异常
     if (!e || !e._handled) uni.showToast({ title: (e && e.message) || '报名失败', icon: 'none' })
+    if (sid === studentId.value && /快照|刷新/.test(e?.message || '')) {
+      await fetchEnrollmentSnapshot()
+    }
   } finally {
     submitting.value = false
   }
@@ -322,7 +333,7 @@ async function handleSubmit() {
 
 onMounted(() => {
   refreshStudentName()
-  fetchCourses()
+  fetchEnrollmentSnapshot()
 })
 </script>
 
@@ -336,6 +347,13 @@ onMounted(() => {
   overflow: hidden;
   box-shadow: 0 2rpx 12rpx rgba(45, 42, 38, 0.04);
   transition: all 0.2s;
+}
+
+.retry-button {
+  margin-top: 20rpx;
+  color: #0E7490;
+  border-color: #0E7490;
+  background: #FFF;
 }
 .course-card-enrolled {
   background: #F8FAF8;

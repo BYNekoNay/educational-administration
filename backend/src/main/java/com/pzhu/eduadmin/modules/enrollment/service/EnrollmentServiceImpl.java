@@ -12,6 +12,9 @@ import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.ClassGroupMapper;
 import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
+import com.pzhu.eduadmin.modules.enrollment.dto.ClassConflictVO;
+import com.pzhu.eduadmin.modules.enrollment.dto.ParentClassVO;
+import com.pzhu.eduadmin.modules.enrollment.dto.ParentEnrollmentSnapshotVO;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
@@ -23,6 +26,8 @@ import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.entity.Student;
+import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
+import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
@@ -34,10 +39,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
+import java.time.Duration;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -57,12 +67,16 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private final PaymentRecordMapper paymentRecordMapper;
     private final RefundRecordMapper refundRecordMapper;
     private final ScheduleLessonMapper scheduleLessonMapper;
+    private final ParentStudentMapper parentStudentMapper;
 
     private static final Map<String, SFunction<Enrollment, ?>> ENROLLMENT_SORT_MAP = Map.of(
             "id", Enrollment::getId,
             "createTime", Enrollment::getCreateTime,
             "status", Enrollment::getStatus
     );
+    private static final Duration PARENT_SNAPSHOT_TTL = Duration.ofMinutes(5);
+    private final ConcurrentMap<String, ParentSnapshotRecord> parentSnapshotRecords = new ConcurrentHashMap<>();
+    private Clock parentSnapshotClock = Clock.systemDefaultZone();
 
     @Override
     public Page<Enrollment> page(int pageNum, int pageSize, String sortField, String sortOrder) {
@@ -455,6 +469,267 @@ public class EnrollmentServiceImpl implements EnrollmentService {
             }
         }
         return null;
+    }
+
+    @Override
+    public List<ParentClassVO> listParentCourseClasses(Long courseId) {
+        List<ClassGroup> classes = courseMapper.selectClassGroupsByCourseId(courseId);
+        if (classes.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Set<Long> teacherIds = classes.stream()
+                .map(ClassGroup::getTeacherId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> teacherNameMap = teacherIds.isEmpty()
+                ? Collections.emptyMap()
+                : userMapper.selectBatchIds(teacherIds).stream()
+                        .collect(Collectors.toMap(User::getId,
+                                user -> user.getRealName() != null && !user.getRealName().isBlank()
+                                        ? user.getRealName()
+                                        : (user.getUsername() != null ? user.getUsername() : ""),
+                                (left, right) -> left));
+
+        List<Long> classIds = classes.stream().map(ClassGroup::getId).toList();
+        Map<Long, Long> studentCountMap = classStudentMapper.selectList(
+                        new LambdaQueryWrapper<ClassStudent>()
+                                .in(ClassStudent::getClassId, classIds)
+                                .eq(ClassStudent::getStatus, 1))
+                .stream()
+                .collect(Collectors.groupingBy(ClassStudent::getClassId, Collectors.counting()));
+        Map<Long, String> scheduleSummaryMap = summarizeSchedules(classIds);
+
+        return classes.stream().map(classGroup -> {
+            ParentClassVO result = new ParentClassVO();
+            result.setId(classGroup.getId());
+            result.setClassName(classGroup.getClassName());
+            result.setTeacherId(classGroup.getTeacherId());
+            result.setTeacherName(teacherNameMap.getOrDefault(classGroup.getTeacherId(), "未指定"));
+            result.setStartDate(classGroup.getStartDate());
+            result.setMaxStudentCount(classGroup.getMaxStudentCount() == null ? 0 : classGroup.getMaxStudentCount());
+            result.setCurrentStudentCount(studentCountMap.getOrDefault(classGroup.getId(), 0L).intValue());
+            result.setStatus(classGroup.getStatus());
+            result.setScheduleSummary(scheduleSummaryMap.getOrDefault(classGroup.getId(), "课次待定"));
+            return result;
+        }).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ParentEnrollmentSnapshotVO getParentEnrollmentSnapshot(Long parentUserId, Long studentId) {
+        if (studentId == null) {
+            throw new BusinessException(400, "学员ID不能为空");
+        }
+        assertParentStudentBinding(parentUserId, studentId);
+
+        LocalDateTime snapshotAt = LocalDateTime.now(parentSnapshotClock);
+        LocalDateTime snapshotExpiresAt = snapshotAt.plus(PARENT_SNAPSHOT_TTL);
+        String versionToken = "v1-" + UUID.randomUUID();
+        List<ParentEnrollmentSnapshotVO.CourseDecision> decisions = buildParentEnrollmentDecisions(studentId);
+        parentSnapshotRecords.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(snapshotAt));
+        parentSnapshotRecords.put(versionToken, new ParentSnapshotRecord(
+                parentUserId,
+                studentId,
+                snapshotExpiresAt,
+                snapshotFingerprint(decisions)));
+        return new ParentEnrollmentSnapshotVO(
+                studentId,
+                snapshotAt,
+                snapshotExpiresAt,
+                versionToken,
+                decisions);
+    }
+
+    private List<ParentEnrollmentSnapshotVO.CourseDecision> buildParentEnrollmentDecisions(Long studentId) {
+        List<Course> courses = courseMapper.selectList(
+                new LambdaQueryWrapper<Course>()
+                        .eq(Course::getStatus, 1)
+                        .orderByAsc(Course::getId));
+        if (courses.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, Enrollment> activeEnrollmentByCourse = enrollmentMapper.selectList(
+                        new LambdaQueryWrapper<Enrollment>()
+                                .eq(Enrollment::getStudentId, studentId)
+                                .notIn(Enrollment::getStatus, List.of(4, 5, 6))
+                                .orderByDesc(Enrollment::getCreateTime))
+                .stream()
+                .filter(enrollment -> enrollment.getCourseId() != null)
+                .collect(Collectors.toMap(
+                        Enrollment::getCourseId,
+                        Function.identity(),
+                        (first, ignored) -> first,
+                        LinkedHashMap::new));
+
+        return courses.stream().map(course -> {
+            List<ParentClassVO> classes = listParentCourseClasses(course.getId());
+            List<ClassConflictVO> conflicts = classes.stream()
+                    .map(parentClass -> toClassConflict(studentId, parentClass))
+                    .filter(Objects::nonNull)
+                    .toList();
+            Enrollment activeEnrollment = activeEnrollmentByCourse.get(course.getId());
+            LocalDateTime holdExpireTime = activeEnrollment == null ? null : activeEnrollment.getHoldExpireTime();
+            return new ParentEnrollmentSnapshotVO.CourseDecision(
+                    course,
+                    activeEnrollment != null,
+                    activeEnrollment == null ? null : activeEnrollment.getStatus(),
+                    holdExpireTime,
+                    holdExpireTime != null && holdExpireTime.isBefore(LocalDateTime.now(parentSnapshotClock)),
+                    classes.size(),
+                    classes,
+                    conflicts);
+        }).toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Enrollment createParentEnrollmentFromSnapshot(
+            Long parentUserId, Enrollment enrollment, String versionToken) {
+        if (enrollment == null || enrollment.getStudentId() == null
+                || enrollment.getCourseId() == null || enrollment.getClassId() == null) {
+            throw new BusinessException(400, "学员、课程和班级不能为空");
+        }
+        if (versionToken == null || versionToken.isBlank()) {
+            throw new BusinessException(409, "报名快照已失效或过期，请刷新后重试");
+        }
+        ParentSnapshotRecord snapshotRecord = parentSnapshotRecords.get(versionToken);
+        LocalDateTime now = LocalDateTime.now(parentSnapshotClock);
+        if (snapshotRecord == null || !snapshotRecord.expiresAt().isAfter(now)) {
+            parentSnapshotRecords.remove(versionToken);
+            throw new BusinessException(409, "报名快照已失效或过期，请刷新后重试");
+        }
+        if (!Objects.equals(snapshotRecord.parentUserId(), parentUserId)
+                || !Objects.equals(snapshotRecord.studentId(), enrollment.getStudentId())) {
+            throw new BusinessException(403, "无权使用该报名快照");
+        }
+        assertParentStudentBinding(parentUserId, enrollment.getStudentId());
+
+        List<ParentEnrollmentSnapshotVO.CourseDecision> currentDecisions =
+                buildParentEnrollmentDecisions(enrollment.getStudentId());
+        if (!snapshotRecord.fingerprint().equals(snapshotFingerprint(currentDecisions))) {
+            parentSnapshotRecords.remove(versionToken);
+            throw new BusinessException(409, "报名快照状态已变化，请刷新后重试");
+        }
+
+        ParentEnrollmentSnapshotVO.CourseDecision courseDecision = currentDecisions.stream()
+                .filter(decision -> Objects.equals(decision.getCourse().getId(), enrollment.getCourseId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(409, "课程状态已变化，请刷新后重试"));
+        if (courseDecision.isEnrolled()) {
+            throw new BusinessException(409, "该学员已有此课程的报名记录");
+        }
+        ParentClassVO targetClass = courseDecision.getClasses().stream()
+                .filter(parentClass -> Objects.equals(parentClass.getId(), enrollment.getClassId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(409, "班级状态已变化，请刷新后重试"));
+        if (targetClass.getMaxStudentCount() != null && targetClass.getMaxStudentCount() > 0
+                && targetClass.getCurrentStudentCount() >= targetClass.getMaxStudentCount()) {
+            throw new BusinessException(409, "班级已满，请刷新后选择其他班级");
+        }
+        if (courseDecision.getConflicts().stream()
+                .anyMatch(conflict -> Objects.equals(conflict.getClassId(), enrollment.getClassId()))) {
+            throw new BusinessException(409, "上课时间冲突，请刷新后选择其他班级");
+        }
+
+        Enrollment created = create(enrollment);
+        parentSnapshotRecords.remove(versionToken);
+        return created;
+    }
+
+    private void assertParentStudentBinding(Long parentUserId, Long studentId) {
+        Long bindingCount = parentStudentMapper.selectCount(
+                new LambdaQueryWrapper<ParentStudent>()
+                        .eq(ParentStudent::getParentUserId, parentUserId)
+                        .eq(ParentStudent::getStudentId, studentId));
+        if (bindingCount == 0) {
+            throw new BusinessException(403, "无权查看该学员报名信息");
+        }
+    }
+
+    private String snapshotFingerprint(List<ParentEnrollmentSnapshotVO.CourseDecision> decisions) {
+        StringBuilder fingerprint = new StringBuilder();
+        for (ParentEnrollmentSnapshotVO.CourseDecision decision : decisions) {
+            Course course = decision.getCourse();
+            appendFingerprint(fingerprint, course.getId(), course.getName(), course.getCategory(),
+                    course.getTotalLessons(), course.getLessonDuration(), course.getPrice(), course.getStatus(),
+                    decision.isEnrolled(), decision.getActiveEnrollmentStatus(),
+                    decision.getHoldExpireTime(), decision.isHoldExpired());
+            for (ParentClassVO parentClass : decision.getClasses()) {
+                appendFingerprint(fingerprint, parentClass.getId(), parentClass.getClassName(),
+                        parentClass.getTeacherId(), parentClass.getTeacherName(), parentClass.getStartDate(),
+                        parentClass.getMaxStudentCount(), parentClass.getCurrentStudentCount(),
+                        parentClass.getStatus(), parentClass.getScheduleSummary());
+            }
+            for (ClassConflictVO conflict : decision.getConflicts()) {
+                appendFingerprint(fingerprint, conflict.getClassId(), conflict.getClassName(),
+                        conflict.getConflictClassName(), conflict.getDescription());
+            }
+        }
+        return fingerprint.toString();
+    }
+
+    private void appendFingerprint(StringBuilder fingerprint, Object... values) {
+        for (Object value : values) {
+            String text = Objects.toString(value, "<null>");
+            fingerprint.append(text.length()).append(':').append(text).append('|');
+        }
+        fingerprint.append(';');
+    }
+
+    private record ParentSnapshotRecord(
+            Long parentUserId,
+            Long studentId,
+            LocalDateTime expiresAt,
+            String fingerprint) {
+    }
+
+    private ClassConflictVO toClassConflict(Long studentId, ParentClassVO targetClass) {
+        Map<String, Object> conflict = detectTimeConflict(studentId, targetClass.getId());
+        if (conflict == null) {
+            return null;
+        }
+        return new ClassConflictVO(
+                targetClass.getId(),
+                targetClass.getClassName(),
+                (String) conflict.get("conflictClassName"),
+                (String) conflict.get("conflictDetail"));
+    }
+
+    private Map<Long, String> summarizeSchedules(List<Long> classIds) {
+        if (classIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        LocalDate today = LocalDate.now();
+        List<ScheduleLesson> lessons = scheduleLessonMapper.selectList(
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .in(ScheduleLesson::getClassId, classIds)
+                        .eq(ScheduleLesson::getStatus, 1)
+                        .between(ScheduleLesson::getLessonDate, today, today.plusWeeks(8))
+                        .orderByAsc(ScheduleLesson::getClassId, ScheduleLesson::getLessonDate,
+                                ScheduleLesson::getStartTime));
+        Map<Long, List<ScheduleLesson>> grouped = lessons.stream()
+                .collect(Collectors.groupingBy(ScheduleLesson::getClassId));
+
+        DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("HH:mm");
+        Map<Long, String> summaries = new HashMap<>();
+        for (Map.Entry<Long, List<ScheduleLesson>> entry : grouped.entrySet()) {
+            List<ScheduleLesson> classLessons = entry.getValue();
+            Set<DayOfWeek> days = classLessons.stream()
+                    .limit(3)
+                    .map(lesson -> lesson.getLessonDate().getDayOfWeek())
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            String dayDescription = days.stream()
+                    .map(EnrollmentServiceImpl::dayOfWeekLabel)
+                    .collect(Collectors.joining("/"));
+            ScheduleLesson first = classLessons.get(0);
+            String timeDescription = first.getStartTime() != null && first.getEndTime() != null
+                    ? first.getStartTime().format(timeFormat) + "-" + first.getEndTime().format(timeFormat)
+                    : "时间待定";
+            summaries.put(entry.getKey(), dayDescription + " " + timeDescription);
+        }
+        return summaries;
     }
 
     /**

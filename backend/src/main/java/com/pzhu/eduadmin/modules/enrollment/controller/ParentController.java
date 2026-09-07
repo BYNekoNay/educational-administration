@@ -5,12 +5,11 @@ import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
-import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
 import com.pzhu.eduadmin.modules.course.entity.Course;
-import com.pzhu.eduadmin.modules.course.mapper.ClassStudentMapper;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
-import com.pzhu.eduadmin.modules.enrollment.dto.ParentClassVO;
 import com.pzhu.eduadmin.modules.enrollment.dto.ClassConflictVO;
+import com.pzhu.eduadmin.modules.enrollment.dto.ParentClassVO;
+import com.pzhu.eduadmin.modules.enrollment.dto.ParentEnrollmentSnapshotVO;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.enrollment.service.EnrollmentService;
@@ -18,14 +17,10 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.service.FinanceService;
 import com.pzhu.eduadmin.modules.notice.entity.Notice;
 import com.pzhu.eduadmin.modules.notice.mapper.NoticeMapper;
-import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
-import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
-import com.pzhu.eduadmin.modules.user.entity.User;
-import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
@@ -33,10 +28,7 @@ import com.pzhu.eduadmin.security.RequireRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.DayOfWeek;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -47,9 +39,6 @@ import java.util.stream.Collectors;
 public class ParentController {
 
     private final CourseMapper courseMapper;
-    private final ClassStudentMapper classStudentMapper;
-    private final ScheduleLessonMapper scheduleLessonMapper;
-    private final UserMapper userMapper;
     private final EnrollmentService enrollmentService;
     private final EnrollmentMapper enrollmentMapper;
     private final ParentStudentMapper parentStudentMapper;
@@ -70,107 +59,13 @@ public class ParentController {
      */
     @GetMapping("/courses/{courseId}/classes")
     public Result<List<ParentClassVO>> listCourseClasses(@PathVariable Long courseId) {
-        // 1. 取课程下所有 status=1 的开班
-        List<ClassGroup> classes = courseMapper.selectClassGroupsByCourseId(courseId);
-        if (classes.isEmpty()) {
-            return Result.success(Collections.emptyList());
-        }
-
-        // 2. 一次性查出所有教师姓名（避免 N+1）
-        Set<Long> teacherIds = classes.stream()
-                .map(ClassGroup::getTeacherId).filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<Long, String> teacherNameMap = teacherIds.isEmpty()
-                ? Collections.emptyMap()
-                : userMapper.selectBatchIds(teacherIds).stream()
-                        .collect(Collectors.toMap(User::getId,
-                                u -> u.getRealName() != null && !u.getRealName().isBlank()
-                                        ? u.getRealName()
-                                        : (u.getUsername() != null ? u.getUsername() : "")));
-
-        // 3. 一次性统计每个班的当前人数
-        List<Long> classIds = classes.stream().map(ClassGroup::getId).toList();
-        Map<Long, Long> studentCountMap = classStudentMapper.selectList(
-                new LambdaQueryWrapper<ClassStudent>()
-                        .in(ClassStudent::getClassId, classIds)
-                        .eq(ClassStudent::getStatus, 1))
-                .stream()
-                .collect(Collectors.groupingBy(ClassStudent::getClassId, Collectors.counting()));
-
-        // 4. 一次性查所有班的课次，聚合出"周三/周五 19:00-20:30"摘要
-        Map<Long, String> scheduleSummaryMap = summarizeSchedules(classIds);
-
-        // 5. 组装 VO
-        List<ParentClassVO> result = classes.stream().map(c -> {
-            ParentClassVO vo = new ParentClassVO();
-            vo.setId(c.getId());
-            vo.setClassName(c.getClassName());
-            vo.setTeacherId(c.getTeacherId());
-            vo.setTeacherName(teacherNameMap.getOrDefault(c.getTeacherId(), "未指定"));
-            vo.setStartDate(c.getStartDate());
-            vo.setMaxStudentCount(c.getMaxStudentCount() == null ? 0 : c.getMaxStudentCount());
-            vo.setCurrentStudentCount(studentCountMap.getOrDefault(c.getId(), 0L).intValue());
-            vo.setStatus(c.getStatus());
-            vo.setScheduleSummary(scheduleSummaryMap.getOrDefault(c.getId(), "课次待定"));
-            return vo;
-        }).toList();
-
-        return Result.success(result);
-    }
-
-    /**
-     * 聚合班的课次摘要：取未来 8 周内最早的若干课次，归纳成"周X HH:MM-HH:MM"格式
-     */
-    private Map<Long, String> summarizeSchedules(List<Long> classIds) {
-        if (classIds.isEmpty()) return Collections.emptyMap();
-        LocalDate today = LocalDate.now();
-        LocalDate horizon = today.plusWeeks(8);
-
-        List<ScheduleLesson> lessons = scheduleLessonMapper.selectList(
-                new LambdaQueryWrapper<ScheduleLesson>()
-                        .in(ScheduleLesson::getClassId, classIds)
-                        .eq(ScheduleLesson::getStatus, 1)
-                        .between(ScheduleLesson::getLessonDate, today, horizon)
-                        .orderByAsc(ScheduleLesson::getClassId, ScheduleLesson::getLessonDate,
-                                ScheduleLesson::getStartTime));
-
-        Map<Long, List<ScheduleLesson>> grouped = lessons.stream()
-                .collect(Collectors.groupingBy(ScheduleLesson::getClassId));
-
-        DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
-        Map<Long, String> result = new HashMap<>();
-        for (Map.Entry<Long, List<ScheduleLesson>> e : grouped.entrySet()) {
-            List<ScheduleLesson> list = e.getValue();
-            // 取前 3 条（代表典型的周次）
-            Set<DayOfWeek> days = list.stream().limit(3)
-                    .map(l -> l.getLessonDate().getDayOfWeek())
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-            String dayDesc = days.stream()
-                    .map(d -> dayOfWeekLabel(d))
-                    .collect(Collectors.joining("/"));
-            ScheduleLesson first = list.get(0);
-            String timeDesc = (first.getStartTime() != null && first.getEndTime() != null)
-                    ? first.getStartTime().format(timeFmt) + "-" + first.getEndTime().format(timeFmt)
-                    : "时间待定";
-            result.put(e.getKey(), dayDesc + " " + timeDesc);
-        }
-        return result;
-    }
-
-    private static String dayOfWeekLabel(DayOfWeek dow) {
-        return switch (dow) {
-            case MONDAY -> "周一";
-            case TUESDAY -> "周二";
-            case WEDNESDAY -> "周三";
-            case THURSDAY -> "周四";
-            case FRIDAY -> "周五";
-            case SATURDAY -> "周六";
-            case SUNDAY -> "周日";
-        };
+        return Result.success(enrollmentService.listParentCourseClasses(courseId));
     }
 
     @PostMapping("/enrollments")
-    public Result<Enrollment> createEnrollment(@RequestBody Enrollment enrollment) {
+    public Result<Enrollment> createEnrollment(
+            @RequestBody Enrollment enrollment,
+            @RequestHeader(value = "If-Match", required = false) String snapshotVersion) {
         // H4 fix: 清除客户端不应设置的服务端控制字段
         // 注意：classId 是家长在报名页明确选择的班级，不能清空——
         // EnrollmentServiceImpl.create 依赖 classId 做班级归属/开放/时间冲突校验，
@@ -203,7 +98,14 @@ public class ParentController {
         }
         enrollment.setParentUserId(loginUser.getUserId());
         enrollment.setStatus(1);
-        return Result.success(enrollmentService.create(enrollment));
+        // 新版 H5 提交它实际展示的快照版本；旧客户端未传版本时，服务端即时创建
+        // 一份快照再走同一校验链，保持请求兼容且不允许绕过容量/冲突复核。
+        if (snapshotVersion == null || snapshotVersion.isBlank()) {
+            snapshotVersion = enrollmentService.getParentEnrollmentSnapshot(
+                    loginUser.getUserId(), enrollment.getStudentId()).getVersionToken();
+        }
+        return Result.success(enrollmentService.createParentEnrollmentFromSnapshot(
+                loginUser.getUserId(), enrollment, snapshotVersion));
     }
 
     @GetMapping("/enrollments")
@@ -213,6 +115,12 @@ public class ParentController {
         return Result.success(PageResult.of(
                 enrollmentService.pageByParentUserId(loginUser.getUserId(), studentId,
                         (int) query.getPageNum(), (int) query.getPageSize())));
+    }
+
+    @GetMapping("/enrollments/snapshot")
+    public Result<ParentEnrollmentSnapshotVO> getEnrollmentSnapshot(@RequestParam Long studentId) {
+        Long parentUserId = CurrentUserHolder.get().getUserId();
+        return Result.success(enrollmentService.getParentEnrollmentSnapshot(parentUserId, studentId));
     }
 
     /**
