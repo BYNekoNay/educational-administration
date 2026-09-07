@@ -28,10 +28,10 @@
         <el-option label="中风险" value="MEDIUM" />
         <el-option label="低风险" value="LOW" />
       </el-select>
-      <el-select v-model="filters.classId" placeholder="全部班级" clearable style="width: 150px" @change="search">
+      <el-select v-if="canOperate" v-model="filters.classId" placeholder="全部班级" clearable style="width: 150px" @change="search">
         <el-option v-for="c in classOptions" :key="c.id" :label="c.className" :value="c.id" />
       </el-select>
-      <el-select v-model="filters.courseId" placeholder="全部课程" clearable style="width: 140px" @change="search">
+      <el-select v-if="canOperate" v-model="filters.courseId" placeholder="全部课程" clearable style="width: 140px" @change="search">
         <el-option v-for="c in courseOptions" :key="c.id" :label="c.name" :value="c.id" />
       </el-select>
       <el-select v-model="filters.followUpStatus" placeholder="全部跟进状态" clearable style="width: 140px" @change="search">
@@ -264,7 +264,11 @@ async function handleNotify() {
 }
 
 onMounted(() => {
-  loadOptions()
+  // 班级/课程下拉依赖 /edu/classes、/edu/courses（后端仅放行 SUPER_ADMIN/EDU_ADMIN），
+  // 财务等只读角色跳过加载，避免首屏闪现"无权访问该接口"
+  if (canOperate.value) {
+    loadOptions()
+  }
   loadSummary()
   loadList()
 })

@@ -14,6 +14,7 @@ vi.mock('@/api/edu', async () => {
 })
 
 import { statisticsApi } from '@/api/auth'
+import { classApi, courseApi } from '@/api/edu'
 import { useAuthStore } from '@/stores/auth'
 import RiskWarningPanel from '@/views/dashboard/components/RiskWarningPanel.vue'
 
@@ -57,6 +58,24 @@ describe('RiskWarningPanel.vue', () => {
   it('hides operate actions for finance role', () => {
     const text = m('FINANCE').text()
     expect(text).not.toContain('一键站内通知家长')
+  })
+
+  it('skips class/course option loading for finance (avoids 403 spam)', () => {
+    // 财务无 /edu/classes、/edu/courses 权限：不得触发加载与渲染，消除首屏"无权访问该接口"
+    const wrapper = m('FINANCE')
+    expect(vi.mocked(classApi.list)).not.toHaveBeenCalled()
+    expect(vi.mocked(courseApi.list)).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('全部班级')
+    expect(wrapper.text()).not.toContain('全部课程')
+    // 风险数据本身仍正常加载
+    expect(vi.mocked(statisticsApi.riskSummary)).toHaveBeenCalled()
+    expect(vi.mocked(statisticsApi.riskWarnings)).toHaveBeenCalled()
+  })
+
+  it('loads class/course options for edu admin', () => {
+    m('EDU_ADMIN')
+    expect(vi.mocked(classApi.list)).toHaveBeenCalled()
+    expect(vi.mocked(courseApi.list)).toHaveBeenCalled()
   })
 
   it('applies filters when searching', async () => {

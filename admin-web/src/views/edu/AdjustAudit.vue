@@ -59,7 +59,7 @@
     <!-- 分页 -->
     <div style="margin-top:16px;display:flex;justify-content:flex-end">
       <el-pagination v-if="total>pageSize" v-model:current-page="pagenum" :page-size="pageSize"
-                     :total="total" layout="prev,next" @current-change="loadData" small />
+                     :total="total" layout="prev,next" @current-change="loadData" size="small" />
     </div>
 
     <!-- 审核弹窗 -->

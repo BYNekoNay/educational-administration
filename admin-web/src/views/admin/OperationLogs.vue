@@ -36,7 +36,7 @@
         @current-change="loadLogs"
         @size-change="loadLogs"
         background
-        small
+        size="small"
       />
     </div>
   </div>
