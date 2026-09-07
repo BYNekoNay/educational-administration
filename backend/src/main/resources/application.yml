@@ -59,3 +59,25 @@ logging:
 app:
   cors:
     allowed-origins: http://localhost:*,http://127.0.0.1:*
+  notification:
+    sse:
+      # SSE 心跳周期（毫秒）。nginx proxy_read_timeout 需高于此值，避免长连静默断连。
+      heartbeat-ms: 25000
+    mock-sms:
+      # 模拟短信外发通道开关：false=默认关闭；true=站内通知入库后打印 [MOCK-SMS] 日志演示外发
+      enabled: false
+  risk:
+    # 流失预警规则配置（P4）。默认均衡档，参数预留；本期不做管理端 UI 切换。
+    enabled: true
+    preset: balanced
+    f5-extra-enabled: false
+    high-threshold: 60
+    medium-threshold: 30
+    factor-cap:
+      f1: 70
+      f2: 30
+      f3: 35
+      f4: 25
+      f5: 10
+    attendance-window-days: 28
+    absence-lookback-days: 45

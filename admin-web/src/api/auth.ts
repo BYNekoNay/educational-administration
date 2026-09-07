@@ -75,6 +75,15 @@ export const statisticsApi = {
   classActivity: () => request.get('/admin/statistics/class-activity'),
   courseProfit: () => request.get('/admin/statistics/course-profit'),
   paymentRate: () => request.get('/admin/statistics/payment-rate'),
+  /** 流失预警名单（分页） */
+  riskWarnings: (params?: any) => request.get('/admin/risk-warnings', { params }),
+  /** 流失预警风险分布汇总 */
+  riskSummary: () => request.get('/admin/risk-warnings/summary'),
+  /** 标记跟进状态 { status, remark } */
+  riskFollowUp: (studentId: number, data: any) =>
+    request.put(`/admin/risk-warnings/${studentId}/follow-up`, data),
+  /** 一键站内触达家长 { studentIds, message } */
+  riskNotify: (data: any) => request.post('/admin/risk-warnings/notify', data),
 }
 
 /** 通知公告 */

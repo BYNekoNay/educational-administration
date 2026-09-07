@@ -48,6 +48,13 @@ describe('Dashboard.vue', () => {
     expect(t).toContain('课程盈利')
     expect(t).toContain('收费率')
   })
+  it('renders 流失预警 tab content and loads risk warning APIs', () => {
+    const t = m('EDU_ADMIN').text()
+    // el-tab-pane 在测试中被 stub 为仅渲染内容，页签标题不进入文本；断言内容面板已挂载
+    expect(t).toContain('风险学员总数')
+    expect(vi.mocked(statisticsApi.riskSummary)).toHaveBeenCalled()
+    expect(vi.mocked(statisticsApi.riskWarnings)).toHaveBeenCalled()
+  })
   it('calls dashboard API', () => { m(); expect(vi.mocked(dashboardApi.get)).toHaveBeenCalled() })
   it('calls multidimensional statistics APIs', () => {
     m()

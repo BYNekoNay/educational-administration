@@ -88,6 +88,9 @@
             <el-table-column label="流失率"><template #default="{ row }">{{ row.lossRate }}%</template></el-table-column>
           </el-table>
         </el-tab-pane>
+        <el-tab-pane label="流失预警（学员级）" name="risk">
+          <RiskWarningPanel />
+        </el-tab-pane>
         <el-tab-pane label="班级活跃度" name="class">
           <h4>班级活跃度</h4>
           <el-table :data="classActivity" border stripe>
@@ -128,6 +131,7 @@ import { dashboardApi, statisticsApi } from '@/api/auth'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import ExportButton from '@/components/ExportButton.vue'
+import RiskWarningPanel from './components/RiskWarningPanel.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()

@@ -37,4 +37,13 @@ public class ExportController {
                                @RequestParam(required = false) String month) throws IOException {
         exportService.exportSalaries(response, month);
     }
+
+    @GetMapping("/risk-students")
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    public void exportRiskStudents(HttpServletResponse response,
+                                   @RequestParam(required = false) String level,
+                                   @RequestParam(required = false) Long classId,
+                                   @RequestParam(required = false) Long courseId) throws IOException {
+        exportService.exportRiskStudents(response, level, classId, courseId);
+    }
 }

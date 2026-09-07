@@ -5,6 +5,8 @@ import com.pzhu.eduadmin.modules.finance.entity.LessonFlow;
 import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.mapper.LessonFlowMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
+import com.pzhu.eduadmin.modules.risk.dto.RiskStudentVO;
+import com.pzhu.eduadmin.modules.risk.service.RiskWarningService;
 import com.pzhu.eduadmin.modules.salary.entity.TeacherSalary;
 import com.pzhu.eduadmin.modules.salary.mapper.TeacherSalaryMapper;
 import jakarta.servlet.http.HttpServletResponse;
@@ -26,6 +28,7 @@ public class ExportService {
     private final PaymentRecordMapper paymentRecordMapper;
     private final LessonFlowMapper lessonFlowMapper;
     private final TeacherSalaryMapper teacherSalaryMapper;
+    private final RiskWarningService riskWarningService;
 
     public void exportPayments(HttpServletResponse response, String startDate, String endDate) throws IOException {
         validateDateFormat(startDate, "startDate");
@@ -144,6 +147,51 @@ public class ExportService {
                 int st = r.getStatus() != null ? r.getStatus() : 0;
                 row.createCell(9).setCellValue(st >= 1 && st <= 4 ? statusLabels[st] : "");
                 row.createCell(10).setCellValue(r.getCalcSnapshotTime() != null ? r.getCalcSnapshotTime().toString() : "");
+            }
+            wb.write(os);
+            wb.dispose();
+        }
+    }
+
+    public void exportRiskStudents(HttpServletResponse response, String level,
+                                   Long classId, Long courseId) throws IOException {
+        List<RiskStudentVO> records = riskWarningService.listRiskWarnings(level, classId, courseId, null, null);
+        setResponseHeader(response, "流失预警名单.xlsx");
+        try (SXSSFWorkbook wb = new SXSSFWorkbook(100); OutputStream os = response.getOutputStream()) {
+            Sheet sheet = wb.createSheet("流失预警名单");
+            String[] headers = {"学员ID", "学员姓名", "班级", "课程", "风险分", "风险档位",
+                    "最近到课", "28天缺勤/考勤", "缺勤率", "剩余课时", "总课时", "到期日",
+                    "建议动作", "跟进状态"};
+            Row headerRow = sheet.createRow(0);
+            CellStyle hs = headerStyle(wb);
+            for (int i = 0; i < headers.length; i++) {
+                Cell c = headerRow.createCell(i);
+                c.setCellValue(headers[i]);
+                c.setCellStyle(hs);
+            }
+            String[] levels = {"", "低风险", "中风险", "高风险"};
+            String[] followStates = {"待跟进", "已跟进", "暂不跟进"};
+            for (int i = 0; i < records.size(); i++) {
+                RiskStudentVO r = records.get(i);
+                Row row = sheet.createRow(i + 1);
+                row.createCell(0).setCellValue(r.getStudentId() != null ? r.getStudentId() : 0L);
+                row.createCell(1).setCellValue(r.getStudentName() != null ? r.getStudentName() : "");
+                row.createCell(2).setCellValue(r.getClassName() != null ? r.getClassName() : "");
+                row.createCell(3).setCellValue(r.getCourseName() != null ? r.getCourseName() : "");
+                row.createCell(4).setCellValue(r.getRiskScore() != null ? r.getRiskScore() : 0);
+                String lv = r.getRiskLevel();
+                row.createCell(5).setCellValue("HIGH".equals(lv) ? levels[3]
+                        : "MEDIUM".equals(lv) ? levels[2] : "LOW".equals(lv) ? levels[1] : "");
+                row.createCell(6).setCellValue(r.getLastAttendDate() != null ? r.getLastAttendDate().toString() : "");
+                row.createCell(7).setCellValue((r.getAbsentCount28d() != null ? r.getAbsentCount28d() : 0)
+                        + "/" + (r.getScheduledCount28d() != null ? r.getScheduledCount28d() : 0));
+                row.createCell(8).setCellValue(r.getAbsenceRate28d() != null ? r.getAbsenceRate28d() : 0.0);
+                row.createCell(9).setCellValue(r.getRemainingLessons() != null ? r.getRemainingLessons().doubleValue() : 0);
+                row.createCell(10).setCellValue(r.getTotalLessons() != null ? r.getTotalLessons().doubleValue() : 0);
+                row.createCell(11).setCellValue(r.getExpireDate() != null ? r.getExpireDate().toString() : "");
+                row.createCell(12).setCellValue(r.getSuggestedAction() != null ? r.getSuggestedAction() : "");
+                Integer fs = r.getFollowUpStatus();
+                row.createCell(13).setCellValue(fs != null && fs >= 1 && fs <= 2 ? followStates[fs] : followStates[0]);
             }
             wb.write(os);
             wb.dispose();

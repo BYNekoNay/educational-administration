@@ -569,4 +569,21 @@ CREATE TABLE `schedule_lock` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='排课事务互斥锁';
 INSERT INTO `schedule_lock` (id, lock_name) VALUES (1, 'auto_schedule');
 
+-- ------------------------------------------------------------
+-- 14. 流失预警跟进状态（P4，与 Flyway V8 对应）
+-- ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `student_risk_followup`;
+CREATE TABLE `student_risk_followup` (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  student_id BIGINT NOT NULL COMMENT '学员ID',
+  status TINYINT NOT NULL DEFAULT 0 COMMENT '0-待跟进，1-已跟进，2-暂不跟进',
+  remark VARCHAR(255) COMMENT '跟进备注',
+  operator_id BIGINT COMMENT '操作人(教务/超管)ID',
+  followup_time DATETIME COMMENT '最近跟进时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_student (student_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流失预警跟进状态';
+
 SET FOREIGN_KEY_CHECKS = 1;
