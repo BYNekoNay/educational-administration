@@ -92,18 +92,18 @@ npm run build:h5
 
 ## 数据库
 
-共 34 张表，覆盖 8 个业务模块：
+共 37 张表，覆盖 8 个业务模块：
 
 | 模块 | 核心表 |
 |------|--------|
 | 用户权限 | user, role, permission, sys_menu, role_permission |
 | 学员课程 | student, parent_student, course, class_group, class_student, enrollment |
-| 排课调课 | classroom, room_booking, schedule_lesson, schedule_adjust_request |
+| 排课调课 | classroom, room_booking, period, schedule_lesson, schedule_adjust_request, schedule_lock |
 | 考勤学情 | attendance, leave_request, homework, learning_record |
 | 课时流水 | lesson_account, lesson_flow |
 | 财务薪资 | payment_record, refund_record, teacher_course, salary_rule, teacher_salary, salary_adjustment |
 | 考级通知 | exam_level, exam_signup, notice, notification |
-| 运营管理 | statistics_snapshot, operation_log, organization |
+| 运营管理 | statistics_snapshot, student_risk_followup, operation_log, organization |
 
 ## 测试
 
@@ -116,7 +116,7 @@ mvn test
 
 - 测试框架：JUnit 5 + Mockito + AssertJ
 - 测试数量：464 个，0 失败
-- Service 层覆盖率：100%（17/17）
+- Service 层覆盖率：100%（20/20 核心业务 Service 有专属测试）
 
 ### 前端测试（管理后台）
 
