@@ -40,6 +40,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { api } from '@/utils/request'
+import { formatBadge, shouldShowBadge } from '@/utils/unread-count'
 
 const recentNotices = ref([])
 
@@ -57,10 +58,27 @@ async function loadRecent() {
   }
 }
 
-// tabBar 页切走再切回不会重建，用 onShow 保证每次显示都刷新最近消息
+// tabBar 页切走再切回不会重建，用 onShow 保证每次显示都刷新最近消息与角标
 onShow(() => {
   loadRecent()
+  refreshUnreadBadge()
 })
+
+// 进入消息中心即视为已读场景，刷新"消息"Tab 红点（全角色通用端点）
+async function refreshUnreadBadge() {
+  try {
+    const res = await api({ url: '/api/notifications/unread-count' })
+    const n = Number(res.data) || 0
+    if (shouldShowBadge(n)) {
+      uni.setTabBarBadge({ index: 2, text: formatBadge(n) })
+    } else {
+      uni.removeTabBarBadge({ index: 2 })
+    }
+  } catch (e) {
+    // 静默失败：保留上一次的角标值
+    if (!e || !e._handled) console.warn('未读消息角标刷新失败', e)
+  }
+}
 </script>
 
 <style scoped>

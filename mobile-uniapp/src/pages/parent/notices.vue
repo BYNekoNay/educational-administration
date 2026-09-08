@@ -3,6 +3,10 @@
     <text class="page-title">消息通知</text>
     <text class="page-sub">调课与公告提醒</text>
 
+    <view v-if="unreadCount > 0" class="unread-banner">
+      <text class="unread-banner-text">未读 {{ unreadCount }} 条</text>
+    </view>
+
     <view v-if="notices.length === 0" class="empty-state"><text>暂无通知</text></view>
 
     <view v-else class="cell-group">
@@ -43,11 +47,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '@/utils/request'
 
 const notices = ref([])
 const detail = ref(null)
+
+// 聚合未读消息数（仅 personal notification 源带 isRead 标记）
+const unreadCount = computed(() => notices.value.filter(i => i.source === 'notification' && i.isRead === 0).length)
 
 function typeLabel(t) {
   const map = {
@@ -127,5 +134,17 @@ onMounted(async () => {
   font-size: 24rpx;
   color: #BEBEBE;
   margin-top: 24rpx;
+}
+
+.unread-banner {
+  margin: 8rpx 24rpx 16rpx;
+  padding: 16rpx 24rpx;
+  background: #FFF7E6;
+  border-radius: 16rpx;
+}
+.unread-banner-text {
+  font-size: 26rpx;
+  color: #D97706;
+  font-weight: 500;
 }
 </style>

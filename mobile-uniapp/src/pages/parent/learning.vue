@@ -16,7 +16,7 @@
       <view v-else class="cell-group">
         <view v-for="a in attendances" :key="a.id" class="cell">
           <view class="cell-body">
-            <text class="cell-title">课次{{ a.lessonId }} · {{ attStatus(a.status) }}</text>
+            <text class="cell-title">{{ a.lessonInfo || ('课次' + a.lessonId) }} · {{ attStatus(a.status) }}</text>
             <text class="cell-desc">扣课时: {{ a.deductLessons || 0 }} · {{ a.checkTime }}</text>
           </view>
           <view class="cell-footer">
