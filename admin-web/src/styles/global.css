@@ -49,6 +49,30 @@ html, body, #app {
   font-weight: var(--font-semibold);
 }
 
+/* ─── Page Header（列表页标题行，全站统一）─── */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.page-header h2,
+.page-header h3 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--neutral-800);
+  line-height: 1.3;
+}
+.page-header .page-desc,
+.page-header .page-sub {
+  font-size: var(--text-sm);
+  color: var(--neutral-400);
+  font-weight: var(--font-normal);
+}
+
 /* ─── Header ─── */
 .el-header {
   background: var(--surface-card) !important;

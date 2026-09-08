@@ -1,7 +1,7 @@
 <template>
   <div class="user-list">
     <!-- 顶部操作栏 -->
-    <div class="toolbar">
+    <div class="page-header">
       <h3>用户管理</h3>
       <el-button type="primary" @click="openCreateDialog">新增用户</el-button>
     </div>
@@ -456,10 +456,6 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-}
-.toolbar h3 {
-  margin: 0;
-  font-size: 18px;
 }
 .search-bar {
   display: flex;

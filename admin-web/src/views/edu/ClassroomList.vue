@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+    <div class="page-header">
       <h3>教室管理</h3>
       <el-button type="primary" @click="openDialog(null)">新增教室</el-button>
     </div>

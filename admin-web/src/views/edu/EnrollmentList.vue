@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div style="display: flex; justify-content: space-between; margin-bottom: 16px">
+    <div class="page-header">
       <h3>报名审核</h3>
     </div>
     <div style="margin-bottom:12px;display:flex;gap:8px">

@@ -425,11 +425,11 @@ const statCards = computed(() => {
   const sumBy = (st: number) => data.filter(r => r.status === st).reduce((s, r) => s + Number(r.totalAmount || 0), 0)
   const cntBy = (st: number) => data.filter(r => r.status === st).length
   return [
-    { label: '全部记录', value: total, color: '#303133', extra: '' },
-    { label: '待确认', value: cntBy(1), color: '#409EFF', extra: `¥ ${sumBy(1).toFixed(2)}` },
-    { label: '已确认', value: cntBy(2), color: '#67C23A', extra: `¥ ${sumBy(2).toFixed(2)}` },
-    { label: '已发放', value: cntBy(3), color: '#E6A23C', extra: `¥ ${sumBy(3).toFixed(2)}` },
-    { label: '已撤销', value: cntBy(4), color: '#909399', extra: `¥ ${sumBy(4).toFixed(2)}` },
+    { label: '全部记录', value: total, color: 'var(--neutral-600)', extra: '' },
+    { label: '待确认', value: cntBy(1), color: 'var(--brand-primary)', extra: `¥ ${sumBy(1).toFixed(2)}` },
+    { label: '已确认', value: cntBy(2), color: 'var(--color-success)', extra: `¥ ${sumBy(2).toFixed(2)}` },
+    { label: '已发放', value: cntBy(3), color: 'var(--accent-amber)', extra: `¥ ${sumBy(3).toFixed(2)}` },
+    { label: '已撤销', value: cntBy(4), color: 'var(--neutral-400)', extra: `¥ ${sumBy(4).toFixed(2)}` },
   ]
 })
 
@@ -551,20 +551,9 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.page-header h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-}
 .page-desc {
-  color: #909399;
-  font-size: 13px;
+  color: var(--neutral-400);
+  font-size: var(--text-sm);
 }
 .salary-tabs {
   background: #fff;
@@ -626,39 +615,39 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
   gap: 12px;
 }
 .monthly-item {
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
   background: #fafbfc;
   cursor: pointer;
   transition: all 0.2s;
 }
 .monthly-item:hover {
-  border-color: #409EFF;
-  background: #ecf5ff;
+  border-color: var(--brand-primary);
+  background: var(--el-color-primary-light-9);
 }
 .monthly-item.active {
-  border-color: #409EFF;
-  background: #ecf5ff;
-  box-shadow: 0 0 0 2px rgba(64,158,255,0.15);
+  border-color: var(--brand-primary);
+  background: var(--el-color-primary-light-9);
+  box-shadow: 0 0 0 2px rgba(14,116,144,0.15);
 }
 .m-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   padding-bottom: 8px;
-  border-bottom: 1px dashed #e4e7ed;
+  border-bottom: 1px dashed var(--neutral-200);
   margin-bottom: 8px;
 }
 .m-month {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--neutral-700);
 }
 .m-total {
   font-size: 14px;
   font-weight: 600;
-  color: #f56c6c;
+  color: var(--color-error);
 }
 .m-body { display: flex; flex-direction: column; gap: 4px; }
 .m-row {
@@ -666,7 +655,7 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #606266;
+  color: var(--neutral-500);
 }
 .m-dot {
   width: 8px;
@@ -674,14 +663,14 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
   border-radius: 50%;
   display: inline-block;
 }
-.dot-primary { background: #409EFF; }
-.dot-success { background: #67C23A; }
-.dot-warning { background: #E6A23C; }
-.dot-info    { background: #909399; }
+.dot-primary { background: var(--brand-primary); }
+.dot-success { background: var(--color-success); }
+.dot-warning { background: var(--accent-amber); }
+.dot-info    { background: var(--neutral-400); }
 .stat-card {
   background: #f7f9fc;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
   padding: 14px 18px;
   transition: box-shadow 0.2s;
 }
@@ -690,7 +679,7 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
 }
 .stat-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--neutral-400);
   margin-bottom: 6px;
 }
 .stat-value {
@@ -701,24 +690,24 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
 .stat-extra {
   margin-top: 4px;
   font-size: 12px;
-  color: #606266;
+  color: var(--neutral-500);
 }
 
 .total-amount {
   font-weight: 600;
-  color: #f56c6c;
+  color: var(--color-error);
 }
 .time-text {
-  color: #606266;
+  color: var(--neutral-500);
   font-size: 12px;
 }
 .muted-tip {
-  color: #c0c4cc;
+  color: var(--neutral-300);
   font-size: 12px;
 }
 .form-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--neutral-400);
   margin-left: 8px;
 }
 
@@ -730,7 +719,7 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
   font-size: 14px;
 }
 .batch-summary .summary-label {
-  color: #909399;
+  color: var(--neutral-400);
   width: 80px;
 }
 .batch-summary .summary-stats {
@@ -740,14 +729,14 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
   margin: 16px 0;
 }
 .batch-summary .stat-block {
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 14px;
   text-align: center;
   color: #fff;
 }
-.batch-summary .stat-block.success { background: #67C23A; }
-.batch-summary .stat-block.danger { background: #F56C6C; }
-.batch-summary .stat-block.primary { background: #409EFF; }
+.batch-summary .stat-block.success { background: var(--color-success); }
+.batch-summary .stat-block.danger { background: var(--color-error); }
+.batch-summary .stat-block.primary { background: var(--brand-primary); }
 .batch-summary .stat-num {
   font-size: 22px;
   font-weight: 700;
@@ -761,7 +750,7 @@ onMounted(() => { loadOptions(); loadRules(); loadSalaries() })
 .batch-summary .error-title {
   margin: 12px 0 8px;
   font-weight: 600;
-  color: #F56C6C;
+  color: var(--color-error);
 }
 
 @media (max-width: 1100px) {

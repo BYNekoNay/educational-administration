@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h3>机构信息配置</h3>
+    <div class="page-header"><h3>机构信息配置</h3></div>
     <el-card style="max-width: 600px">
       <el-form label-width="100px" v-loading="loading">
         <el-form-item label="机构名称">

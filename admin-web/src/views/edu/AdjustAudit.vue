@@ -150,15 +150,15 @@ onMounted(() => { loadData() })
 .audit-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.06) }
 .audit-done { opacity: .7 }
 .audit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px }
-.audit-title { font-size: 15px; font-weight: 600; color: #303133 }
-.audit-course { color: #0E7490 }
-.audit-sep { margin: 0 6px; color: #c0c4cc }
+.audit-title { font-size: 15px; font-weight: 600; color: var(--neutral-700) }
+.audit-course { color: var(--brand-primary) }
+.audit-sep { margin: 0 6px; color: var(--neutral-300) }
 .audit-body { margin-bottom: 8px }
 .audit-row { display: flex; align-items: center; margin-bottom: 6px; font-size: 13px }
-.audit-label { width: 60px; color: #909399; flex-shrink: 0 }
-.audit-value { color: #303133 }
-.audit-value.highlight { color: #0E7490; font-weight: 600 }
-.audit-value.remark { color: #E6A23C }
-.audit-period { margin-left: 8px; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #ecf5ff; color: #409EFF }
-.audit-footer { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0 }
+.audit-label { width: 60px; color: var(--neutral-400); flex-shrink: 0 }
+.audit-value { color: var(--neutral-700) }
+.audit-value.highlight { color: var(--brand-primary); font-weight: 600 }
+.audit-value.remark { color: var(--accent-amber) }
+.audit-period { margin-left: 8px; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--el-color-primary-light-9); color: var(--brand-primary) }
+.audit-footer { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid var(--neutral-100) }
 </style>

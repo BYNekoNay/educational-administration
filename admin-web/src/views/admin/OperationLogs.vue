@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h3 style="margin-bottom: 16px">操作日志</h3>
+    <div class="page-header"><h3>操作日志</h3></div>
     <div style="margin-bottom:12px;display:flex;gap:8px">
       <el-input v-model="keyword" placeholder="搜索模块或操作" clearable style="width:240px" @keyup.enter="handleSearch" />
       <el-button type="primary" @click="handleSearch">搜索</el-button>

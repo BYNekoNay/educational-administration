@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h3 style="margin-bottom: 16px">考级管理</h3>
+    <div class="page-header"><h3>考级管理</h3></div>
     <el-tabs v-model="activeTab">
       <el-tab-pane label="考级项目" name="levels">
         <div style="margin-bottom: 12px;display:flex;gap:8px;align-items:center">

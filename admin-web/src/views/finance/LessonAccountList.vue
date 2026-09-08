@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h3 style="margin-bottom: 16px">课时账户</h3>
+    <div class="page-header"><h3>课时账户</h3></div>
     <div style="margin-bottom:12px;display:flex;gap:8px">
       <el-input v-model="keyword" placeholder="搜索学员或课程" clearable style="width:260px" />
     </div>
@@ -57,5 +57,5 @@ onMounted(loadData)
 </script>
 
 <style scoped>
-.balance-warn { color: #F56C6C; font-weight: bold; }
+.balance-warn { color: var(--color-error); font-weight: bold; }
 </style>

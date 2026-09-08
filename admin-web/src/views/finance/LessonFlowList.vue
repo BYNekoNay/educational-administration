@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h3 style="margin-bottom: 16px">课时流水</h3>
+    <div class="page-header"><h3>课时流水</h3></div>
     <div style="margin-bottom:12px;display:flex;gap:8px">
       <el-input v-model="keyword" placeholder="搜索学员" clearable style="width:260px" />
     </div>
@@ -78,6 +78,6 @@ onMounted(loadData)
 </script>
 
 <style scoped>
-.amount-plus { color: #67C23A; }
-.amount-minus { color: #F56C6C; }
+.amount-plus { color: var(--color-success); }
+.amount-minus { color: var(--color-error); }
 </style>

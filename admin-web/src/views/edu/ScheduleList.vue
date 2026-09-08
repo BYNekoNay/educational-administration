@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div style="display: flex; justify-content: space-between; margin-bottom: 16px">
+    <div class="page-header">
       <h3>排课管理</h3>
       <div>
         <el-button type="warning" @click="autoVisible = true">智能排课</el-button>

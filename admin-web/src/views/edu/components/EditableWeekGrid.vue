@@ -202,17 +202,17 @@ function cellClass(day: string, p: any): string {
 .ewg-day-head { background: #f5f7fa; padding: 8px; text-align: center; font-size: 12px; color: #303133; }
 .ewg-period { padding: 8px; background: #fafafa; text-align: center; }
 .ewg-period-name { font-size: 13px; font-weight: 600; color: #303133; }
-.ewg-period-time { font-size: 11px; color: #909399; margin-top: 2px; }
+.ewg-period-time { font-size: 11px; color: var(--neutral-400); margin-top: 2px; }
 .ewg-cell { min-height: 76px; padding: 6px; }
-.ewg-cell.cell-past { background: #fafafa; }
-.ewg-cell.cell-ok { background: #f0f9eb; box-shadow: inset 0 0 0 1px #67c23a; }
-.ewg-cell.cell-conflict { background: #fef0f0; box-shadow: inset 0 0 0 1px #f56c6c; }
-.ewg-cell-empty { color: #c0c4cc; text-align: center; font-size: 14px; padding: 18px 0; }
-.ewg-lesson { background: #ecf5ff; border-left: 3px solid #409eff; border-radius: 4px; padding: 4px 6px; margin-bottom: 4px; cursor: grab; }
-.ewg-lesson.lesson-disabled { opacity: 0.55; cursor: not-allowed; border-left-color: #909399; }
-.ewg-lesson-title { font-size: 12px; font-weight: 600; color: #303133; display: flex; gap: 4px; align-items: center; justify-content: space-between; }
-.ewg-lesson-time { font-size: 11px; color: #606266; }
-.ewg-lesson-info { font-size: 11px; color: #909399; }
-.ewg-conflict { margin-top: 4px; color: #f56c6c; font-size: 11px; }
-.ewg-tip { color: #909399; font-size: 12px; margin: 8px 2px 0; }
+.ewg-cell.cell-past { background: var(--neutral-50); }
+.ewg-cell.cell-ok { background: #ecfdf5; box-shadow: inset 0 0 0 1px var(--color-success); }
+.ewg-cell.cell-conflict { background: #fef2f2; box-shadow: inset 0 0 0 1px var(--color-error); }
+.ewg-cell-empty { color: var(--neutral-300); text-align: center; font-size: 14px; padding: 18px 0; }
+.ewg-lesson { background: var(--el-color-primary-light-9); border-left: 3px solid var(--brand-primary); border-radius: 4px; padding: 4px 6px; margin-bottom: 4px; cursor: grab; }
+.ewg-lesson.lesson-disabled { opacity: 0.55; cursor: not-allowed; border-left-color: var(--neutral-400); }
+.ewg-lesson-title { font-size: 12px; font-weight: 600; color: var(--neutral-700); display: flex; gap: 4px; align-items: center; justify-content: space-between; }
+.ewg-lesson-time { font-size: 11px; color: var(--neutral-500); }
+.ewg-lesson-info { font-size: 11px; color: var(--neutral-400); }
+.ewg-conflict { margin-top: 4px; color: var(--color-error); font-size: 11px; }
+.ewg-tip { color: var(--neutral-400); font-size: 12px; margin: 8px 2px 0; }
 </style>

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h3>大课表</h3>
+    <div class="page-header"><h3>大课表</h3></div>
 
     <!-- 过滤栏 -->
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0">
