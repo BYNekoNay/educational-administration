@@ -28,8 +28,13 @@
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
           <div class="card-inner">
-            <div class="card-label">本月营收</div>
-            <div class="card-value" style="color: var(--accent-amber)">¥{{ formatMoney(cards.monthlyRevenue) }}</div>
+            <div class="card-label">
+              本月营收（净额）
+              <el-tooltip content="本月缴费合计 − 本月已通过退费合计；本月无缴费但有退费时为负数" placement="top">
+                <el-icon class="label-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </div>
+            <div class="card-value" :style="{ color: Number(cards.monthlyRevenue) < 0 ? 'var(--accent-rose)' : 'var(--accent-amber)' }">¥{{ formatMoney(cards.monthlyRevenue) }}</div>
           </div>
           <div class="card-accent" style="background: var(--accent-amber)"></div>
         </el-card>
@@ -148,6 +153,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { dashboardApi, statisticsApi } from '@/api/auth'
 import { ElMessage } from 'element-plus'
+import { QuestionFilled } from '@element-plus/icons-vue'
 import { showError } from '@/utils/error'
 import ExportButton from '@/components/ExportButton.vue'
 import RiskWarningPanel from './components/RiskWarningPanel.vue'
@@ -287,7 +293,9 @@ onUnmounted(() => {
 
 <style scoped>
 .stat-card { text-align: center; position: relative; overflow: hidden; }
-.card-label { font-size: var(--text-sm); color: var(--neutral-500); margin-bottom: 8px; letter-spacing: 0.02em; }
+.card-label { font-size: var(--text-sm); color: var(--neutral-500); margin-bottom: 8px; letter-spacing: 0.02em; display: inline-flex; align-items: center; gap: 4px; }
+.label-help { font-size: 13px; color: var(--neutral-300); cursor: help; }
+.label-help:hover { color: var(--brand-primary); }
 .card-value { font-size: var(--text-3xl); font-weight: var(--font-bold); }
 .card-accent {
   position: absolute;
