@@ -28,8 +28,17 @@ html, body, #app {
 
 /* ─── Sidebar Override ─── */
 .el-menu-vertical {
+  /* Element Plus 菜单主题变量：让所有嵌套子菜单继承深色侧边栏 */
+  --el-menu-bg-color: var(--sidebar-bg);
+  --el-menu-text-color: var(--sidebar-text);
+  --el-menu-hover-bg-color: var(--sidebar-hover-bg);
+  --el-menu-active-color: var(--sidebar-active-text);
   background: var(--sidebar-bg) !important;
   border-right: none !important;
+}
+.el-menu-vertical .el-menu,
+.el-menu-vertical .el-menu .el-menu {
+  background: var(--sidebar-bg) !important;
 }
 .el-menu-vertical .el-menu-item,
 .el-menu-vertical .el-sub-menu__title {
@@ -47,6 +56,30 @@ html, body, #app {
   background: var(--sidebar-active-bg) !important;
   color: var(--sidebar-active-text) !important;
   font-weight: var(--font-semibold);
+}
+
+/* ─── 侧边栏折叠态弹出子菜单（teleport 到 body，需全局样式）─── */
+.sidebar-popper {
+  background: var(--sidebar-bg) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+.sidebar-popper .el-menu {
+  background: var(--sidebar-bg) !important;
+}
+.sidebar-popper .el-menu-item {
+  color: var(--sidebar-text) !important;
+  margin: 2px 8px;
+  border-radius: var(--radius-md);
+}
+.sidebar-popper .el-menu-item:hover {
+  background: var(--sidebar-hover-bg) !important;
+  color: var(--sidebar-active-text) !important;
+}
+.sidebar-popper .el-popper__arrow::before {
+  background: var(--sidebar-bg) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 /* ─── Page Header（列表页标题行，全站统一）─── */
@@ -71,6 +104,13 @@ html, body, #app {
   font-size: var(--text-sm);
   color: var(--neutral-400);
   font-weight: var(--font-normal);
+}
+
+/* ─── Main Content 容器（大屏下让内容居中紧凑，避免过度铺开）─── */
+.el-main {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ─── Header ─── */

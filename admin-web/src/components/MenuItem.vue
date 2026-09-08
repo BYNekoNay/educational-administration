@@ -1,6 +1,6 @@
 <template>
   <template v-if="item.children && item.children.length">
-    <el-sub-menu :index="String(item.id)">
+    <el-sub-menu :index="String(item.id)" popper-class="sidebar-popper">
       <template #title>
         <el-icon v-if="item.icon && iconMap[item.icon]"><component :is="iconMap[item.icon]" /></el-icon>
         <span>{{ item.menuName }}</span>
