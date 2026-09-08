@@ -44,7 +44,8 @@
         { "path": "attendance-records", "style": { "navigationBarTitleText": "考勤记录" } },
         { "path": "learning", "style": { "navigationBarTitleText": "学情管理" } },
         { "path": "statistics", "style": { "navigationBarTitleText": "课时统计" } },
-        { "path": "adjust-request", "style": { "navigationBarTitleText": "调课申请" } }
+        { "path": "adjust-request", "style": { "navigationBarTitleText": "调课申请" } },
+        { "path": "leave-audit", "style": { "navigationBarTitleText": "请假审批" } }
       ]
     }
   ],

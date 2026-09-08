@@ -64,6 +64,7 @@ import { ref, computed, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
 import { api, getMyStudents } from '@/utils/request'
+import { formatBadge, shouldShowBadge } from '@/utils/unread-count'
 
 const userInfo = ref(null)
 const isParent = ref(true)
@@ -87,6 +88,7 @@ const teacherMenus = [
   { path: '/pages/teacher/learning',      emoji: '📝', label: '学情管理', desc: '作业与成长点评', bg: '#FFF3E0' },
   { path: '/pages/teacher/adjust-request',emoji: '🔄', label: '调课申请', desc: '申请调课与查看进度', bg: '#E0F7FA' },
   { path: '/pages/teacher/statistics',    emoji: '📊', label: '课时统计', desc: '本月授课数据', bg: '#F3E5F5' },
+  { path: '/pages/teacher/leave-audit',   emoji: '✋', label: '请假审批', desc: '本班学员请假处理', bg: '#F3E5F5' },
 ]
 
 const menus = computed(() => isParent.value ? parentMenus : teacherMenus)
@@ -146,6 +148,7 @@ onMounted(() => {
 // 首页是 tabBar 页面，onMounted 只执行一次；
 // 登录时学员列表加载失败会提示"可稍后在首页重试"，这里在每次显示时补偿加载
 onShow(() => {
+  refreshUnreadBadge()
   let storedUser = null
   try {
     storedUser = uni.getStorageSync('userInfo')
@@ -161,6 +164,22 @@ onShow(() => {
     // 静默重试，不打扰用户
   })
 })
+
+// 刷新"消息"Tab 红点（全角色通用端点）。异常时保留上次角标值，不阻断页面。
+async function refreshUnreadBadge() {
+  try {
+    const res = await api({ url: '/api/notifications/unread-count' })
+    const n = Number(res.data) || 0
+    if (shouldShowBadge(n)) {
+      uni.setTabBarBadge({ index: 2, text: formatBadge(n) })
+    } else {
+      uni.removeTabBarBadge({ index: 2 })
+    }
+  } catch (e) {
+    // 静默失败：保留上一次的角标值
+    if (!e || !e._handled) console.warn('未读消息角标刷新失败', e)
+  }
+}
 </script>
 
 <style scoped>
