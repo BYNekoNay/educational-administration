@@ -43,6 +43,7 @@ import java.time.LocalTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -438,12 +439,17 @@ public class AttendanceServiceImpl implements AttendanceService {
         Set<Long> classIds = list.stream().map(ScheduleLesson::getClassId).collect(Collectors.toSet());
         Map<Long, ClassGroup> classMap = classGroupMapper.selectBatchIds(classIds).stream()
                 .collect(Collectors.toMap(ClassGroup::getId, c -> c, (a, b) -> a));
-        Set<Long> courseIds = classMap.values().stream().map(ClassGroup::getCourseId).filter(id -> id != null).collect(Collectors.toSet());
+        Set<Long> courseIds = classMap.values().stream().map(ClassGroup::getCourseId).filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, String> courseNameMap = new HashMap<>();
         if (!courseIds.isEmpty()) {
             List<Course> courses = courseMapper.selectBatchIds(courseIds);
             for (Course c : courses) courseNameMap.put(c.getId(), c.getName());
         }
+        Set<Long> classroomIds = list.stream().map(ScheduleLesson::getClassroomId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> classroomNameMap = classroomIds.isEmpty() ? Collections.emptyMap()
+                : classroomMapper.selectBatchIds(classroomIds).stream()
+                    .collect(Collectors.toMap(Classroom::getId, Classroom::getName, (a, b) -> a));
         for (ScheduleLesson s : list) {
             ClassGroup cg = classMap.get(s.getClassId());
             if (cg != null) {
@@ -451,6 +457,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                 s.setCourseId(cg.getCourseId());
                 s.setCourseName(courseNameMap.getOrDefault(cg.getCourseId(), ""));
             }
+            s.setClassroomName(classroomNameMap.getOrDefault(s.getClassroomId(), ""));
         }
     }
 
