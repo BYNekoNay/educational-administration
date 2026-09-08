@@ -106,13 +106,6 @@ html, body, #app {
   font-weight: var(--font-normal);
 }
 
-/* ─── Main Content 容器（大屏下让内容居中紧凑，避免过度铺开）─── */
-.el-main {
-  max-width: 1600px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
 /* ─── Header ─── */
 .el-header {
   background: var(--surface-card) !important;

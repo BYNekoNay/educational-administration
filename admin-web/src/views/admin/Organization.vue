@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="page-header"><h3>机构信息配置</h3></div>
-    <el-card style="max-width: 600px">
+    <el-card>
       <el-form label-width="100px" v-loading="loading">
         <el-form-item label="机构名称">
           <el-input v-model="form.orgName" placeholder="请输入机构名称" :disabled="!canSave" />
