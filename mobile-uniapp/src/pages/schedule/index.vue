@@ -152,8 +152,7 @@ async function loadSchedule() {
       list = res.data || []
     } else {
       const res = await api({
-        url: '/api/teacher/lessons',
-        params: { dateFrom: from, dateTo: to, pageNum: 1, pageSize: 100 },
+        url: `/api/teacher/lessons?pageNum=1&pageSize=100&dateFrom=${from}&dateTo=${to}`,
       })
       list = (res.data && res.data.records) || []
     }
