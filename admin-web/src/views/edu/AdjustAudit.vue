@@ -1,57 +1,57 @@
 <template>
   <div>
-    <h3>调课审核</h3>
+    <div class="page-header">
+      <h3>调课审核</h3>
+      <span v-if="pendingTotal > 0" class="pending-hint">
+        待审核 <b>{{ pendingTotal }}</b> 条
+      </span>
+    </div>
 
-    <!-- 过滤栏 -->
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0">
-      <el-select v-model="filters.status" placeholder="全部状态" clearable style="width:130px" @change="loadData">
-        <el-option label="待审核" :value="1" />
-        <el-option label="已通过" :value="2" />
-        <el-option label="已驳回" :value="3" />
-      </el-select>
+    <!-- 状态切换：默认聚焦待办 -->
+    <div class="filter-bar">
+      <el-radio-group v-model="filters.status" @change="onFilterChange">
+        <el-radio-button :value="1">待审核</el-radio-button>
+        <el-radio-button :value="2">已通过</el-radio-button>
+        <el-radio-button :value="3">已驳回</el-radio-button>
+        <el-radio-button :value="null">全部</el-radio-button>
+      </el-radio-group>
     </div>
 
     <!-- 列表 -->
     <div v-loading="loading" style="min-height:200px">
-      <el-empty v-if="!loading && records.length===0" description="暂无调课申请" />
+      <el-empty v-if="!loading && records.length===0"
+                :description="filters.status === 1 ? '没有待审核的调课申请' : '暂无调课申请'" />
 
-      <div v-for="item in records" :key="item.id" class="audit-card" :class="{ 'audit-done': item.status !== 1 }">
-        <div class="audit-header">
-          <div class="audit-title">
-            <span class="audit-course">{{ item.courseName || '未知课程' }}</span>
-            <span class="audit-sep">·</span>
-            <span>{{ item.className || '-' }}</span>
+      <div v-for="item in records" :key="item.id"
+           class="audit-card" :class="{ 'audit-pending': item.status === 1 }">
+        <!-- 主行：课程/班级 + 时间链路 + 操作 -->
+        <div class="audit-main">
+          <div class="audit-info">
+            <div class="audit-title">
+              <span class="audit-course">{{ item.courseName || '未知课程' }}</span>
+              <span class="audit-sep">·</span>
+              <span>{{ item.className || '-' }}</span>
+              <span class="audit-teacher">{{ item.teacherName || '-' }}</span>
+            </div>
+            <div class="audit-time">
+              <span class="time-old">{{ item.lessonDate }} {{ item.startTime?.slice(0,5) }}-{{ item.endTime?.slice(0,5) }}</span>
+              <span v-if="item.periodName" class="audit-period">{{ item.periodName }}</span>
+              <el-icon class="time-arrow"><Right /></el-icon>
+              <span class="time-new">{{ fmtExpect(item.expectTime) }}</span>
+            </div>
+            <div class="audit-reason" v-if="item.reason || item.auditRemark">
+              <span v-if="item.reason">原因：{{ item.reason }}</span>
+              <span v-if="item.auditRemark" class="remark">备注：{{ item.auditRemark }}</span>
+            </div>
           </div>
-          <el-tag :type="statusTagType(item.status)" size="small">{{ statusLabel(item.status) }}</el-tag>
-        </div>
 
-        <div class="audit-body">
-          <div class="audit-row">
-            <span class="audit-label">教师</span>
-            <span class="audit-value">{{ item.teacherName || '-' }}</span>
+          <div class="audit-side">
+            <el-tag :type="statusTagType(item.status)" size="small">{{ statusLabel(item.status) }}</el-tag>
+            <template v-if="item.status === 1">
+              <el-button size="small" type="success" :loading="auditingId === item.id" @click="quickApprove(item)">通过</el-button>
+              <el-button size="small" type="danger" plain @click="quickReject(item)">驳回</el-button>
+            </template>
           </div>
-          <div class="audit-row">
-            <span class="audit-label">原课次</span>
-            <span class="audit-value">{{ item.lessonDate }} {{ item.startTime?.slice(0,5) }}-{{ item.endTime?.slice(0,5) }}</span>
-            <span v-if="item.periodName" class="audit-period">{{ item.periodName }}</span>
-          </div>
-          <div class="audit-row">
-            <span class="audit-label">调至</span>
-            <span class="audit-value highlight">{{ fmtExpect(item.expectTime) }}</span>
-          </div>
-          <div class="audit-row">
-            <span class="audit-label">原因</span>
-            <span class="audit-value">{{ item.reason }}</span>
-          </div>
-          <div v-if="item.auditRemark" class="audit-row">
-            <span class="audit-label">备注</span>
-            <span class="audit-value remark">{{ item.auditRemark }}</span>
-          </div>
-        </div>
-
-        <div class="audit-footer" v-if="item.status === 1">
-          <el-button size="small" type="success" @click="openAudit(item, 2)">通过</el-button>
-          <el-button size="small" type="danger" @click="openAudit(item, 3)">驳回</el-button>
         </div>
       </div>
     </div>
@@ -61,28 +61,13 @@
       <el-pagination v-if="total>pageSize" v-model:current-page="pagenum" :page-size="pageSize"
                      :total="total" layout="prev,next" @current-change="loadData" size="small" />
     </div>
-
-    <!-- 审核弹窗 -->
-    <el-dialog v-model="auditVisible" :title="auditAction === 2 ? '通过申请' : '驳回申请'" width="420px">
-      <el-form label-position="top">
-        <el-form-item :label="auditAction === 2 ? '审核通过备注（选填）' : '驳回原因'">
-          <el-input v-model="auditRemark" type="textarea" :rows="3"
-                    :placeholder="auditAction === 2 ? '同意调课，已安排新课次' : '请填写驳回原因'"
-                    maxlength="500" show-word-limit />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="auditVisible = false">取消</el-button>
-        <el-button :type="auditAction === 2 ? 'success' : 'danger'" :loading="auditingId !== null"
-                   @click="doAudit">{{ auditAction === 2 ? '确认通过' : '确认驳回' }}</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Right } from '@element-plus/icons-vue'
 import { adjustApi } from '@/api/edu'
 import { showError } from '@/utils/error'
 
@@ -91,13 +76,12 @@ const records = ref<any[]>([])
 const pagenum = ref(1)
 const pageSize = 20
 const total = ref(0)
+/** 待审核总数（跨筛选态展示，用于顶部待办提示） */
+const pendingTotal = ref(0)
 const auditingId = ref<number | null>(null)
-const auditVisible = ref(false)
-const auditRemark = ref('')
-const auditAction = ref(2)
-const auditItem = ref<any>(null)
 
-const filters = reactive({ status: null as number | null })
+/** 默认聚焦"待审核"——审核员进来先看待办，而不是混在历史单据里找 */
+const filters = reactive<{ status: number | null }>({ status: 1 })
 
 function statusLabel(s: number) { return { 1: '待审核', 2: '已通过', 3: '已驳回' }[s] || '未知' }
 function statusTagType(s: number) { return { 1: 'warning', 2: 'success', 3: 'danger' }[s] || 'info' as any }
@@ -108,6 +92,18 @@ function fmtExpect(t: string | null) {
   return s.length >= 16 ? s.slice(0, 16) : s
 }
 
+async function loadPendingTotal() {
+  try {
+    const res = await adjustApi.list({ pageNum: 1, pageSize: 1, status: 1 })
+    pendingTotal.value = res.data?.total || 0
+  } catch { /* 提示性数据，失败不阻塞 */ }
+}
+
+function onFilterChange() {
+  pagenum.value = 1
+  loadData()
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -116,24 +112,48 @@ async function loadData() {
     const res = await adjustApi.list(params)
     records.value = res.data?.records || []
     total.value = res.data?.total || 0
+    if (filters.status === 1) pendingTotal.value = total.value
+    else loadPendingTotal()
   } catch (e) { showError(e, '加载调课申请失败') }
   finally { loading.value = false }
 }
 
-function openAudit(item: any, status: number) {
-  auditItem.value = item
-  auditAction.value = status
-  auditRemark.value = ''
-  auditVisible.value = true
+/** 一步式通过：确认框直接完成，备注留到需要时再补（减少一次弹窗表单） */
+async function quickApprove(item: any) {
+  try {
+    await ElMessageBox.confirm(
+      `${item.courseName || ''} ${item.className || ''} → ${fmtExpect(item.expectTime)}，确认通过？`,
+      '通过调课申请',
+      { confirmButtonText: '确认通过', cancelButtonText: '取消', type: 'success' }
+    )
+  } catch { return /* 用户取消 */ }
+  auditingId.value = item.id
+  try {
+    await adjustApi.audit(item.id, { status: 2, remark: '' })
+    ElMessage.success('已通过')
+    loadData()
+  } catch (e) { showError(e, '审核失败') }
+  finally { auditingId.value = null }
 }
 
-async function doAudit() {
-  if (!auditItem.value) return
-  auditingId.value = auditItem.value.id
+/** 驳回必须填原因（prompt 一步完成） */
+async function quickReject(item: any) {
+  let reason: string
   try {
-    await adjustApi.audit(auditItem.value.id, { status: auditAction.value, remark: auditRemark.value })
-    ElMessage.success(auditAction.value === 2 ? '已通过' : '已驳回')
-    auditVisible.value = false
+    const { value } = await ElMessageBox.prompt('请填写驳回原因（教师端可见）', '驳回调课申请', {
+      confirmButtonText: '确认驳回',
+      cancelButtonText: '取消',
+      inputPlaceholder: '如：该时段教室已被占用',
+      inputPattern: /\S+/,
+      inputErrorMessage: '驳回原因不能为空',
+      type: 'warning',
+    })
+    reason = value
+  } catch { return /* 用户取消 */ }
+  auditingId.value = item.id
+  try {
+    await adjustApi.audit(item.id, { status: 3, remark: reason })
+    ElMessage.success('已驳回')
     loadData()
   } catch (e) { showError(e, '审核失败') }
   finally { auditingId.value = null }
@@ -143,22 +163,77 @@ onMounted(() => { loadData() })
 </script>
 
 <style scoped>
+.pending-hint { font-size: var(--text-sm); color: var(--neutral-500); }
+.pending-hint b { color: var(--accent-amber); font-size: var(--text-lg); }
+
+.filter-bar { margin-bottom: 12px; }
+
+/* 紧凑卡片：左侧信息 + 右侧操作，一屏可见 ~8 条 */
 .audit-card {
-  background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px;
-  border: 1px solid #ebeef5; transition: box-shadow .2s;
+  background: #fff;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--neutral-200);
+  margin-bottom: 8px;
+  transition: box-shadow var(--duration-fast) var(--ease-out-quart), border-color var(--duration-fast);
 }
-.audit-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.06) }
-.audit-done { opacity: .7 }
-.audit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px }
-.audit-title { font-size: 15px; font-weight: 600; color: var(--neutral-700) }
-.audit-course { color: var(--brand-primary) }
-.audit-sep { margin: 0 6px; color: var(--neutral-300) }
-.audit-body { margin-bottom: 8px }
-.audit-row { display: flex; align-items: center; margin-bottom: 6px; font-size: 13px }
-.audit-label { width: 60px; color: var(--neutral-400); flex-shrink: 0 }
-.audit-value { color: var(--neutral-700) }
-.audit-value.highlight { color: var(--brand-primary); font-weight: 600 }
-.audit-value.remark { color: var(--accent-amber) }
-.audit-period { margin-left: 8px; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--el-color-primary-light-9); color: var(--brand-primary) }
-.audit-footer { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid var(--neutral-100) }
+.audit-card:hover { box-shadow: var(--shadow-md); }
+.audit-card.audit-pending { border-left: 3px solid var(--accent-amber); }
+.audit-card:not(.audit-pending) { opacity: 0.78; }
+
+.audit-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+}
+.audit-info { min-width: 0; flex: 1; }
+
+.audit-title {
+  font-size: 14px;
+  font-weight: var(--font-semibold);
+  color: var(--neutral-700);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.audit-course { color: var(--brand-primary); }
+.audit-sep { color: var(--neutral-300); margin: 0 2px; }
+.audit-teacher {
+  font-weight: var(--font-normal);
+  font-size: 12px;
+  color: var(--neutral-400);
+  margin-left: 8px;
+}
+
+.audit-time {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.time-old { color: var(--neutral-500); text-decoration: line-through; text-decoration-color: var(--neutral-300); }
+.time-arrow { color: var(--brand-primary); font-size: 12px; }
+.time-new { color: var(--brand-primary); font-weight: var(--font-semibold); }
+.audit-period { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--el-color-primary-light-9); color: var(--brand-primary); }
+
+.audit-reason {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--neutral-400);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.audit-reason .remark { color: var(--accent-amber); }
+
+.audit-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 </style>
