@@ -58,8 +58,15 @@
 
     <!-- 分页 -->
     <div style="margin-top:16px;display:flex;justify-content:flex-end">
-      <el-pagination v-if="total>pageSize" v-model:current-page="pagenum" :page-size="pageSize"
-                     :total="total" layout="prev,next" @current-change="loadData" size="small" />
+      <el-pagination v-if="total > 0"
+                     v-model:current-page="pagenum"
+                     v-model:page-size="pageSize"
+                     :total="total"
+                     :page-sizes="[10, 20, 50, 100]"
+                     layout="total, sizes, prev, pager, next"
+                     @current-change="loadData"
+                     @size-change="onSizeChange"
+                     size="small" />
     </div>
   </div>
 </template>
@@ -74,7 +81,7 @@ import { showError } from '@/utils/error'
 const loading = ref(false)
 const records = ref<any[]>([])
 const pagenum = ref(1)
-const pageSize = 20
+const pageSize = ref(20)
 const total = ref(0)
 /** 待审核总数（跨筛选态展示，用于顶部待办提示） */
 const pendingTotal = ref(0)
@@ -104,10 +111,15 @@ function onFilterChange() {
   loadData()
 }
 
+function onSizeChange() {
+  pagenum.value = 1
+  loadData()
+}
+
 async function loadData() {
   loading.value = true
   try {
-    const params: any = { pageNum: pagenum.value, pageSize }
+    const params: any = { pageNum: pagenum.value, pageSize: pageSize.value }
     if (filters.status) params.status = filters.status
     const res = await adjustApi.list(params)
     records.value = res.data?.records || []
