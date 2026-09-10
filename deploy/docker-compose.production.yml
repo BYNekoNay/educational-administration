@@ -29,6 +29,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       APP_CORS_ALLOWED_ORIGINS: ${APP_ORIGIN}
       SPRING_PROFILES_ACTIVE: prod
+      APP_IMAGE_TAG: ${BACKEND_IMAGE}
       TZ: Asia/Shanghai
     volumes:
       - uploads-data:/app/uploads
