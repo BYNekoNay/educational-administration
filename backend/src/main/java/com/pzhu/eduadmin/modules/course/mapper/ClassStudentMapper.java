@@ -24,4 +24,13 @@ public interface ClassStudentMapper extends BaseMapper<ClassStudent> {
             + "AND status = 1 AND is_deleted = 0 "
             + "GROUP BY class_id</script>")
     List<Map<String, Object>> countActiveStudentsByClassIds(@Param("ids") Collection<Long> ids);
+
+    /**
+     * 统计在册学员人数（按 student_id 去重）。
+     * class_student 是「学员-班级」关联表，一个学员可同时报名多个班级，
+     * 因此直接 COUNT(*) 得到的是「在班人次」而非学员人数；
+     * 只有按 student_id 去重，看板「在册学员」才与学员管理列表总数一致。
+     */
+    @Select("SELECT COUNT(DISTINCT student_id) FROM class_student WHERE status = 1 AND is_deleted = 0")
+    long countDistinctActiveStudents();
 }

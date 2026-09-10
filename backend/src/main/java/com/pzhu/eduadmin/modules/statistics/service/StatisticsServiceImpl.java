@@ -138,9 +138,10 @@ public class StatisticsServiceImpl implements StatisticsService {
     private Map<String, Object> buildCards() {
         Map<String, Object> cards = new LinkedHashMap<>();
 
-        // 1. 在册学员数
-        long activeStudents = classStudentMapper.selectCount(
-                new LambdaQueryWrapper<ClassStudent>().eq(ClassStudent::getStatus, 1));
+        // 1. 在册学员数（按 student_id 去重：class_student 为学员-班级关联表，
+        //    一个学员可报名多个班级，直接 COUNT(*) 得到的是「在班人次」，
+        //    会导致看板数字与学员管理列表总数不一致）
+        long activeStudents = classStudentMapper.countDistinctActiveStudents();
         cards.put("activeStudents", activeStudents);
 
         // 2. 本月课次
