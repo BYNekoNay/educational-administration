@@ -171,3 +171,50 @@ bash acceptance_test.sh http://localhost
 | P2 | 演示数据时效性 | `data.sql` 为固定日期数据。若答辩时看板显示负营收，原因为「当月缴费为 0、退费留存」，属口径正常而非缺陷 |
 | P2 | 镜像不可变性 | 当前镜像 tag 为日期版本；建议后续改用 Git commit SHA 作为 tag |
 | P3 | 安全加固 | 建议关闭 3306 对外暴露（当前仅容器内网，安全组请勿开放）；为 ubuntu 用户禁用密码登录 |
+
+---
+
+## 8. 补充修复（2026-09-10 深夜，由 UI 测试报告发现）
+
+外部浏览器 AI 完成 69 条 UI 用例后，其报告的 ISSUE-005（移动端底部导航图标显示为占位符）经核查牵出**两个真实缺陷**。
+
+### 8.1 问题一：移动端 H5 部署的是 7 月旧产物（v1.3 移动端未上线）
+
+**现象**：线上 H5 缺少 v1.3 宣称的全部移动端功能（教师请假审批、课表 Tab 真实化、教师课表富信息、消息未读角标、家长学情上下文）。
+
+**根因**：首次部署时直接复用了本地现存的 `mobile-uniapp/dist/build/h5-release`，**未校验产物新鲜度**。该产物构建于 `2026-07-30 18:03`，而 v1.3 移动端改动在 `2026-09-08`。
+
+**证据**：旧产物中不含 `leave-audit`、`schedule-summary`、`unread-count`；服务器 `artifacts/mobile-dist` 与之完全一致（45 个 assets）。
+
+**对照组**：`admin-web/dist` = `2026-09-08 16:22`，含 v1.3 前端改动（`AdjustAudit` 等），故管理端功能正常 —— 这也是测试报告能测到面包屑、可折叠侧边栏、调课审核重构的原因。
+
+### 8.2 问题二：构建产物缺失 static 目录（tabBar 图标 404）
+
+**现象**：tabBar 图标请求 `/mobile/static/tab/*.png` 全部 404，界面显示图片占位符。
+
+**根因**：`vite.config.ts` 中 `build.outDir` 被设为非默认的 `dist/build/h5-release`（历史原因：`mp-weixin` 目录曾被外部进程锁定，见 `docs/acceptance-matrix-2026-07-19.md`），而 **`vite-plugin-uni` 仍将 `src/static` 复制到默认路径 `dist/build/h5/static`**。两条路径不一致 → 产物永远缺 `static/`。
+
+**该缺陷自 2026-07 起长期存在**，因开发环境不影响、且图标缺失不阻断功能，一直未被发现。
+
+**修复**：在 `mobile-uniapp/vite.config.ts` 的插件链中新增 `copy-uni-static-to-outdir`（`closeBundle` 钩子），构建收尾时把 `src/static` 复制到真正的输出目录。选择此方案而非"改回默认 outDir"，是为避免重新触发历史上的目录锁定问题。
+
+### 8.3 修复后验证
+
+| 检查项 | 结果 |
+|--------|------|
+| 新产物 assets 数 | 45 → **51** |
+| `static/tab` 图标数 | 0 → **6** |
+| 线上 `/mobile/static/tab/*.png` × 6 | 全部 **200** |
+| 线上主 JS 特征 | `leave-audit`×4、`schedule-summary`×1、`unread-count`×1、`请假审批`×1 ✅ |
+| 五角色 API 回归验收 | **38/38 通过** |
+| `WEB_IMAGE` | 更新为 `eduadmin-web:v1.3.0-20260910` |
+
+### 8.4 遗留事项（重要）
+
+**测试报告的移动端结论已失效**：报告的 E/F/H 模块（移动端）是基于**7 月旧产物**测出的，且其 E 模块只覆盖了 3 条 v1.3 之前就存在的页面（课堂考勤/学情管理/调课申请），**恰好避开了所有 v1.3 新增功能**。移动端需要在当前新产物上**重新测试**。
+
+其余模块（A/B/C/D/G/I，即管理端与安全）基于 9 月新产物，结论有效。
+
+### 8.5 本地构建注意事项
+
+本机环境的 safe-delete 机制会拦截 Vite 清空输出目录的调用（报 `Error during a trash operation`）。**每次构建前需先移走 `dist/build/h5-release`**，否则 `npm run build:h5` 会失败。Linux/CI 环境无此问题。
