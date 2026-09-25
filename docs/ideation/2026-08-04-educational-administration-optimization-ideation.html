@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>教务系统整体优化方向</title>
+  <style>
+    :root {
+      --bg: #f5f7f8;
+      --surface: #ffffff;
+      --surface-soft: #eef4f1;
+      --ink: #18211d;
+      --muted: #53625b;
+      --line: #d7dfdb;
+      --accent: #08775c;
+      --accent-soft: #dff4ec;
+      --accent-text: #075f4a;
+      --blue-soft: #e7f0fa;
+      --blue-text: #24577d;
+      --amber-soft: #fff2cf;
+      --amber-text: #745600;
+      --red-soft: #fde9e7;
+      --red-text: #8a3028;
+      --shadow: 0 8px 28px rgba(30, 49, 40, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.75;
+      letter-spacing: 0;
+    }
+    a { color: var(--accent-text); text-underline-offset: 3px; }
+    code {
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 0.92em;
+      background: #edf1ef;
+      padding: 0.08rem 0.3rem;
+      border-radius: 3px;
+      overflow-wrap: anywhere;
+    }
+    strong { color: inherit; }
+    .page { width: min(94vw, 960px); margin: 0 auto; padding: 36px 0 72px; }
+    .doc-header {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 30px;
+      box-shadow: var(--shadow);
+    }
+    .eyebrow {
+      margin: 0 0 5px;
+      color: var(--accent-text);
+      font-size: 0.76rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { line-height: 1.3; letter-spacing: 0; }
+    h1 { margin: 0; font-size: clamp(1.8rem, 4vw, 2.45rem); }
+    h2 { margin: 0 0 18px; font-size: 1.55rem; }
+    h3 { margin: 0; font-size: 1.2rem; }
+    p { max-width: 74ch; }
+    .subtitle { color: var(--muted); margin: 10px 0 20px; font-size: 1.02rem; }
+    .meta, .stats, .card-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f2f5f3;
+      color: #36473f;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .chip.accent { background: var(--accent-soft); border-color: #b7ddcf; color: var(--accent-text); }
+    .chip.blue { background: var(--blue-soft); border-color: #c7dcec; color: var(--blue-text); }
+    .chip.amber { background: var(--amber-soft); border-color: #ead89a; color: var(--amber-text); }
+    .stats { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .stat { min-width: 130px; flex: 1; }
+    .stat strong { display: block; font-size: 1.5rem; line-height: 1.2; }
+    .stat span { color: var(--muted); font-size: 0.82rem; }
+    .toc {
+      margin-top: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 13px 18px;
+    }
+    .toc ul, .idea-nav { margin: 5px 0 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+    .toc li, .idea-nav li { margin: 4px 0; break-inside: avoid; }
+    section {
+      margin-top: 18px;
+      padding: 28px 30px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+    }
+    .context-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .context-block { padding: 14px 16px; background: var(--surface-soft); border-radius: 6px; }
+    .context-block p { margin: 0; }
+    .axis-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 0; list-style: none; }
+    .axis-list li { padding: 11px; background: #f1f5f3; border: 1px solid var(--line); border-radius: 6px; font-size: 0.88rem; font-weight: 700; }
+    .idea-nav { margin-bottom: 22px; }
+    .idea-card {
+      margin-top: 14px;
+      padding: 22px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      box-shadow: 0 3px 14px rgba(30, 49, 40, 0.05);
+    }
+    .idea-card:first-of-type { margin-top: 0; }
+    .idea-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+    .idea-title { display: flex; gap: 10px; align-items: flex-start; }
+    .rank {
+      min-width: 30px;
+      height: 30px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 6px;
+      background: var(--accent);
+      color: white;
+      font-weight: 800;
+    }
+    .card-chips { justify-content: flex-end; }
+    .fields { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 14px; margin: 18px 0 0; }
+    .fields dt { font-size: 0.78rem; font-weight: 800; color: var(--muted); text-transform: uppercase; }
+    .fields dd { margin: 0; max-width: 74ch; }
+    .visual {
+      margin: 18px 0 2px;
+      padding: 12px;
+      background: #f8faf9;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+    .visual svg { width: 100%; min-width: 650px; height: auto; display: block; }
+    .visual figcaption { margin-top: 6px; color: var(--muted); font-size: 0.8rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    th, td { padding: 10px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eef3f0; font-size: 0.78rem; }
+    tr:last-child td { border-bottom: 0; }
+    .callout { margin-top: 14px; padding: 14px 16px; background: var(--amber-soft); color: var(--amber-text); border-radius: 6px; }
+    .composition-signal { margin-top: 20px; color: var(--muted); text-align: center; font-size: 0.78rem; }
+    @media (max-width: 760px) {
+      .page { width: 100%; padding: 0 0 38px; }
+      .doc-header, section, .toc { border-left: 0; border-right: 0; border-radius: 0; }
+      .doc-header, section { padding: 22px 18px; }
+      .toc ul, .idea-nav { columns: 1; }
+      .context-grid { grid-template-columns: 1fr; }
+      .axis-list { grid-template-columns: 1fr 1fr; }
+      .idea-head { display: block; }
+      .card-chips { justify-content: flex-start; margin: 10px 0 0 40px; }
+      .fields { grid-template-columns: 1fr; gap: 2px; }
+      .fields dd { margin-bottom: 8px; }
+      table { min-width: 680px; }
+      .table-wrap { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="doc-header">
+      <p class="eyebrow">Ideation / 当前项目</p>
+      <h1>教务系统整体优化方向</h1>
+      <p class="subtitle">基于当前代码、生产部署与五个专项证据面形成的优先级建议。目标不是继续堆功能，而是先让安全、数据、发布和关键角色旅程达到可验证的生产状态。</p>
+      <div class="meta" aria-label="文档元数据">
+        <span class="chip"><time datetime="2026-08-04">2026-08-04</time></span>
+        <span class="chip">Topic: educational-administration-optimization</span>
+        <span class="chip blue">Focus: 当前教务系统整体优化</span>
+        <span class="chip accent">Mode: repo-grounded</span>
+      </div>
+      <div class="stats" aria-label="评估统计">
+        <div class="stat"><strong>27</strong><span>合并后候选方向</span></div>
+        <div class="stat"><strong>7</strong><span>最终保留方案</span></div>
+        <div class="stat"><strong>20</strong><span>合并、收缩或淘汰</span></div>
+        <div class="stat"><strong>5</strong><span>覆盖主题轴</span></div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="文档导航">
+      <strong>文档导航</strong>
+      <ul>
+        <li><a href="#grounding-context">Grounding Context</a></li>
+        <li><a href="#topic-axes">Topic Axes</a></li>
+        <li><a href="#ranked-ideas">Ranked Ideas</a></li>
+        <li><a href="#rejection-summary">Rejection Summary</a></li>
+      </ul>
+    </nav>
+
+    <section id="grounding-context">
+      <p class="eyebrow">Evidence</p>
+      <h2>Grounding Context</h2>
+      <div class="context-grid">
+        <div class="context-block"><p><strong>系统形态：</strong>Spring Boot + MyBatis + MySQL 后端，Vue 管理端，UniApp H5/移动端，Docker Compose 部署到阿里云 ECS，镜像经 GitHub Actions 和 ACR 发布。</p></div>
+        <div class="context-block"><p><strong>已有基础：</strong>JWT、BCrypt、数据库角色校验、家长数据范围、审计日志、较多后端与管理端测试，以及已经可访问的生产环境。</p></div>
+        <div class="context-block"><p><strong>主要风险：</strong>生产配置仍允许开发默认值；数据库初始化依赖空卷；只有 MySQL 健康检查；没有明确备份、恢复、迁移和回退闭环。</p></div>
+        <div class="context-block"><p><strong>体验与质量：</strong>H5 报名存在串行请求扇出，移动端没有测试；CI 构建与发布没有执行现有测试，线上诊断主要依赖日志与前端 toast。</p></div>
+      </div>
+      <div class="callout"><strong>判断：</strong>当前最需要的不是新增模块，而是把现有系统从“能运行”提升到“能证明安全、能证明数据正确、能证明本次发布可用，并且出现问题能恢复”。</div>
+    </section>
+
+    <section id="topic-axes">
+      <p class="eyebrow">Coverage</p>
+      <h2>Topic Axes</h2>
+      <ol class="axis-list">
+        <li>权限与数据保护</li>
+        <li>核心业务一致性与数据库演进</li>
+        <li>CI/CD、生产韧性与恢复</li>
+        <li>后台与 H5 工作流及前端质量</li>
+        <li>测试、可观测性与可维护性</li>
+      </ol>
+    </section>
+
+    <section id="ranked-ideas">
+      <p class="eyebrow">Priority</p>
+      <h2>Ranked Ideas</h2>
+      <ol class="idea-nav">
+        <li><a href="#idea-1">生产安全配置契约</a></li>
+        <li><a href="#idea-2">备份、恢复与定期演练</a></li>
+        <li><a href="#idea-3">版本化数据库迁移与约束治理</a></li>
+        <li><a href="#idea-4">可验证发布门禁与明确回退流程</a></li>
+        <li><a href="#idea-5">关键角色旅程进入 CI</a></li>
+        <li><a href="#idea-6">业务可观测性最小闭环</a></li>
+        <li><a href="#idea-7">H5 报名决策快照</a></li>
+      </ol>
+
+      <article class="idea-card" id="idea-1">
+        <div class="idea-head">
+          <div class="idea-title"><span class="rank">1</span><h3>1. 生产安全配置契约</h3></div>
+          <div class="card-chips"><span class="chip accent">P0</span><span class="chip">95% confidence</span><span class="chip blue">Low-Medium</span></div>
+        </div>
+        <dl class="fields">
+          <dt>Description</dt><dd>生产环境不再继承可运行的数据库密码、JWT 密钥和宽松来源默认值。启动时校验密钥强度、必需配置和精确来源白名单，发现开发回退值就拒绝启动；上传同时从扩展名判断提升到内容类型与文件头校验。</dd>
+          <dt>Axis</dt><dd>权限与数据保护</dd>
+          <dt>Basis</dt><dd><strong>direct:</strong> <code>application.yml</code> 中仍有 <code>${DB_PASSWORD:123456}</code> 与开发 JWT 回退值；<code>application-prod.yml</code> 未覆盖这些安全配置；<code>JwtUtil</code> 会补齐短密钥而不是拒绝。上传准入主要依赖文件扩展名。</dd>
+          <dt>Rationale</dt><dd>这把安全从“部署人员记得配置”变成系统自身可验证的生产属性，成本低、收益直接，并为后续 HTTPS、会话与文件安全治理建立底线。</dd>
+          <dt>Downsides</dt><dd>首次启用会暴露现有环境变量缺口，可能导致一次部署失败；需要建立密钥生成、轮换和紧急撤销的操作说明。</dd>
+          <dt>Confidence</dt><dd>95%</dd>
+          <dt>Complexity</dt><dd>Low-Medium</dd>
+        </dl>
+      </article>
+
+      <article class="idea-card" id="idea-2">
+        <div class="idea-head">
+          <div class="idea-title"><span class="rank">2</span><h3>2. 备份、恢复与定期演练</h3></div>
+          <div class="card-chips"><span class="chip accent">P0</span><span class="chip">96% confidence</span><span class="chip blue">Medium</span></div>
+        </div>
+        <dl class="fields">
+          <dt>Description</dt><dd>为 MySQL 与上传附件建立加密备份、保留期、异地副本和失败告警；按固定周期在隔离环境真实恢复，并用登录、课时余额、退款记录、附件读取等检查证明备份可用，同时明确可接受的数据丢失窗口和恢复时长。</dd>
+          <dt>Axis</dt><dd>CI/CD、生产韧性与恢复</dd>
+          <dt>Basis</dt><dd><strong>direct:</strong> 生产 Compose 仅通过命名卷持久化 MySQL 与 uploads，部署工作流没有备份或恢复命令；仓库中的重置脚本包含直接重建数据库的路径。现有证据只能证明“数据落盘”，不能证明“数据可恢复”。</dd>
+          <dt>Rationale</dt><dd>资金流水、课时账户、排课和教育附件是不可轻易重建的数据。恢复演练比单纯生成备份文件更能降低单机 ECS、误操作和升级事故的真实风险。</dd>
+          <dt>Downsides</dt><dd>需要对象存储或额外备份空间、加密密钥管理和定期演练时间；恢复检查必须避免把真实隐私数据扩散到不受控环境。</dd>
+          <dt>Confidence</dt><dd>96%</dd>
+          <dt>Complexity</dt><dd>Medium</dd>
+        </dl>
+      </article>
+
+      <article class="idea-card" id="idea-3">
+        <div class="idea-head">
+          <div class="idea-title"><span class="rank">3</span><h3>3. 版本化数据库迁移与约束治理</h3></div>
+          <div class="card-chips"><span class="chip accent">P0</span><span class="chip">93% confidence</span><span class="chip blue">Medium</span></div>
+        </div>
+        <dl class="fields">
+          <dt>Description</dt><dd>用 Flyway、Liquibase 或等价机制给每次结构与数据变更编号，增加迁移前检查、迁移后不变量校验和失败补偿说明。同步审查财务、退款、课时和归属关系中的唯一约束、外键或应用级替代约束，以及已经出现内存分页和并发窗口的查询。</dd>
+          <dt>Axis</dt><dd>核心业务一致性与数据库演进</dd>
+          <dt>Basis</dt><dd><strong>direct:</strong> Compose 的 <code>/docker-entrypoint-initdb.d</code> 初始化只在新数据卷生效；仓库里同时存在条件式迁移 SQL。证据抽查还发现部分资金相关表未声明数据库外键，退款查询存在全量加载后再分页的路径。</dd>
+          <dt>Rationale</dt><dd>当前部署已经发生过“数据库为空但容器正常”的事故。版本化迁移和约束治理能把数据库状态纳入发布事实，并优先保护付款、课时、退款与排课这些高价值数据。</dd>
+          <dt>Downsides</dt><dd>首次基线化需要确认线上实际 schema，并清理不满足新约束的历史数据；回退应以向前修复或补偿为主，不能假设所有迁移都可逆。</dd>
+          <dt>Confidence</dt><dd>93%</dd>
+          <dt>Complexity</dt><dd>Medium</dd>
+        </dl>
+      </article>
+
+      <article class="idea-card" id="idea-4">
+        <div class="idea-head">
+          <div class="idea-title"><span class="rank">4</span><h3>4. 可验证发布门禁与明确回退流程</h3></div>
+          <div class="card-chips"><span class="chip accent">P0</span><span class="chip">92% confidence</span><span class="chip blue">Medium</span></div>
+        </div>
+        <dl class="fields">
+          <dt>Description</dt><dd>把发布成功从“容器已启动”改为“镜像可追溯、数据库版本正确、后端 readiness 正常、管理端与 H5 可访问、登录/API 冒烟通过”。任何门禁失败就停止晋级、保存诊断，并执行预先验证的回退流程；在数据库迁移不可逆时明确采用向前修复，而不是盲目自动回滚。</dd>
+          <dt>Axis</dt><dd>CI/CD、生产韧性与恢复</dd>
+          <dt>Basis</dt><dd><strong>direct:</strong> 当前远程步骤最终执行 <code>docker compose pull &amp;&amp; docker compose up -d --remove-orphans &amp;&amp; docker compose ps</code>；Compose 只有 MySQL healthcheck，未发现后端 Actuator/readiness，也没有发布后业务探针或回退命令。部署修复还分散在不同分支/工作树。</dd>
+          <dt>Rationale</dt><dd>容器运行不等于教务业务可用。最小发布门禁能把近期 ACR、SSH、镜像、SQL 权限问题沉淀为以后每次发布都会执行的能力。</dd>
+          <dt>Downsides</dt><dd>发布会比当前多几分钟，冒烟账号与种子数据需要治理；回退规则必须区分无状态镜像失败和已改变数据库状态的失败。</dd>
+          <dt>Confidence</dt><dd>92%</dd>
+          <dt>Complexity</dt><dd>Medium</dd>
+        </dl>
+        <figure class="visual">
+          <svg viewBox="0 0 780 150" role="img" aria-label="发布门禁概念流程">
+            <defs><marker id="arrow-release" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#6a7a72"/></marker></defs>
+            <g font-family="Microsoft YaHei, sans-serif" font-size="14" text-anchor="middle">
+              <rect x="15" y="30" width="125" height="50" rx="6" fill="#e7f0fa" stroke="#9dbbd1"/><text x="77" y="60" fill="#24577d">不可变镜像</text>
+              <line x1="140" y1="55" x2="170" y2="55" stroke="#6a7a72" stroke-width="2" marker-end="url(#arrow-release)"/>
+              <rect x="180" y="30" width="125" height="50" rx="6" fill="#fff2cf" stroke="#d5bc65"/><text x="242" y="60" fill="#745600">迁移校验</text>
+              <line x1="305" y1="55" x2="335" y2="55" stroke="#6a7a72" stroke-width="2" marker-end="url(#arrow-release)"/>
+              <rect x="345" y="30" width="125" height="50" rx="6" fill="#dff4ec" stroke="#8bc8b2"/><text x="407" y="60" fill="#075f4a">服务就绪</text>
+              <line x1="470" y1="55" x2="500" y2="55" stroke="#6a7a72" stroke-width="2" marker-end="url(#arrow-release)"/>
+              <rect x="510" y="30" width="125" height="50" rx="6" fill="#e7f0fa" stroke="#9dbbd1"/><text x="572" y="60" fill="#24577d">关键旅程冒烟</text>
+              <line x1="635" y1="55" x2="665" y2="55" stroke="#6a7a72" stroke-width="2" marker-end="url(#arrow-release)"/>
+              <rect x="675" y="30" width="90" height="50" rx="6" fill="#dff4ec" stroke="#8bc8b2"/><text x="720" y="60" fill="#075f4a">放行</text>
+              <rect x="180" y="105" width="455" height="32" rx="6" fill="#fde9e7" stroke="#e2b7b3"/><text x="407" y="126" fill="#8a3028">任一门禁失败：停止晋级、保留证据、按状态选择回退或向前修复</text>
+            </g>
+          </svg>
+          <figcaption>方向性示意：发布由一组可证明的门禁组成，而不是以容器列表作为结束信号。</figcaption>
+        </figure>
+      </article>
+
+      <article class="idea-card" id="idea-5">
+        <div class="idea-head">
+          <div class="idea-title"><span class="rank">5</span><h3>5. 关键角色旅程进入 CI</h3></div>
+          <div class="card-chips"><span class="chip amber">P1</span><span class="chip">94% confidence</span><span class="chip blue">Medium</span></div>
+        </div>
+        <dl class="fields">
+          <dt>Description</dt><dd>保留快速单元测试，同时把家长报名/缴费、教师考勤、教务排课或调课、财务退款、管理员权限变更定义为稳定的跨端旅程。每次合并先跑后端与管理端测试，再跑首批移动端请求/会话测试和关键旅程；只有通过才允许构建生产镜像。</dd>
+          <dt>Axis</dt><dd>测试、可观测性与可维护性</dd>
+          <dt>Basis</dt><dd><strong>direct:</strong> 仓库已经有五角色 curl 验收和大量后端/管理端测试，但部署工作流没有调用 <code>mvn test</code>、Vitest 或验收脚本，Docker 后端构建还跳过测试编译；<code>mobile-uniapp</code> 没有测试脚本或测试文件。</dd>
+          <dt>Rationale</dt><dd>这是把已有测试资产接回交付链，而不是从零追求覆盖率。它直接保护最容易产生业务损失的跨角色流程，并为 H5 后续优化提供安全网。</dd>
+          <dt>Downsides</dt><dd>需要确定可重复的种子数据、隔离测试环境并控制耗时；端到端测试如果过度依赖 UI 细节会变得脆弱，应以 API 和关键结果为主。</dd>
+          <dt>Confidence</dt><dd>94%</dd>
+          <dt>Complexity</dt><dd>Medium</dd>
+        </dl>
+      </article>
+
+      <article class="idea-card" id="idea-6">
+        <div class="idea-head">
+          <div class="idea-title"><span class="rank">6</span><h3>6. 业务可观测性最小闭环</h3></div>
+          <div class="card-chips"><span class="chip amber">P1</span><span class="chip">91% confidence</span><span class="chip blue">Medium</span></div>
+        </div>
+        <dl class="fields">
+          <dt>Description</dt><dd>先建立请求关联 ID、结构化日志、后端健康与就绪端点、版本信息和少量业务指标。首批只覆盖登录异常、报名/支付失败、退款积压、课时 CAS 失败、排课冲突和通知连接异常，并为每类信号设定可行动的告警条件。</dd>
+          <dt>Axis</dt><dd>测试、可观测性与可维护性</dd>
+          <dt>Basis</dt><dd><strong>direct:</strong> <code>application-prod.yml</code> 主要只有包级日志配置；仓库未发现 Actuator、Prometheus、readiness 或 liveness；移动端失败主要被归一为 toast，管理端/移动端诊断仍大量依赖 console。</dd>
+          <dt>Rationale</dt><dd>发布门禁只能说明上线时可用，可观测性解决上线后“谁受影响、卡在哪一步、是否与本次版本有关”。用业务指标而非海量基础设施指标起步，能控制成本。</dd>
+          <dt>Downsides</dt><dd>日志与指标需要避免学生、家长和财务隐私；告警阈值初期可能产生噪声，需要明确责任人和逐步校准。</dd>
+          <dt>Confidence</dt><dd>91%</dd>
+          <dt>Complexity</dt><dd>Medium</dd>
+        </dl>
+      </article>
+
+      <article class="idea-card" id="idea-7">
+        <div class="idea-head">
+          <div class="idea-title"><span class="rank">7</span><h3>7. H5 报名决策快照</h3></div>
+          <div class="card-chips"><span class="chip amber">P1</span><span class="chip">88% confidence</span><span class="chip blue">Medium</span></div>
+        </div>
+        <dl class="fields">
+          <dt>Description</dt><dd>为家长报名提供一次请求的决策快照：课程、可选班级、名额、当前报名状态、学生时间冲突和占位到期时间在同一响应中返回，并携带快照版本供提交时校验。H5 不再逐课程串行拼接多个时点的数据。</dd>
+          <dt>Axis</dt><dd>后台与 H5 工作流及前端质量</dd>
+          <dt>Basis</dt><dd><strong>direct:</strong> <code>mobile-uniapp/src/pages/parent/enrollment.vue</code> 会遍历课程，逐个加载班级并检查报名状态；后端同时存在容量重查和报名占位语义。当前结构既产生请求扇出，也可能让用户基于不同时间点的状态做决定。</dd>
+          <dt>Rationale</dt><dd>这是少数同时改善 H5 速度、状态一致性和用户决策质量的产品改动。它比先做视觉调整更直接地影响家长的高价值流程。</dd>
+          <dt>Downsides</dt><dd>需要新增聚合读模型并明确快照过期、权限与提交校验；响应不能变成无边界的大对象，应严格围绕报名决定。</dd>
+          <dt>Confidence</dt><dd>88%</dd>
+          <dt>Complexity</dt><dd>Medium</dd>
+        </dl>
+        <figure class="visual">
+          <svg viewBox="0 0 780 190" role="img" aria-label="H5 报名数据请求前后对比">
+            <defs><marker id="arrow-h5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#6a7a72"/></marker></defs>
+            <g font-family="Microsoft YaHei, sans-serif" font-size="13" text-anchor="middle">
+              <text x="190" y="24" fill="#8a3028" font-weight="700">当前：按课程串行拼接</text>
+              <rect x="20" y="48" width="90" height="42" rx="6" fill="#fde9e7" stroke="#e2b7b3"/><text x="65" y="74" fill="#8a3028">H5 页面</text>
+              <line x1="110" y1="69" x2="145" y2="69" stroke="#6a7a72" stroke-width="2" marker-end="url(#arrow-h5)"/>
+              <rect x="155" y="38" width="112" height="32" rx="6" fill="#fff2cf" stroke="#d5bc65"/><text x="211" y="59" fill="#745600">课程列表</text>
+              <rect x="155" y="80" width="112" height="32" rx="6" fill="#fff2cf" stroke="#d5bc65"/><text x="211" y="101" fill="#745600">每课班级</text>
+              <rect x="155" y="122" width="112" height="32" rx="6" fill="#fff2cf" stroke="#d5bc65"/><text x="211" y="143" fill="#745600">每课报名状态</text>
+              <text x="190" y="174" fill="#53625b">多次请求，不同时间点</text>
+              <line x1="342" y1="95" x2="414" y2="95" stroke="#08775c" stroke-width="3" marker-end="url(#arrow-h5)"/>
+              <text x="378" y="80" fill="#075f4a" font-weight="700">收敛</text>
+              <text x="595" y="24" fill="#075f4a" font-weight="700">目标：一次决策快照</text>
+              <rect x="430" y="62" width="105" height="64" rx="6" fill="#dff4ec" stroke="#8bc8b2"/><text x="482" y="90" fill="#075f4a">H5 页面</text><text x="482" y="109" fill="#075f4a">一次请求</text>
+              <line x1="535" y1="94" x2="570" y2="94" stroke="#6a7a72" stroke-width="2" marker-end="url(#arrow-h5)"/>
+              <rect x="580" y="48" width="180" height="92" rx="6" fill="#e7f0fa" stroke="#9dbbd1"/><text x="670" y="76" fill="#24577d">课程 + 班级 + 名额</text><text x="670" y="98" fill="#24577d">状态 + 冲突 + 到期</text><text x="670" y="120" fill="#24577d">同一快照版本</text>
+            </g>
+          </svg>
+          <figcaption>方向性示意：把多个时间点的串行查询收敛为面向报名决定的一致快照。</figcaption>
+        </figure>
+      </article>
+    </section>
+
+    <section id="rejection-summary">
+      <p class="eyebrow">Critical cut</p>
+      <h2>Rejection Summary</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Idea</th><th>Reason Rejected</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>用途限定会话与一次性票据</td><td>令牌暴露有证据，但全面重做浏览器会话和文件/SSE 票据超出当前必要范围。</td></tr>
+            <tr><td>2</td><td>动作与数据范围策略中心</td><td>方向可靠，但现有 RBAC 与归属校验已提供基础，紧迫性低于生产配置和交付风险。</td></tr>
+            <tr><td>3</td><td>完整文件保留与下载审计边界</td><td>内容校验被并入安全基线；保留期和下载审计缺少明确业务证据。</td></tr>
+            <tr><td>4</td><td>统一不可变教务总账</td><td>现有课时与退款流水支持加强对账，但不足以证明横跨收费、课时、退款和薪资的重写值得当前成本。</td></tr>
+            <tr><td>5</td><td>通用交易幂等内核</td><td>退款并发窗口支持定点幂等与唯一约束，不支持为所有命令建设通用内核。</td></tr>
+            <tr><td>6</td><td>统一排课资源预订引擎</td><td>现有冲突检查复杂，但没有规模故障证据；领域重构成本较高。</td></tr>
+            <tr><td>7</td><td>业务不变量异常运营队列</td><td>适合作为数据治理后续，但尚无异常发生量和处理责任模型。</td></tr>
+            <tr><td>8</td><td>全自动回滚</td><td>收缩为明确回退流程；有状态数据库迁移下盲目自动回滚不安全。</td></tr>
+            <tr><td>9</td><td>签名发布清单与主机主动收敛</td><td>对单台 ECS 来说引入主机代理和签名协议过重，当前健康门禁收益更高。</td></tr>
+            <tr><td>10</td><td>全服务健康模型</td><td>已合并到“可验证发布门禁”。</td></tr>
+            <tr><td>11</td><td>角色任务驾驶舱</td><td>现有首页已覆盖高频入口，缺少用户研究或漏办数据证明应立即重做信息架构。</td></tr>
+            <tr><td>12</td><td>后台异常运营台</td><td>异常类型存在，但人员责任、量级和处理时限尚未建立。</td></tr>
+            <tr><td>13</td><td>移动端离线命令日志</td><td>弱网推理合理，但没有事故/重试证据支撑新增冲突合并和 outbox 语义。</td></tr>
+            <tr><td>14</td><td>跨端 API 与会话单一来源</td><td>两个客户端确有重复，但目前证据只显示少量 token/401 逻辑，不足以支撑广泛契约层。</td></tr>
+            <tr><td>15</td><td>正式前端性能预算</td><td>缺少当前包体、首屏耗时和接口延迟基线；先修复已知报名请求扇出。</td></tr>
+            <tr><td>16</td><td>完整发布证据包</td><td>其测试、镜像、迁移和探针部分已分别合并进数据库、CI 和发布门禁方向。</td></tr>
+            <tr><td>17</td><td>拆分 821 行排课服务</td><td>证据充分，但属于降低维护成本的后续工作，当前价值低于生产与数据控制。</td></tr>
+            <tr><td>18</td><td>专项 docs/solutions 与策略文档</td><td>特定目录缺失不等于项目没有文档；仓库已有大量审计、计划和报告。</td></tr>
+            <tr><td>19</td><td>部署分支/工作树单独治理项目</td><td>作为发布门禁的前置清理处理，不单列为战略方向。</td></tr>
+            <tr><td>20</td><td>数据库约束与索引专项</td><td>已合并到“版本化数据库迁移与约束治理”。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="composition-signal">Composed 2026-08-04T22:57:52+08:00 by ce-ideate from the current user prompt and repository evidence.</footer>
+  </main>
+</body>
+</html>
