@@ -7,7 +7,7 @@ from playwright.sync_api import sync_playwright, Page
 
 BASE_URL = "http://localhost:5173"
 SCREENSHOT_DIR = "docs/screenshots/interactive"
-REPORT_FILE = "docs/frontend_interactive_test_report.md"
+REPORT_FILE = "docs/archive/test-reports/frontend_interactive_test_report.md"
 ADMIN_USER = "admin"
 ADMIN_PASS = "123456"
 

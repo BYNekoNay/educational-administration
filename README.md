@@ -146,7 +146,7 @@ bash acceptance_test.sh
 
 五角色 32 个授权端点 + 6 个越权拒绝测试全部通过。
 
-详见 `docs/acceptance-matrix-2026-07-19.md` 和 `docs/test-report-2026-07-19.md`。
+详见 `docs/acceptance-matrix-2026-07-19.md` 和 `docs/ui-test-report-final-2026-09-10.md`（69 条浏览器自动化验收用例）。历史分层测试报告见 `docs/archive/test-reports/`。
 
 ## 项目结构
 
@@ -171,9 +171,14 @@ educational-administration/
 │   ├── data.sql        # 演示数据
 │   └── reset.sql       # 一键重置
 └── docs/               # 毕业设计文档
-    ├── 01-09 毕业设计系列文档
+    ├── 00-17 毕业设计系列文档
+    ├── thesis/         # 毕业论文（md + docx）
+    ├── paper/          # 课程设计报告 + Mermaid 配图
+    ├── defence/        # 答辩材料（讲稿/演示动线/问答预案）
+    ├── screenshots/    # 界面截图
+    ├── archive/        # 历史过程记录（修复/审计/测试报告/被取代稿）
     ├── acceptance-matrix-2026-07-19.md
-    └── test-report-2026-07-19.md
+    └── ui-test-report-final-2026-09-10.md
 ```
 
 ## 交付版本
@@ -182,8 +187,8 @@ educational-administration/
 - **构建日期**：2026-09-08
 - **环境**：JDK 17 | MySQL 8.0 | Node.js 22 | Maven 3.9
 - **测试统计**：后端 464 通过 | 管理端 118 通过 | 移动端 25 通过
-- **生产化能力**（v1.1.0 新增）：Flyway 版本化迁移（V6/V7/V8）、加密备份/恢复/演练、发布门禁 + 镜像回退、业务可观测性（actuator/Prometheus/关联 ID/JSON 日志）、H5 报名决策快照（If-Match 一致性）、上传内容校验（Content-Type + 魔数）、CI 测试门禁 + 登录冒烟、生产配置启动校验
-- **v1.2.0 新增**：排课可视化拖拽快速调课（原生 DnD + CAS 防并发覆盖）、流失预警五因子引擎 + 学员级待办清单（跟进闭环/Excel 导出）、SSE 长连加固（心跳/nginx 流式）+ 通知外发通道抽象、运营看板按角色隔离
+- **生产化能力**（v1.1.0 新增）：Flyway 版本化迁移（V6/V7）、加密备份/恢复/演练、发布门禁 + 镜像回退、业务可观测性（actuator/Prometheus/关联 ID/JSON 日志）、H5 报名决策快照（If-Match 一致性）、上传内容校验（Content-Type + 魔数）、CI 测试门禁 + 登录冒烟、生产配置启动校验
+- **v1.2.0 新增**：Flyway V8（流失预警跟进表）、排课可视化拖拽快速调课（原生 DnD + CAS 防并发覆盖）、流失预警五因子引擎 + 学员级待办清单（跟进闭环/Excel 导出）、SSE 长连加固（心跳/nginx 流式）+ 通知外发通道抽象、运营看板按角色隔离
 - **v1.3.0 新增**（移动端补齐）：教师端学员请假审批（本班待审列表 → 通过/驳回+备注，教务兜底不变）、课表主 Tab 真实化（今日+未来 7 天紧凑摘要，家长/教师角色自适应）、教师课表富信息（课程/班级/教室名/时间/状态，按日分组+今日高亮）、消息未读角标（tabBar 红点 + 未读 N 条）、家长学情上下文（考勤行展示"班级 日期 时间"替代裸课次 ID）；后端 `/api/teacher/lessons` 补 classroomName 回填
 - **已知限制**：模拟支付/模拟短信（非真实网关与短信服务），JWT 密钥必须通过 `JWT_SECRET` 环境变量外部注入，生产 DB 密码/JWT/CORS 由 `ProductionConfigurationValidator` 启动校验
 
