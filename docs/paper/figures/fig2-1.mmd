@@ -1,7 +1,7 @@
 flowchart TB
     subgraph Clients["客户端"]
         M[移动端 uni-app<br/>家长端 / 教师端]
-        A[管理后台 admin-web<br/>教务 / 财务 / 超管]
+        A[管理后台 admin-web<br/>教务 / 财务 / 超级管理员]
     end
     M --> N[Nginx / Caddy 反向代理<br/>HTTPS + JWT 鉴权]
     A --> N

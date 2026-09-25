@@ -1,0 +1,14 @@
+flowchart TB
+    U[客户端浏览器<br/>管理后台 / 移动端 H5]
+    subgraph Host[生产服务器 · Docker Compose 编排]
+        C[Caddy 反向代理容器<br/>监听 80 / 443]
+        W[Web 容器 nginx<br/>托管管理后台与移动端 H5 静态资源]
+        B[后端应用容器<br/>Spring Boot JAR / JDK 17]
+        DB[(MySQL 8.0 容器<br/>数据卷持久化)]
+        FS[(本地文件存储<br/>uploads 数据卷)]
+    end
+    U -->|HTTP / HTTPS| C
+    C --> W
+    W -->|业务接口 /api| B
+    B --> DB
+    B --> FS
