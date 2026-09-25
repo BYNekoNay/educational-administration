@@ -1,6 +1,6 @@
 {
   "name": "mobile-uniapp",
-  "version": "0.9.0",
+  "version": "1.3.0",
   "description": "艺术培训机构全流程教务管理平台 - 家长端/教师端 uni-app",
   "scripts": {
     "dev:h5": "vite",
