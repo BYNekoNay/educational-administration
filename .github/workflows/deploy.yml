@@ -29,6 +29,11 @@ env:
   BACKEND_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-backend
   WEB_IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/educational-administration-web
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+  # Repository migrations currently terminate at V9 (V9 adds the M1/M2/M3
+  # performance indexes); mirrors the default in
+  # deploy/scripts/release-production.sh. Used to populate TARGET_SCHEMA_VERSION
+  # in the rollback snapshot.
+  EXPECTED_SCHEMA_VERSION: "9"
 
 jobs:
   test:
@@ -105,9 +110,77 @@ jobs:
           ssh "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/scripts'"
           scp deploy/docker-compose.production.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.yml"
           scp deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/Caddyfile"
-          scp sql/schema.sql sql/data.sql sql/verify_high_value_invariants.sql "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          # SEC-02: schema.sql only. sql/data.sql is a demo dataset with weak
+          # default credentials and must never be shipped to production.
+          scp sql/schema.sql sql/verify_high_value_invariants.sql "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
           scp deploy/scripts/backup-common.sh deploy/scripts/backup-production.sh deploy/scripts/restore-drill.sh deploy/scripts/restore-production.sh deploy/scripts/run-scheduled-backup.sh deploy/scripts/release-production.sh deploy/scripts/rollback-images.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/scripts/"
+          # release-production.sh 默认以 $DEPLOY_PATH/acceptance_test.sh 作为
+          # ACCEPTANCE_SCRIPT（ACCEPTANCE_SCRIPT 默认取 scripts 目录的上一级），
+          # 因此必须与 docker-compose.yml / Caddyfile 同级，不能放进 scripts/。
+          scp deploy/acceptance_test.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/acceptance_test.sh"
           ssh "$DEPLOY_USER@$DEPLOY_HOST" "chmod +x '$DEPLOY_PATH'/scripts/*.sh"
+      - name: Snapshot current release for rollback
+        # OPS-01(b): record the images and Flyway version running right now so
+        # that the failure rollback step has valid inputs. release-state.env uses
+        # exactly the five field names rollback-images.sh parses (see
+        # deploy/scripts/rollback-images.sh lines 41-54); any extra key is
+        # rejected. Fields mirror what release-production.sh writes.
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' EXPECTED_IMAGE_TAG='$IMAGE_TAG' EXPECTED_SCHEMA_VERSION='$EXPECTED_SCHEMA_VERSION' bash -s" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          cd "$DEPLOY_PATH"
+          compose() {
+            docker compose --env-file .env --file docker-compose.yml "$@"
+          }
+          # Current image = the image of the container still running from the
+          # previous release. "none" on a first deployment or an empty/missing
+          # .env; rollback-images.sh refuses to proceed in that case.
+          current_image() {
+            local id
+            id="$(compose ps -q "$1" 2>/dev/null || true)"
+            if [ -z "$id" ]; then
+              printf 'none\n'
+            else
+              docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null || printf 'none\n'
+            fi
+          }
+          # Same Flyway query as rollback-images.sh/release-production.sh. When
+          # MySQL is not up yet, yields 0; a later failed deploy that migrated
+          # the schema will then mismatch and be refused by the rollback guard.
+          database_version() {
+            compose exec -T mysql sh -ceu '
+              MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root --batch --skip-column-names \
+                "$MYSQL_DATABASE" --execute \
+                "SELECT COALESCE(MAX(CAST(version AS UNSIGNED)), 0) FROM flyway_schema_history WHERE success = 1"
+            '
+          }
+          previous_backend_image="$(current_image backend)"
+          previous_web_image="$(current_image web)"
+          previous_schema_version="$(database_version 2>/dev/null | tr -d '[:space:]')" || previous_schema_version=""
+          [[ -n "$previous_backend_image" ]] || previous_backend_image=none
+          [[ -n "$previous_web_image" ]] || previous_web_image=none
+          [[ "$previous_schema_version" =~ ^[0-9]+$ ]] || previous_schema_version=0
+          release_id="$(date -u +%Y%m%dT%H%M%SZ)-${EXPECTED_IMAGE_TAG:0:12}"
+          evidence_dir="$DEPLOY_PATH/release-evidence/$release_id"
+          mkdir -p -- "$DEPLOY_PATH/release-evidence"
+          mkdir -m 700 -- "$evidence_dir"
+          : > "$evidence_dir/.edu-admin-release-evidence"
+          cat > "$evidence_dir/release-state.env" <<EOF
+          PREVIOUS_BACKEND_IMAGE=$previous_backend_image
+          PREVIOUS_WEB_IMAGE=$previous_web_image
+          PREVIOUS_SCHEMA_VERSION=$previous_schema_version
+          TARGET_IMAGE_TAG=$EXPECTED_IMAGE_TAG
+          TARGET_SCHEMA_VERSION=$EXPECTED_SCHEMA_VERSION
+          EOF
+          chmod 600 -- "$evidence_dir/release-state.env"
+          printf 'Rollback snapshot ready: %s\n' "$evidence_dir"
+          REMOTE
       - name: Deploy containers
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -134,14 +207,70 @@ jobs:
           WEB_IMAGE=$WEB_IMAGE:$IMAGE_TAG
           EOF
           printf '%s' "$ACR_PASSWORD" | ssh "$DEPLOY_USER@$DEPLOY_HOST" "docker login '$ACR_REGISTRY' -u '$ACR_USERNAME' --password-stdin && cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans && docker compose ps"
+      - name: Run authoritative release gate (production)
+        # OPS-02: release-production.sh is the authoritative gate. It pulls the
+        # immutable images, starts the stack, then proves container health,
+        # image tags, Flyway version, readiness/build info, the Prometheus
+        # business metric set, both web entry points, and finally executes the
+        # read-only five-role acceptance matrix (deploy/acceptance_test.sh).
+        # Without this step nothing invoked the gate, so "release gate enforced"
+        # was true only in the runbook, not in practice.
+        if: success() && inputs.environment == 'production'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SITE_ADDRESS: ${{ secrets.DEPLOY_SITE_ADDRESS }}
+          DEPLOY_SMOKE_SCHEME: ${{ secrets.DEPLOY_SMOKE_SCHEME }}
+          # secrets.* is not available in step-level if: expressions, so the
+          # "configured" decision is made here and read back inside the script.
+          SMOKE_PASSWORD_CONFIGURED: ${{ secrets.DEPLOY_SMOKE_PASSWORD != '' }}
+          DEPLOY_SMOKE_PASSWORD: ${{ secrets.DEPLOY_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$SMOKE_PASSWORD_CONFIGURED" != "true" ] || [ -z "$DEPLOY_SMOKE_PASSWORD" ]; then
+            echo "::warning::DEPLOY_SMOKE_PASSWORD is not configured in this GitHub Environment; the release gate was SKIPPED. Configure it to enforce deploy/RELEASE_RUNBOOK.md automatically."
+            exit 0
+          fi
+          case "$DEPLOY_SITE_ADDRESS" in
+            *://*) public_base_url="${DEPLOY_SITE_ADDRESS%/}" ;;
+            *) public_base_url="${DEPLOY_SMOKE_SCHEME:-https}://${DEPLOY_SITE_ADDRESS%/}" ;;
+          esac
+          # Write the smoke password onto the host with mode 600 and hand the
+          # PATH over; keeping it out of argv avoids leaking it through ps.
+          printf '%s' "$DEPLOY_SMOKE_PASSWORD" \
+            | ssh "$DEPLOY_USER@$DEPLOY_HOST" "cat > '$DEPLOY_PATH/.smoke-password' && chmod 600 '$DEPLOY_PATH/.smoke-password'"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' \
+             PUBLIC_BASE_URL='$public_base_url' \
+             EXPECTED_IMAGE_TAG='$IMAGE_TAG' \
+             EXPECTED_SCHEMA_VERSION='$EXPECTED_SCHEMA_VERSION' \
+             SMOKE_PASSWORD_FILE='$DEPLOY_PATH/.smoke-password' \
+             bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          # The gate starts the stack itself, so it is run from the deployment
+          # directory rather than through a remote shell pipeline that could be
+          # interrupted mid-release.
+          bash scripts/release-production.sh
+          REMOTE
       - name: Smoke test login API
         env:
           DEPLOY_SITE_ADDRESS: ${{ secrets.DEPLOY_SITE_ADDRESS }}
+          DEPLOY_SMOKE_SCHEME: ${{ secrets.DEPLOY_SMOKE_SCHEME }}
         run: |
+          # OPS-03: do not hardcode the scheme. Accept a full origin
+          # (http://ip or https://domain); otherwise build one from the
+          # configured scheme (default https) plus the bare host/IP.
+          case "$DEPLOY_SITE_ADDRESS" in
+            *://*) base_url="${DEPLOY_SITE_ADDRESS%/}" ;;
+            *) base_url="${DEPLOY_SMOKE_SCHEME:-https}://${DEPLOY_SITE_ADDRESS%/}" ;;
+          esac
+          login_url="$base_url/api/auth/login"
           probe() {
             curl -sS -o /tmp/smoke-body.json -w '%{http_code}' \
               --max-time 15 \
-              -X POST "https://$DEPLOY_SITE_ADDRESS/api/auth/login" \
+              -X POST "$login_url" \
               -H 'Content-Type: application/json' \
               -d '{"username":"no-such-user","password":"smoke-probe"}'
           }
@@ -149,13 +278,45 @@ jobs:
           for attempt in $(seq 1 12); do
             code="$(probe || true)"
             if [ "$code" = "200" ]; then
-              echo "smoke ok (attempt $attempt): HTTP $code"
+              echo "smoke ok (attempt $attempt): HTTP $code via $login_url"
               cat /tmp/smoke-body.json
               exit 0
             fi
             echo "attempt $attempt: HTTP $code (backoff 10s)"
             sleep 10
           done
-          echo "::error::login smoke probe failed after 12 attempts, last HTTP $code"
+          echo "::error::login smoke probe failed after 12 attempts, last HTTP $code ($login_url)"
           cat /tmp/smoke-body.json 2>/dev/null || true
           exit 1
+      - name: Roll back to previous images on failure
+        # OPS-01: when the deploy or smoke test fails in production, restore the
+        # images recorded before the release. rollback-images.sh is interactive
+        # by design (exact confirmation phrase over a TTY) and still refuses to
+        # run if the database schema version changed during the release.
+        if: failure() && inputs.environment == 'production'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          # The failure decision and rollback inputs come from the release
+          # evidence produced on the host (see deploy/RELEASE_RUNBOOK.md).
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "ls -1dt \"$DEPLOY_PATH\"/release-evidence/*/ 2>/dev/null | head -n1" \
+            > /tmp/rollback-evidence-dir.txt || true
+          evidence_dir="$(tr -d '[:space:]' < /tmp/rollback-evidence-dir.txt)"
+          evidence_dir="${evidence_dir%/}"
+          if [ -z "$evidence_dir" ]; then
+            echo "::error::No release-evidence directory found on the host; automatic image rollback is unavailable. Follow deploy/RELEASE_RUNBOOK.md."
+            exit 1
+          fi
+          previous_schema_version="$(ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "grep '^PREVIOUS_SCHEMA_VERSION=' '$evidence_dir/release-state.env' | cut -d= -f2")"
+          if ! printf '%s' "$previous_schema_version" | grep -Eq '^[0-9]+$'; then
+            echo "::error::release-state.env in $evidence_dir has no valid PREVIOUS_SCHEMA_VERSION; refusing automatic rollback."
+            exit 1
+          fi
+          printf 'ROLLBACK IMAGES TO %s\n' "$previous_schema_version" \
+            | ssh -tt "$DEPLOY_USER@$DEPLOY_HOST" \
+                "cd '$DEPLOY_PATH' && ROLLBACK_TARGET=production bash scripts/rollback-images.sh '$evidence_dir'"
