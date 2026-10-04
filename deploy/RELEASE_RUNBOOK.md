@@ -50,7 +50,10 @@ the deployment `.env`. Database and uploads are not changed.
 
 - `PUBLIC_BASE_URL`: externally reachable origin, without a trailing path.
 - `EXPECTED_IMAGE_TAG`: immutable Git commit SHA or approved release tag.
-- `EXPECTED_SCHEMA_VERSION`: current repository migration version (`8`).
+- `EXPECTED_SCHEMA_VERSION`: current repository migration version (`9`). Keep
+  this in step with the newest file in
+  `backend/src/main/resources/db/migration` — adding a migration without bumping
+  the expected version makes the gate fail with "Expected Flyway version …, got …".
 - `SMOKE_PASSWORD_FILE` and optional role-specific smoke usernames consumed by
   `acceptance_test.sh`; the workflow creates a mode-600 file from the protected
   GitHub Environment secret.

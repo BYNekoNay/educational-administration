@@ -153,7 +153,9 @@ CREATE TABLE `class_student` (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
   UNIQUE KEY uk_class_student (class_id, student_id),
-  INDEX idx_student_status (student_id, status)
+  INDEX idx_student_status (student_id, status),
+  -- M3（性能审查）：status 单独做谓词（如"在班学员"）时，idx_student_status 首列在前无法命中
+  INDEX idx_class_status (class_id, status, is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='班级学员关系';
 
 DROP TABLE IF EXISTS `enrollment`;
@@ -236,7 +238,9 @@ CREATE TABLE `schedule_lesson` (
   is_deleted TINYINT NOT NULL DEFAULT 0,
   INDEX idx_teacher_time (teacher_id, lesson_date, start_time, end_time),
   INDEX idx_classroom_time (classroom_id, lesson_date, start_time, end_time),
-  INDEX idx_class_time (class_id, lesson_date, start_time, end_time)
+  INDEX idx_class_time (class_id, lesson_date, start_time, end_time),
+  -- M1（性能审查）：按日期范围+状态检索课次（请假匹配、考勤日期区间）
+  INDEX idx_lesson_date_status (lesson_date, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课次';
 
 DROP TABLE IF EXISTS `schedule_adjust_request`;
@@ -383,7 +387,9 @@ CREATE TABLE `payment_record` (
   INDEX idx_pay_time (pay_time),
   INDEX idx_student_id (student_id),
   INDEX idx_enrollment_id (enrollment_id),
-  INDEX idx_enrollment_deleted_time (enrollment_id, is_deleted, pay_time)
+  INDEX idx_enrollment_deleted_time (enrollment_id, is_deleted, pay_time),
+  -- M2（性能审查）：按课程维度统计收入 / 删除前校验是否存在缴费记录
+  INDEX idx_course_deleted_time (course_id, is_deleted, pay_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收费记录';
 
 DROP TABLE IF EXISTS `refund_record`;
