@@ -15,15 +15,17 @@ import com.pzhu.eduadmin.modules.user.mapper.MenuMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.user.service.UserService;
 import com.pzhu.eduadmin.security.JwtUtil;
+import com.pzhu.eduadmin.security.LoginAttemptService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -42,31 +44,30 @@ public class AuthService implements IAuthService {
     private final MenuMapper menuMapper;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    /** 登录失败计数（key = username），用于暴力破解防护 */
-    private final ConcurrentHashMap<String, LoginAttemptInfo> loginAttempts = new ConcurrentHashMap<>();
-
-    private static final int MAX_FAILED_ATTEMPTS = 5;
-    private static final long LOCKOUT_DURATION_MS = 15 * 60 * 1000L; // 15 分钟
+    /**
+     * 登录失败计数（SEC-03）。原先在本类用进程内 ConcurrentHashMap 按用户名计数，
+     * 存在两点缺陷：多副本部署时计数不共享使爆破防护可被绕过；仅按用户名维度锁定
+     * 会被反向利用为锁定他人账号的 DoS。已下沉到 LoginAttemptService（Redis 分布式 +
+     * 账号/IP 双维度）。
+     */
+    private final LoginAttemptService loginAttemptService;
 
     @Override
     public LoginResponse login(LoginRequest request) {
         String username = request.getUsername();
-        // 锁定计数键归一化（trim+lowercase）。DB 用大小写/尾空格不敏感的排序规则，
+        // 计数键在 LoginAttemptService 内做 trim+lowercase 归一化。DB 用大小写/尾空格不敏感的排序规则，
         // admin/Admin/"admin " 解析到同一用户，若按原始串计数会各自独立计数，攻击者可借大小写/空格变体
-        // 成倍扩大暴力破解额度。归一化后统一计数（DB 查询仍用原始 username）。
-        String lockKey = lockKey(username);
+        // 成倍扩大暴力破解额度（DB 查询仍用原始 username）。
+        String clientIp = resolveClientIp();
 
-        // 暴力破解防护：检查是否被锁定
-        LoginAttemptInfo attemptInfo = loginAttempts.get(lockKey);
-        if (attemptInfo != null && attemptInfo.isLocked()) {
-            throw new BusinessException(429, "账号已锁定，请 15 分钟后再试");
-        }
+        // 暴力破解防护：账号维度与来源 IP 维度任一超限即拒绝
+        loginAttemptService.checkLocked(username, clientIp);
 
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, username));
 
         if (user == null) {
-            recordFailedAttempt(username);
+            loginAttemptService.recordFailure(username, clientIp);
             throw new BusinessException("用户名或密码错误");
         }
         // 先检查账号状态再验证密码，防止攻击者确认禁用账号的密码
@@ -74,12 +75,12 @@ public class AuthService implements IAuthService {
             throw new BusinessException("用户名或密码错误");
         }
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            recordFailedAttempt(username);
+            loginAttemptService.recordFailure(username, clientIp);
             throw new BusinessException("用户名或密码错误");
         }
 
         // 登录成功，清除失败计数
-        loginAttempts.remove(lockKey);
+        loginAttemptService.clearSuccess(username, clientIp);
 
         // 仅更新 lastLoginTime，避免 updateById 将 stale status/version 写回覆盖并发操作
         userMapper.update(null, new LambdaUpdateWrapper<User>()
@@ -217,60 +218,35 @@ public class AuthService implements IAuthService {
     }
 
     /**
-     * 清理过期的登录尝试记录，防止内存无限增长。
-     * 移除超过锁定时长（15分钟）的条目，将内存限制为仅保留近期尝试。
+     * 解析来源 IP，供限流的 IP 维度使用。
+     *
+     * <p>取值顺序：nginx 覆盖式写入的 X-Forwarded-For 首段 → X-Real-IP → TCP 远端地址。
+     * 之所以信任 XFF 首段，是因为 nginx 配置用的是 {@code X-Forwarded-For $remote_addr}
+     * 而非默认的追加式 {@code $proxy_add_x_forwarded_for}，客户端伪造的前缀不会留存；
+     * 而容器内 getRemoteAddr() 恒为 nginx 地址，直接取会让所有来源共享同一计数。</p>
+     *
+     * <p>非 Web 上下文（单元测试、定时任务）返回 null，此时 IP 维度不参与判定。</p>
      */
-    private void cleanExpiredAttempts() {
-        long now = System.currentTimeMillis();
-        loginAttempts.entrySet().removeIf(entry ->
-                now - entry.getValue().getLastAttemptTime() > LOCKOUT_DURATION_MS);
-    }
-
-    /** 记录登录失败，达到上限后锁定账号 */
-    private void recordFailedAttempt(String username) {
-        // 每次记录前清理过期条目，防止内存无限增长
-        cleanExpiredAttempts();
-        loginAttempts.compute(lockKey(username), (key, info) -> {
-            if (info == null) {
-                info = new LoginAttemptInfo();
+    private String resolveClientIp() {
+        try {
+            if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+                HttpServletRequest request = attrs.getRequest();
+                String xff = request.getHeader("X-Forwarded-For");
+                if (xff != null && !xff.isBlank()) {
+                    String first = xff.split(",")[0].trim();
+                    if (!first.isEmpty()) {
+                        return first;
+                    }
+                }
+                String realIp = request.getHeader("X-Real-IP");
+                if (realIp != null && !realIp.isBlank()) {
+                    return realIp.trim();
+                }
+                return request.getRemoteAddr();
             }
-            info.increment();
-            return info;
-        });
-    }
-
-    /** 锁定计数键归一化：trim + lowercase，与 DB 大小写/尾空格不敏感排序规则对齐 */
-    private static String lockKey(String username) {
-        return username == null ? "" : username.trim().toLowerCase(java.util.Locale.ROOT);
-    }
-
-    /** 登录尝试信息内部类 */
-    private static class LoginAttemptInfo {
-        private final AtomicInteger count = new AtomicInteger(0);
-        private volatile long lockTime = 0;
-        private volatile long lastAttemptTime = System.currentTimeMillis();
-
-        // synchronized 防止 isLocked/increment 并发竞态清除刚设置的锁
-        synchronized void increment() {
-            lastAttemptTime = System.currentTimeMillis();
-            if (count.incrementAndGet() >= MAX_FAILED_ATTEMPTS) {
-                lockTime = System.currentTimeMillis();
-            }
+        } catch (Exception e) {
+            log.warn("来源 IP 解析失败，本次登录仅按账号维度限流", e);
         }
-
-        long getLastAttemptTime() {
-            return lastAttemptTime;
-        }
-
-        synchronized boolean isLocked() {
-            if (lockTime == 0) return false;
-            if (System.currentTimeMillis() - lockTime > LOCKOUT_DURATION_MS) {
-                // 锁定过期，重置
-                count.set(0);
-                lockTime = 0;
-                return false;
-            }
-            return true;
-        }
+        return null;
     }
 }
