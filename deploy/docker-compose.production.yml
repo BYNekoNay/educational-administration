@@ -1,4 +1,31 @@
 services:
+  # 缓存与登录失败计数（P-05 / SEC-03）。单节点部署下 Redis 只承担这两项可降级的
+  # 职责：Redis 不可用时 CacheConfig 的错误处理器回落真实查询、LoginAttemptService
+  # 回落进程内计数，均不影响正确性。maxmemory 设硬上限是为了避免缓存把宿主机内存吃满。
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "900", "1", "--appendonly", "no",
+              "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - cache-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 192m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   mysql:
     image: mysql:8.0
     restart: unless-stopped
@@ -11,13 +38,25 @@ services:
     command: --default-authentication-plugin=mysql_native_password
     volumes:
       - mysql-data:/var/lib/mysql
+      # SEC-02: only schema.sql is imported on first boot. sql/data.sql is a demo
+      # dataset whose 22 accounts share the weak password "123456"; never import
+      # it into production. See deploy/.env.example for the operator note.
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     image: ${BACKEND_IMAGE}
@@ -30,24 +69,67 @@ services:
       APP_CORS_ALLOWED_ORIGINS: ${APP_ORIGIN}
       SPRING_PROFILES_ACTIVE: prod
       APP_IMAGE_TAG: ${BACKEND_IMAGE}
+      # 缓存/登录计数所用的 Redis（P-05、SEC-03）。容器网络内由 compose 的 cache
+      # 服务提供 hostname `cache`；未部署 Redis 时应把 SPRING_CACHE_TYPE 置为 simple。
+      SPRING_REDIS_HOST: cache
+      SPRING_REDIS_PORT: "6379"
+      # OPS-05: bound the JVM heap so the container stays within
+      # deploy.resources.limits. The image entrypoint is `java -jar app.jar`,
+      # so JAVA_TOOL_OPTIONS is honored by the JVM (no Dockerfile conflict).
+      JAVA_TOOL_OPTIONS: "-Xmx512m"
       TZ: Asia/Shanghai
     volumes:
       - uploads-data:/app/uploads
     depends_on:
       mysql:
         condition: service_healthy
+      # 刻意用 service_started 而非 service_healthy：缓存是"可丢失的加速层"，
+      # Redis 挂掉时后端必须仍能启动并正确服务（CacheConfig 的错误处理器与
+      # LoginAttemptService 的进程内降级保证这一点）。这里只约束启动顺序，
+      # 不构成可用性依赖。
+      cache:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && echo ready'"]
       interval: 15s
       timeout: 5s
       retries: 12
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
     image: ${WEB_IMAGE}
     restart: unless-stopped
     depends_on:
       - backend
+    # OPS-01: rollback-images.sh and release-production.sh require the web
+    # container to reach State.Health.Status == "healthy". The image is
+    # nginx:1.27-alpine, whose busybox provides wget for this probe.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   caddy:
     image: caddy:2.8-alpine
@@ -63,9 +145,20 @@ services:
       - caddy-config:/config
     depends_on:
       - web
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   mysql-data:
   uploads-data:
   caddy-data:
   caddy-config:
+  cache-data:

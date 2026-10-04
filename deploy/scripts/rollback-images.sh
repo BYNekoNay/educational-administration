@@ -71,7 +71,11 @@ IFS= read -r confirmation || die "Confirmation was not received"
 export BACKEND_IMAGE="$PREVIOUS_BACKEND_IMAGE"
 export WEB_IMAGE="$PREVIOUS_WEB_IMAGE"
 compose pull backend web
-compose up -d --remove-orphans backend web caddy
+# 刻意不带 --remove-orphans：这里只重建应用的三个服务，而 mysql / cache 也定义在
+# 同一份 compose 文件里。带该标志时 Compose 可能把本次未列举的服务判为 orphan 一并
+# 清除——回滚场景下那等于顺手把数据库带走，是比发布失败更糟的结果。本项目从没有
+# 重命名过服务，该标志在此处没有收益。
+compose up -d backend web caddy
 
 healthy=0
 for _ in $(seq 1 60); do
