@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Yipeitong is a B/S full-lifecycle academic administration platform for art training institutions, covering the complete business loop of **enrollment → payment → scheduling → attendance → lesson-hour deduction → refund → salary settlement → operational statistics**. The system consists of an admin console (Web) and a mobile app (H5 / WeChat Mini Program), and supports five roles: super administrator, academic administrator, finance administrator, teacher, and parent.
+Yipeitong is a B/S full-lifecycle academic administration platform for art training institutions, covering the complete business loop of **enrollment → payment → scheduling → attendance → lesson-hour deduction → refund → salary settlement → operational statistics**. The system consists of an admin console (Web) and a mobile client (H5), and supports five roles: super administrator, academic administrator, finance administrator, teacher, and parent.
 
 ## Tech Stack
 
@@ -88,7 +88,17 @@ The output is in `dist/build/h5-release/`. For a released H5 build, configure a 
 | Teacher | `teacher1` | `123456` | Attendance / learning records |
 | Parent | `parent1` | `123456` | Enrollment / payment / leave requests |
 
-> ⚠️ This system uses **simulated payment** (payType=2), not a real payment gateway. This design is intended for the graduation demo scenario.
+> ⚠️ The system uses **simulated payment** (payType=2), not a real payment gateway. This design is intended for the graduation demo scenario.
+
+## Authorization & Security Design
+
+Authorization is enforced in three layers, from pages down to individual buttons and APIs:
+
+1. **API layer (authoritative)**: write endpoints are guarded by `@RequireRole`; `JwtInterceptor` re-checks the live role from the database on every request (role changes / account disabling take effect immediately), and services apply row-level isolation (parents only see their own students, teachers only their own lessons).
+2. **Route layer**: the sidebar is rendered from the menu permission codes returned by the backend, and page access is verified; unauthorized pages are unreachable.
+3. **Button layer**: sensitive or shared-page actions are hidden by role/permission code (dashboard exports by role; refund audit, salary confirm/pay/void, user disable & password reset, menu edit/delete, enrollment audit by `menu:*` codes) as defense-in-depth, avoiding "visible but 403 on click".
+
+Supporting capabilities: BCrypt password hashing, 15-minute login-failure lockout, JWT version revocation, upload content validation (Content-Type + magic number), and production configuration startup validation (`ProductionConfigurationValidator`).
 
 ## Database
 
@@ -115,7 +125,7 @@ mvn test
 ```
 
 - Framework: JUnit 5 + Mockito + AssertJ
-- Test count: 464, 0 failures
+- Test count: 480, 0 failures (including 12 real-database integration tests on H2 in MySQL-compatible mode: enrollment-payment flow, attendance lesson deduction, refund reversal and unique constraints, auto-scheduling; plus 4 bean-validation constraint tests)
 - Service layer coverage: 100% (20/20 core business services have dedicated tests)
 
 ### Frontend tests (admin console)
@@ -141,7 +151,7 @@ npx vitest run
 ### Acceptance tests
 
 ```bash
-bash acceptance_test.sh
+bash scripts/acceptance_test.sh
 ```
 
 All five-role 32 authorized endpoints + 6 unauthorized-access rejections pass.
@@ -186,11 +196,11 @@ educational-administration/
 - **Version**: v1.3.0
 - **Build date**: 2026-09-08
 - **Environment**: JDK 17 | MySQL 8.0 | Node.js 22 | Maven 3.9
-- **Test statistics**: backend 464 passed | admin console 118 passed | mobile 25 passed
+- **Test statistics**: backend 480 passed (incl. 12 integration tests) | admin console 118 passed | mobile 25 passed
 - **Production capabilities** (added in v1.1.0): Flyway versioned migrations (V6/V7/V8), encrypted backup/restore/drill, release gate + image rollback, business observability (actuator/Prometheus/correlation ID/JSON logs), H5 enrollment decision snapshot (If-Match consistency), upload content validation (Content-Type + magic number), CI test gate + login smoke test, production configuration startup validation
 - **Added in v1.2.0**: visual drag-and-drop quick schedule adjustment (native DnD + CAS to prevent concurrent overwrite), five-factor student churn-warning engine + student-level to-do list (follow-up closed loop / Excel export), SSE long-connection hardening (heartbeat / nginx streaming) + outbound notification channel abstraction, dashboard isolation by role
 - **Added in v1.3.0** (mobile completion): teacher-side student leave approval (class-pending list → approve/reject + remark, academic-admin fallback unchanged), main schedule tab made real (compact summary of today + the next 7 days, adaptive to parent/teacher roles), rich teacher schedule info (course / class / classroom name / time / status, grouped by day with today highlighted), message unread badge (tabBar red dot + "N unread"), parent learning context (attendance rows show "class date time" instead of a bare lesson ID); backend `/api/teacher/lessons` now backfills classroomName
-- **Known limitations**: simulated payment / simulated SMS (not real gateways or SMS services), the JWT secret must be injected externally via the `JWT_SECRET` environment variable, and production DB password/JWT/CORS are validated at startup by `ProductionConfigurationValidator`
+- **Known limitations**: simulated payment / simulated SMS (not real gateways or SMS services), the mobile client is delivered in H5 form (WeChat Mini Program / App are planned capabilities outside this delivery), the JWT secret must be injected via the `JWT_SECRET` environment variable (the dev default in `application.yml` is local-only; production startup rejects weak config via `ProductionConfigurationValidator`), login-failure lockout is an in-memory single-instance implementation (needs Redis for multi-instance deployment), and production DB password/JWT/CORS are validated at startup by `ProductionConfigurationValidator`
 
 ## License
 

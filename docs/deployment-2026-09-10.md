@@ -149,7 +149,7 @@ docker exec -it educational-administration-mysql-1 \
   mysql -uroot -p"$(grep '^MYSQL_ROOT_PASSWORD=' .env | cut -d= -f2)" -D edu_admin
 
 # 回归验收
-bash acceptance_test.sh http://localhost
+bash scripts/acceptance_test.sh http://localhost
 ```
 
 ### 敏感文件位置
