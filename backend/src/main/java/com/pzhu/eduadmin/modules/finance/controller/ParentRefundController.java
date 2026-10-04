@@ -79,11 +79,11 @@ public class ParentRefundController {
         Map<Long, String> studentNameMap = studentMapper.selectBatchIds(sIds).stream()
                 .collect(Collectors.toMap(Student::getId,
                         s -> s.getName() == null ? "" : s.getName(), (a, b) -> a));
-        Map<Long, String> courseNameMap = new HashMap<>();
-        for (Long cid : cIds) {
-            Course c = courseMapper.selectById(cid);
-            if (c != null) courseNameMap.put(cid, c.getName());
-        }
+        // 批量取课程名：逐个 selectById 会退化为 N+1（每个课程一次查询），
+        // 统一走 selectBatchIds 一次取回（与 studentNameMap 的批量口径一致）。
+        Map<Long, String> courseNameMap = courseMapper.selectBatchIds(cIds).stream()
+                .collect(Collectors.toMap(Course::getId,
+                        c -> c.getName() == null ? "" : c.getName(), (a, b) -> a));
 
         // 取缴费金额和剩余课时
         List<PaymentRecord> payments = paymentRecordMapper.selectList(
@@ -223,12 +223,11 @@ public class ParentRefundController {
         Map<Long, Enrollment> enrollmentMap = enrollments.stream()
                 .collect(Collectors.toMap(Enrollment::getId, e -> e));
 
+        // 同上：批量取课程名，避免每门课一次 selectById 的 N+1
         Set<Long> courseIds = enrollments.stream().map(Enrollment::getCourseId).collect(Collectors.toSet());
-        Map<Long, String> courseNameMap = new HashMap<>();
-        for (Long cid : courseIds) {
-            Course c = courseMapper.selectById(cid);
-            if (c != null) courseNameMap.put(cid, c.getName());
-        }
+        Map<Long, String> courseNameMap = courseMapper.selectBatchIds(courseIds).stream()
+                .collect(Collectors.toMap(Course::getId,
+                        c -> c.getName() == null ? "" : c.getName(), (a, b) -> a));
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (RefundRecord r : page) {
