@@ -55,7 +55,7 @@ Internet :80
  backend (eduadmin-backend:v1.3.0-...)  ← Temurin 17 JRE，-Xmx512m
     │
     ▼
- mysql (mysql:8.0)                  ← 数据卷 mysql-data，初始化 schema.sql + data.sql
+ mysql (mysql:8.0)                  ← 数据卷 mysql-data，初始化仅 schema.sql
 ```
 
 所有容器 `restart: unless-stopped`，服务器重启后自动拉起。
@@ -171,6 +171,11 @@ bash scripts/acceptance_test.sh http://localhost
 | P2 | 演示数据时效性 | `data.sql` 为固定日期数据。若答辩时看板显示负营收，原因为「当月缴费为 0、退费留存」，属口径正常而非缺陷 |
 | P2 | 镜像不可变性 | 当前镜像 tag 为日期版本；建议后续改用 Git commit SHA 作为 tag |
 | P3 | 安全加固 | 建议关闭 3306 对外暴露（当前仅容器内网，安全组请勿开放）；为 ubuntu 用户禁用密码登录 |
+
+> **演示数据说明（SEC-02）**：生产编排已移除 `sql/data.sql` 的初始化挂载，首次启动
+> 仅导入 `sql/schema.sql`（建表结构）。`sql/data.sql` 为演示数据集，其 22 个账号使用
+> 统一弱口令 `123456`，**生产环境请勿导入演示数据**；若已导入，请**首次登录后立即修改
+> 默认口令**，或改用 `schema.sql` 重建数据库。
 
 ---
 
