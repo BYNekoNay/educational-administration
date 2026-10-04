@@ -102,8 +102,12 @@ async function loadOptions() {
 
 async function loadData() {
   loading.value = true
-  const res = await paymentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-  tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+  try {
+    const res = await paymentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    tableData.value = res.data?.records ?? []
+    total.value = res.data?.total ?? 0
+  } catch (e) { showError(e, '加载收费记录失败') }
+  finally { loading.value = false }
 }
 
 function handleSearch() { pageNum.value = 1; loadData() }

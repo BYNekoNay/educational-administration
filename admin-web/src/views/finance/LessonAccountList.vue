@@ -27,6 +27,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { lessonAccountApi } from '@/api/finance'
+import { showError } from '@/utils/error'
 import type { LessonAccount } from '@/types'
 
 const loading = ref(false)
@@ -44,8 +45,12 @@ const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 
 async function loadData() {
   loading.value = true
-  const res = await lessonAccountApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
-  tableData.value = res.data.records; total.value = res.data.total; loading.value = false
+  try {
+    const res = await lessonAccountApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    tableData.value = res.data?.records ?? []
+    total.value = res.data?.total ?? 0
+  } catch (e) { showError(e, '加载课时账户失败') }
+  finally { loading.value = false }
 }
 
 function handleSortChange({ prop, order }: { prop: string; order: string | null }) {

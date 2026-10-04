@@ -48,7 +48,7 @@
         </scroll-view>
 
         <view class="att-actions">
-          <button class="btn-primary" @click="submitAttendance">批量提交考勤</button>
+          <button class="btn-primary" :disabled="submitting" @click="submitAttendance">批量提交考勤</button>
         </view>
       </view>
     </view>
@@ -65,6 +65,8 @@ const currentLesson = ref(null)
 const students = ref([])
 const statusMap = ref({})
 const statusOpts = ['到课', '迟到', '请假', '缺勤']
+// 提交防重锁：涉课时扣减，提交进行中禁止重复触发
+const submitting = ref(false)
 
 function statusClass(i) {
   if (i === 0) return 'status-normal'
@@ -98,6 +100,7 @@ async function openAttendance(lesson) {
 }
 
 async function submitAttendance() {
+  if (submitting.value) return
   // 校验：必须为每个学员显式选择考勤状态，避免未操作学员被静默记为缺勤
   const unselected = (students.value || []).filter(s => !statusMap.value[s.studentId])
   if (unselected.length > 0) {
@@ -111,6 +114,7 @@ async function submitAttendance() {
     lessonId: lid,
     deductLessons: statusMap.value[s.studentId] === 1 ? 1 : (statusMap.value[s.studentId] === 2 ? 0.5 : 0)
   }))
+  submitting.value = true
   try {
     await api({ url: `/api/teacher/lessons/${lid}/attendances`, method: 'POST', data: list })
     // 提交期间教师可能已打开其他课次面板，仅当仍停留在本课次时才清空，避免误清新课次状态
@@ -121,6 +125,8 @@ async function submitAttendance() {
     }
   } catch (e) {
     if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '提交失败'), icon: 'none' })
+  } finally {
+    submitting.value = false
   }
 }
 

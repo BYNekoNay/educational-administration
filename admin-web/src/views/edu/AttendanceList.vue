@@ -103,7 +103,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">提交</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitting">提交</el-button>
       </template>
     </el-dialog>
 
@@ -151,6 +151,8 @@ const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const dialogVisible = ref(false)
+// 提交防重锁：涉课时扣减，进行中禁止重复提交
+const submitting = ref(false)
 const scheduleList = ref<ScheduleLesson[]>([])
 const studentList = ref<Student[]>([])
 const allStudents = ref<Student[]>([])
@@ -231,8 +233,10 @@ function showAddDialog() {
 }
 
 async function handleSubmit() {
+  if (submitting.value) return
   if (!form.value.lessonId) { ElMessage.warning('请选择课次'); return }
   if (!form.value.studentId) { ElMessage.warning('请选择学员'); return }
+  submitting.value = true
   try {
     await attendanceApi.create(form.value)
     ElMessage.success('提交成功')
@@ -240,6 +244,7 @@ async function handleSubmit() {
     pageNum.value = 1
     loadData()
   } catch (e) { showError(e, '提交失败') }
+  finally { submitting.value = false }
 }
 
 // ─── 请假审核 ───
