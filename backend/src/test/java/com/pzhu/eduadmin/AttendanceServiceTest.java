@@ -518,4 +518,77 @@ class AttendanceServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("不属于您");
     }
+
+    // ==================== 请假保护（已批准请假不可被覆盖） ====================
+
+    /** 构造一节属于当前教师（userId=2）的合法课次 */
+    private ScheduleLesson ownedLesson() {
+        ScheduleLesson lesson = new ScheduleLesson();
+        lesson.setId(1L);
+        lesson.setTeacherId(2L);
+        lesson.setClassId(1L);
+        lesson.setClassroomId(1L);
+        lesson.setStatus(1);
+        return lesson;
+    }
+
+    @Test
+    @DisplayName("已批准请假的学员不可被覆盖为到课（请假保护，409）")
+    void shouldRejectOverwriteApprovedLeaveWithPresent() {
+        Attendance newAttendance = new Attendance();
+        newAttendance.setLessonId(1L);
+        newAttendance.setStudentId(1L);
+        newAttendance.setStatus(1); // 教师尝试改回"到课"
+        newAttendance.setDeductLessons(BigDecimal.ONE);
+
+        // 已存在的已批准请假记录：status=3 且 deductLessons=0
+        Attendance approvedLeave = new Attendance();
+        approvedLeave.setId(10L);
+        approvedLeave.setLessonId(1L);
+        approvedLeave.setStudentId(1L);
+        approvedLeave.setStatus(3);
+        approvedLeave.setDeductLessons(BigDecimal.ZERO);
+
+        when(scheduleLessonMapper.selectById(1L)).thenReturn(ownedLesson());
+        when(attendanceMapper.selectOne(any())).thenReturn(approvedLeave);
+
+        assertThatThrownBy(() -> attendanceService.submit(newAttendance))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409))
+                .hasMessageContaining("不可覆盖");
+
+        // 关键：拦截后不得发生任何课时扣减 / 记录写回
+        verify(attendanceMapper, never()).updateById(any(Attendance.class));
+        verify(lessonAccountMapper, never()).update(any(), any());
+        verify(lessonFlowMapper, never()).insert(any(LessonFlow.class));
+    }
+
+    @Test
+    @DisplayName("已批准请假的学员不可被覆盖为迟到（请假保护，409）")
+    void shouldRejectOverwriteApprovedLeaveWithLate() {
+        Attendance newAttendance = new Attendance();
+        newAttendance.setLessonId(1L);
+        newAttendance.setStudentId(1L);
+        newAttendance.setStatus(2); // 教师尝试改回"迟到"
+        newAttendance.setDeductLessons(BigDecimal.ONE);
+
+        Attendance approvedLeave = new Attendance();
+        approvedLeave.setId(10L);
+        approvedLeave.setLessonId(1L);
+        approvedLeave.setStudentId(1L);
+        approvedLeave.setStatus(3);
+        approvedLeave.setDeductLessons(BigDecimal.ZERO);
+
+        when(scheduleLessonMapper.selectById(1L)).thenReturn(ownedLesson());
+        when(attendanceMapper.selectOne(any())).thenReturn(approvedLeave);
+
+        assertThatThrownBy(() -> attendanceService.submit(newAttendance))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409))
+                .hasMessageContaining("不可覆盖");
+
+        verify(attendanceMapper, never()).updateById(any(Attendance.class));
+        verify(lessonAccountMapper, never()).update(any(), any());
+        verify(lessonFlowMapper, never()).insert(any(LessonFlow.class));
+    }
 }

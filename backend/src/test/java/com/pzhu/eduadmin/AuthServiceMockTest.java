@@ -11,6 +11,7 @@ import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.modules.user.service.RoleService;
 import com.pzhu.eduadmin.modules.user.service.UserService;
 import com.pzhu.eduadmin.security.JwtUtil;
+import com.pzhu.eduadmin.security.LoginAttemptService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,9 +21,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-import java.lang.reflect.Field;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,6 +41,8 @@ class AuthServiceMockTest {
     private UserService userService;
     @Mock
     private RoleService roleService;
+    @Mock
+    private LoginAttemptService loginAttemptService;
 
     @InjectMocks
     private AuthService authService;
@@ -159,8 +161,22 @@ class AuthServiceMockTest {
     }
 
     @Test
-    @DisplayName("暴力破解防护 — 连续5次登录失败后第6次被锁定")
+    @DisplayName("暴力破解防护 — 达到失败上限后第6次请求在查库前即被拒绝")
     void login_BruteForceLockout() {
+        // AuthService 的职责是「调用顺序与移交策略」，锁定阈值本身由 LoginAttemptService 负责：
+        // 前 5 次记录失败，第 6 次起 checkLocked 抛出 429。这里用真实计数模拟该契约。
+        AtomicInteger failures = new AtomicInteger();
+        org.mockito.Mockito.doAnswer(inv -> {
+            failures.incrementAndGet();
+            return null;
+        }).when(loginAttemptService).recordFailure(any(), org.mockito.ArgumentMatchers.nullable(String.class));
+        org.mockito.Mockito.doAnswer(inv -> {
+            if (failures.get() >= 5) {
+                throw new BusinessException(429, "账号已锁定，请 15 分钟后再试");
+            }
+            return null;
+        }).when(loginAttemptService).checkLocked(any(), org.mockito.ArgumentMatchers.nullable(String.class));
+
         when(userMapper.selectOne(any())).thenReturn(null);
 
         LoginRequest request = new LoginRequest();
@@ -176,33 +192,14 @@ class AuthServiceMockTest {
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("账号已锁定");
+
+        // 关键约束：锁定后不应再触发任何数据库查询，避免锁定态下的密码校验开销被滥用为 DB 压测
+        org.mockito.Mockito.verify(userMapper, org.mockito.Mockito.times(5)).selectOne(any());
     }
 
     @Test
-    @DisplayName("锁定过期(>15分钟)后自动解锁可重试")
-    @SuppressWarnings("unchecked")
-    void login_LockExpiry() throws Exception {
-        when(userMapper.selectOne(any())).thenReturn(null);
-
-        LoginRequest request = new LoginRequest();
-        request.setUsername("admin");
-        request.setPassword("wrong");
-
-        // 锁定
-        for (int i = 0; i < 5; i++) {
-            try { authService.login(request); } catch (BusinessException ignored) {}
-        }
-
-        // 反射设置锁的时间为 16 分钟前（超过 15 分钟锁定窗口）
-        Field attemptsField = AuthService.class.getDeclaredField("loginAttempts");
-        attemptsField.setAccessible(true);
-        ConcurrentHashMap<String, Object> attempts = (ConcurrentHashMap<String, Object>) attemptsField.get(authService);
-        Object info = attempts.get("admin");
-        Field lockTimeField = info.getClass().getDeclaredField("lockTime");
-        lockTimeField.setAccessible(true);
-        lockTimeField.setLong(info, System.currentTimeMillis() - 16 * 60 * 1000);
-
-        // 现在应该可以登录了（锁定已过期）
+    @DisplayName("登录成功清空失败计数")
+    void login_SuccessClearsFailureCounter() {
         User user = buildUser(1L, "admin", "SUPER_ADMIN", 1, 0);
         when(userMapper.selectOne(any())).thenReturn(user);
         when(userMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
@@ -215,6 +212,9 @@ class AuthServiceMockTest {
         LoginResponse response = authService.login(okReq);
 
         assertThat(response.getToken()).isEqualTo("token");
+        org.mockito.Mockito.verify(loginAttemptService)
+                .clearSuccess(org.mockito.ArgumentMatchers.eq("admin"),
+                        org.mockito.ArgumentMatchers.nullable(String.class));
     }
 
     @Test

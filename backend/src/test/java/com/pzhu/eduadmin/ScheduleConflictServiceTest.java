@@ -224,4 +224,70 @@ class ScheduleConflictServiceTest {
         List<String> conflicts = conflictService.checkConflict(lesson);
         assertThat(conflicts).isEmpty();
     }
+
+    // ==================== 第五维：学员跨课次冲突 ====================
+
+    @Test
+    @DisplayName("学员跨班在时间重叠的课次中应被检测为学员冲突（第五维）")
+    void shouldDetectStudentConflictAcrossClasses() {
+        ScheduleLesson lesson = newLesson(1L, 1L, 1L,
+                "2026-07-10", "14:00", "15:30");
+
+        // 另一班级的课次，与待检课次时间重叠；教师/教室/班级均不同，只应触发学员冲突
+        ScheduleLesson otherClassLesson = exist(10L, 2L, 2L, 2L,
+                "2026-07-10", "15:00", "16:00", 1);
+
+        // 本班（classId=1）的活跃学员：studentId=100
+        ClassStudent inClass = new ClassStudent();
+        inClass.setClassId(1L);
+        inClass.setStudentId(100L);
+        inClass.setStatus(1);
+
+        // 同一学员在另一班级（classId=2）的活跃报名
+        ClassStudent otherEnrollment = new ClassStudent();
+        otherEnrollment.setClassId(2L);
+        otherEnrollment.setStudentId(100L);
+        otherEnrollment.setStatus(1);
+
+        when(scheduleLessonMapper.selectList(any())).thenReturn(List.of(otherClassLesson));
+        when(roomBookingMapper.selectList(any())).thenReturn(List.of());
+        // 第一次调用查本班学员，第二次查该学员的其他班级报名
+        when(classStudentMapper.selectList(any()))
+                .thenReturn(List.of(inClass))
+                .thenReturn(List.of(otherEnrollment));
+
+        List<String> conflicts = conflictService.checkConflict(lesson);
+
+        assertThat(conflicts).hasSize(1);
+        assertThat(conflicts.get(0)).contains("学员冲突");
+        assertThat(conflicts.get(0)).contains("班级(id=2)");
+        assertThat(conflicts.get(0)).contains("100");
+    }
+
+    @Test
+    @DisplayName("学员在其他班级无报名时不误报学员冲突（反例）")
+    void shouldNotDetectStudentConflictWhenNoOtherEnrollment() {
+        ScheduleLesson lesson = newLesson(1L, 1L, 1L,
+                "2026-07-10", "14:00", "15:30");
+
+        // 另一班级存在时间重叠课次，但本班学员并未在该班报名
+        ScheduleLesson otherClassLesson = exist(10L, 2L, 2L, 2L,
+                "2026-07-10", "15:00", "16:00", 1);
+
+        ClassStudent inClass = new ClassStudent();
+        inClass.setClassId(1L);
+        inClass.setStudentId(100L);
+        inClass.setStatus(1);
+
+        when(scheduleLessonMapper.selectList(any())).thenReturn(List.of(otherClassLesson));
+        when(roomBookingMapper.selectList(any())).thenReturn(List.of());
+        // 第一次查本班学员返回非空；第二次查其他班级报名返回空 → 无跨班冲突
+        when(classStudentMapper.selectList(any()))
+                .thenReturn(List.of(inClass))
+                .thenReturn(List.of());
+
+        List<String> conflicts = conflictService.checkConflict(lesson);
+
+        assertThat(conflicts).isEmpty();
+    }
 }
