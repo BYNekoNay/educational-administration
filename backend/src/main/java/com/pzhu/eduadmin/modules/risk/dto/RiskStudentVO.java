@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.risk.dto;
 
 import lombok.Data;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -9,7 +10,9 @@ import java.time.LocalDate;
  * 流失预警名单行 VO。
  */
 @Data
-public class RiskStudentVO {
+public class RiskStudentVO implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private Long studentId;
     private String studentName;

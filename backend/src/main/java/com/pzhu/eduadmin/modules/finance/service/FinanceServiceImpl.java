@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.CacheNames;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
@@ -24,6 +25,7 @@ import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -91,6 +93,7 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public PaymentRecord createPayment(PaymentRecord record) {
         if (record.getLessonCount() == null) throw new BusinessException(400, "课时数不能为空");
         if (record.getLessonCount().compareTo(BigDecimal.ZERO) <= 0) throw new BusinessException(400, "课时数必须为正数");
@@ -262,6 +265,7 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public RefundRecord createRefund(RefundRecord record) {
         // 完整业务校验
         if (record.getEnrollmentId() == null) throw new BusinessException(400, "报名ID不能为空");
@@ -304,6 +308,7 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public RefundRecord auditRefund(Long id, Integer status, Long auditorId, BigDecimal refundAmount) {
         RefundRecord record = refundRecordMapper.selectById(id);
         if (record == null) throw new BusinessException(404, "退费记录不存在");

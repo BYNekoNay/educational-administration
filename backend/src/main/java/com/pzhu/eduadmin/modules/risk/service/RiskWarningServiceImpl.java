@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.risk.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.CacheNames;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.mapper.AttendanceMapper;
@@ -29,6 +30,8 @@ import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -77,6 +80,7 @@ public class RiskWarningServiceImpl implements RiskWarningService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.RISK_WARNINGS)
     public List<RiskStudentVO> listRiskWarnings(String level, Long classId, Long courseId,
                                                 String keyword, Integer followUpStatus) {
         LocalDate today = LocalDate.now();
@@ -330,6 +334,7 @@ public class RiskWarningServiceImpl implements RiskWarningService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.RISK_WARNINGS)
     public PageResult<RiskStudentVO> pageRiskWarnings(int pageNum, int pageSize, String level, Long classId,
                                                       Long courseId, String keyword, Integer followUpStatus) {
         List<RiskStudentVO> all = listRiskWarnings(level, classId, courseId, keyword, followUpStatus);
@@ -340,6 +345,7 @@ public class RiskWarningServiceImpl implements RiskWarningService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.RISK_SUMMARY)
     public RiskSummaryVO summary() {
         List<RiskStudentVO> all = listRiskWarnings(null, null, null, null, null);
         RiskSummaryVO summaryVO = new RiskSummaryVO();
@@ -359,6 +365,7 @@ public class RiskWarningServiceImpl implements RiskWarningService {
     }
 
     @Override
+    @CacheEvict(cacheNames = {CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public StudentRiskFollowup updateFollowUp(Long studentId, Integer status, String remark, Long operatorId) {
         if (studentId == null) {
             throw new BusinessException(400, "学员ID不能为空");

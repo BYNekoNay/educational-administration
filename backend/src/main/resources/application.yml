@@ -9,15 +9,14 @@ spring:
   web:
     resources:
       add-mappings: false
-  # 开发环境排除 Redis 自动配置（无需本地 Redis 服务）。
-  # 如需启用 Redis 缓存（会话共享/JWT 黑名单/统计数据缓存）：
-  # 1. 注释掉下方 autoconfigure.exclude 中的 Redis 相关两项
-  # 2. 确保 Redis 6.x+ 运行在 localhost:6379
-  # 3. 取消注释下方 spring.data.redis 配置段
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  # 缓存：Redis 作为分布式缓存（P-05）。
+  # Redis 6.x+ 需运行在下方 spring.data.redis 指定的地址；Redis 不可用时由 CacheConfig 的
+  # 错误处理器降级为直接查询（缓存异常不影响业务），登录失败计数同样降级为内存实现（见 AuthService）。
+  cache:
+    type: redis
+    redis:
+      # 看板/风险清单为秒级近实时数据：短 TTL + 写操作主动失效（@CacheEvict）双重保障一致性
+      time-to-live: 60s
   datasource:
     url: jdbc:mysql://localhost:3306/edu_admin?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
@@ -29,8 +28,13 @@ spring:
       max-request-size: 10MB
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+      # 连接/命令超时必须短。Lettuce 默认命令超时 60s，Redis 不可达时每一次
+      # @Cacheable 读取都要挂满超时才抛异常，足以把一个接口的响应时间从毫秒拖到分钟级。
+      # 缓存与登录计数都是可降级路径，宁可立刻失败回落，也不要拖住主线程。
+      connect-timeout: ${SPRING_REDIS_CONNECT_TIMEOUT:1s}
+      timeout: ${SPRING_REDIS_TIMEOUT:1s}
   flyway:
     # 数据库迁移是生产环境的显式契约。本地/演示库继续由 sql/schema.sql
     # 管理（schema.sql 已含 V6/V7 的索引与约束），除非 profile 显式启用。

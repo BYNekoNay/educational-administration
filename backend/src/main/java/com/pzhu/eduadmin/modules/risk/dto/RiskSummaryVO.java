@@ -2,13 +2,16 @@ package com.pzhu.eduadmin.modules.risk.dto;
 
 import lombok.Data;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
  * 机构维度流失预警汇总。
  */
 @Data
-public class RiskSummaryVO {
+public class RiskSummaryVO implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private long total;
     private long high;
@@ -19,7 +22,10 @@ public class RiskSummaryVO {
     private List<LevelCount> byLevel;
 
     @Data
-    public static class LevelCount {
+    public static class LevelCount implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
         private String level;
         private long count;
 

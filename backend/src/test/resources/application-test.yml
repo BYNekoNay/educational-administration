@@ -4,6 +4,10 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  # 测试无 Redis：缓存降级为进程内 simple 缓存，使 @EnableCaching 上下文可正常装配。
+  # （Redis 被排除后若沿用 spring.cache.type=redis 将没有 CacheManager，导致上下文启动失败）
+  cache:
+    type: simple
   datasource:
     # DATABASE_TO_LOWER：与 MySQL 返回小写列标签的行为对齐（本系统少量 Mapper 以 Map 读取列名）
     url: jdbc:h2:mem:eduadmin_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=USER
