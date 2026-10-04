@@ -27,9 +27,18 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { ScheduleLesson } from '@/types'
+
+interface MonthCell {
+  key: string
+  day: number | ''
+  currentMonth: boolean
+  isToday: boolean
+  lessons: ScheduleLesson[]
+}
 
 const props = defineProps<{
-  lessons: any[]
+  lessons: ScheduleLesson[]
   year: number
   month: number
 }>()
@@ -45,7 +54,7 @@ const cells = computed(() => {
   let startDow = first.getDay() - 1
   if (startDow < 0) startDow = 6
 
-  const byDay = new Map<string, any[]>()
+  const byDay = new Map<string, ScheduleLesson[]>()
   for (const l of props.lessons) {
     const k = l.lessonDate
     if (!byDay.has(k)) byDay.set(k, [])
@@ -59,7 +68,7 @@ const cells = computed(() => {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
 
-  const result: any[] = []
+  const result: MonthCell[] = []
   // 前置空白格
   for (let i = 0; i < startDow; i++) {
     result.push({ key: `e${i}`, day: '', currentMonth: false, isToday: false, lessons: [] })
@@ -85,14 +94,14 @@ const cells = computed(() => {
 const rows = computed(() => Math.ceil(cells.value.length / 7))
 
 const colors = ['#0E7490','#D97706','#059669','#7C3AED','#DB2777','#2563EB','#DC2626','#0891B2','#A21CAF','#4D7C0F']
-function hashColor(id: number | null): string {
+function hashColor(id: number | null | undefined): string {
   if (!id) return colors[0]
   return colors[Math.abs(id ^ (id >> 4)) % colors.length]
 }
 
 const statusText: Record<number, string> = { 1: '待上课', 2: '已完成', 3: '已取消', 4: '已调课' }
-function statusLabel(status: number): string {
-  return statusText[status] || ''
+function statusLabel(status: number | undefined): string {
+  return statusText[status as number] || ''
 }
 </script>
 

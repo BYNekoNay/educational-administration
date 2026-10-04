@@ -49,7 +49,7 @@ public class NoticeController {
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Notice> update(@PathVariable Long id, @Valid @RequestBody Notice notice) {
         notice.setId(id);
-        // L4 fix: 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime
+        // 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime
         notice.setCreateTime(null);
         notice.setUpdateTime(null);
         return Result.success(noticeService.update(notice));

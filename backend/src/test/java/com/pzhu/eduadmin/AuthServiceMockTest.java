@@ -285,7 +285,7 @@ class AuthServiceMockTest {
 
         authService.login(request);
 
-        // H1 fix 后使用 LambdaUpdateWrapper 仅更新 lastLoginTime，验证 update 被调用
+        // 后使用 LambdaUpdateWrapper 仅更新 lastLoginTime，验证 update 被调用
         verify(userMapper).update(any(), any(LambdaUpdateWrapper.class));
     }
 

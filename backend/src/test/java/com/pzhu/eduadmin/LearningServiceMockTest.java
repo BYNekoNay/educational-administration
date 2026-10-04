@@ -262,7 +262,7 @@ class LearningServiceMockTest {
         verify(learningRecordMapper, never()).insert(any(LearningRecord.class));
     }
 
-    // ============ getStudentArchive — 出勤率分母 (Bug #20) ============
+    // ============ getStudentArchive — 出勤率分母 () ============
 
     @Test
     @DisplayName("getStudentArchive — 出勤率分母含出勤/迟到/请假/缺勤(1-4)，仅排除null状态")
@@ -273,7 +273,7 @@ class LearningServiceMockTest {
         Attendance a1 = new Attendance(); a1.setStatus(1); // present
         Attendance a2 = new Attendance(); a2.setStatus(1); // present
         Attendance a3 = new Attendance(); a3.setStatus(3); // leave (counts in denominator)
-        Attendance a4 = new Attendance(); a4.setStatus(4); // absent (M11: now counts in denominator)
+        Attendance a4 = new Attendance(); a4.setStatus(4); // absent (now counts in denominator)
         Attendance a5 = new Attendance(); a5.setStatus(null); // null (excluded from denominator)
 
         when(attendanceMapper.selectList(any(LambdaQueryWrapper.class)))

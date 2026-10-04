@@ -76,7 +76,7 @@ public class ReminderService {
     public void sendLessonExpiryReminders() {
         try {
             LocalDate today = LocalDate.now();
-            // Bug#44 + Medium fix: 分离"即将到期/已过期"和"课时不足"两种提醒条件。
+            // 分离"即将到期/已过期"和"课时不足"两种提醒条件。
             // 条件: 剩余课时>0 且 ((有到期日且 7 天内到期或已过期) 或 剩余课时<=3)。
             // 去掉 expireDate>=today 下限，否则已过期但剩余课时>3 的账户两个分支都不命中，
             // 与 M30「已过期但有剩余课时仍需通知家长」的意图矛盾。
@@ -93,7 +93,7 @@ public class ReminderService {
 
             for (LessonAccount account : accounts) {
                 try {
-                    // M30: 不再跳过已过期但有剩余课时的账户，家长仍需收到通知
+                    // 不再跳过已过期但有剩余课时的账户，家长仍需收到通知
                     String content = "剩余课时 " + account.getRemainingLessons()
                             + (account.getExpireDate() != null ? "，有效期至 " + account.getExpireDate() : "");
                     for (Long parentId : parentUserIds(Set.of(account.getStudentId()))) {
@@ -122,7 +122,7 @@ public class ReminderService {
         notification.setTitle(title);
         notification.setContent(content);
         notification.setRelatedId(relatedId);
-        // M25: 去重键含日期，到期提醒每天发送一次而非整个窗口仅一次
+        // 去重键含日期，到期提醒每天发送一次而非整个窗口仅一次
         notificationService.sendOnce(userId, notification, type + ":" + userId + ":" + relatedId + ":" + LocalDate.now());
     }
 }

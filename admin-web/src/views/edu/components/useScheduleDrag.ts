@@ -7,7 +7,7 @@
  */
 
 export interface DragLesson {
-  id: number
+  id?: number
   status?: number
   lessonDate?: string
   startTime?: string

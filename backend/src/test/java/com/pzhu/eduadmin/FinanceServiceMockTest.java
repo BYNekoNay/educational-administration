@@ -227,7 +227,7 @@ class FinanceServiceMockTest {
             doReturn(1).when(enrollmentMapper).update(any(), any(LambdaUpdateWrapper.class));
             when(classGroupMapper.selectById(5L)).thenReturn(classGroup);
             when(classStudentMapper.selectCount(any())).thenReturn(0L);
-            // H2 fix: 第一次 selectOne 查活跃记录返回 null，第二次查退费记录返回 refundedRecord
+            // 第一次 selectOne 查活跃记录返回 null，第二次查退费记录返回 refundedRecord
             when(classStudentMapper.selectOne(any())).thenReturn(null).thenReturn(refundedRecord);
             when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
             when(nameResolver.getStudentName(anyLong())).thenReturn("测试学员");
@@ -409,7 +409,7 @@ class FinanceServiceMockTest {
         }
 
         @Test
-        @DisplayName("Bug#10/#14 - 并发缴费CAS失败应抛异常（报名状态已变更）")
+        @DisplayName("并发缴费CAS失败应抛异常（报名状态已变更）")
         void shouldThrowWhenCasUpdateFails() {
             Enrollment enrollment = buildEnrollment(1L, 10L, 20L, 2, null);
             PaymentRecord record = buildPaymentRecord(1L, new BigDecimal("10"), new BigDecimal("1000"));
@@ -427,7 +427,7 @@ class FinanceServiceMockTest {
         }
 
         @Test
-        @DisplayName("Bug#11 - 课时账户并发插入冲突时回退到更新路径")
+        @DisplayName("课时账户并发插入冲突时回退到更新路径")
         void shouldFallbackToUpdateOnDuplicateKey() {
             Enrollment enrollment = buildEnrollment(1L, 10L, 20L, 2, null);
             PaymentRecord record = buildPaymentRecord(1L, new BigDecimal("10"), new BigDecimal("1000"));
@@ -622,7 +622,7 @@ class FinanceServiceMockTest {
             account.setRemainingLessons(new BigDecimal("20"));
 
             when(refundMapper.selectById(1L)).thenReturn(record);
-            // Bug #3 fix: validation now runs BEFORE CAS update, so refundMapper.update is never reached
+            // validation now runs BEFORE CAS update, so refundMapper.update is never reached
             when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2400"));
             when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);
             when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(1L);
@@ -677,7 +677,7 @@ class FinanceServiceMockTest {
             account.setRemainingLessons(new BigDecimal("10"));
 
             when(refundMapper.selectById(5L)).thenReturn(record);
-            // Bug #3 fix: validation runs before CAS, so provide validation mocks
+            // validation runs before CAS, so provide validation mocks
             when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
             when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2000"));
             when(paymentMapper.sumLessonCountByEnrollmentId(1L)).thenReturn(new BigDecimal("20"));
@@ -755,7 +755,7 @@ class FinanceServiceMockTest {
         }
 
         @Test
-        @DisplayName("Bug#2 - 自动计算的退费金额必须持久化到DB（审核人未指定金额时）")
+        @DisplayName("自动计算的退费金额必须持久化到DB（审核人未指定金额时）")
         void shouldPersistAutoCalculatedAmount() {
             RefundRecord record = new RefundRecord();
             record.setId(20L);
@@ -763,7 +763,7 @@ class FinanceServiceMockTest {
             record.setEnrollmentId(1L);
             record.setStudentId(10L);
             record.setApplicantId(2L);
-            // High fix 后退费金额不得超过回退课时价值：自动计算金额=1000（10 课时×100），
+            // 后退费金额不得超过回退课时价值：自动计算金额=1000（10 课时×100），
             // 故 lessonCount 须为 10（回退全部剩余课时），否则触发超额退费拦截
             record.setLessonCount(new BigDecimal("10"));
 
@@ -789,14 +789,14 @@ class FinanceServiceMockTest {
             // Auditor passes BigDecimal.ZERO → auto-calculate: remainingLessons(10) * pricePerLesson(100) = 1000
             RefundRecord result = financeService.auditRefund(20L, 2, 4L, BigDecimal.ZERO);
 
-            // Bug #2 fix: auto-calculated amount (1000) must be set on record and persisted
+            // auto-calculated amount (1000) must be set on record and persisted
             assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("1000.00"));
             // Verify amount persistence update was called (CAS update + amount update = 2 calls)
             verify(refundMapper, times(2)).update(any(), any());
         }
 
         @Test
-        @DisplayName("Bug#3 - 全额退费不被当前记录重复计入所阻塞")
+        @DisplayName("全额退费不被当前记录重复计入所阻塞")
         void shouldAllowFullRefund_withoutDoubleCounting() {
             // Scenario: totalPaid=2000, no prior approved refunds.
             // The current record's amount should NOT be included in totalRefunded
@@ -819,7 +819,7 @@ class FinanceServiceMockTest {
             when(enrollmentMapper.selectCourseIdById(1L)).thenReturn(20L);
             when(paymentMapper.sumByEnrollmentId(1L)).thenReturn(new BigDecimal("2000"));
             when(paymentMapper.sumLessonCountByEnrollmentId(1L)).thenReturn(new BigDecimal("20"));
-            // Bug #3: sumApprovedByEnrollmentId returns 0 because current record is still status=1
+            // sumApprovedByEnrollmentId returns 0 because current record is still status=1
             // (validation runs BEFORE CAS update). If it incorrectly returned 2000 (including
             // the current record), maxRefundable would be 0 and the refund would be blocked.
             when(refundMapper.sumApprovedByEnrollmentId(1L)).thenReturn(BigDecimal.ZERO);

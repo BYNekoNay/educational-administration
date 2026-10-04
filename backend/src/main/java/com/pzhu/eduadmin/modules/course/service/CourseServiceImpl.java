@@ -89,7 +89,7 @@ public class CourseServiceImpl implements CourseService {
         if (existing == null) {
             throw new BusinessException(404, "课程不存在");
         }
-        // Issue #20: 有缴费记录时禁止修改价格和课时数
+        // 有缴费记录时禁止修改价格和课时数
         Long paymentCount = paymentRecordMapper.selectCount(
                 new LambdaQueryWrapper<PaymentRecord>().eq(PaymentRecord::getCourseId, course.getId()));
         if (paymentCount > 0) {
@@ -120,7 +120,7 @@ public class CourseServiceImpl implements CourseService {
         if (classCount > 0) {
             throw new BusinessException(409, "该课程下存在活跃班级，无法删除");
         }
-        // Issue #21: 检查是否有未来的排课（ScheduleLesson 只有 classId，需先取课程下的班级ID）
+        // 检查是否有未来的排课（ScheduleLesson 只有 classId，需先取课程下的班级ID）
         Set<Long> courseClassIds = classGroupMapper.selectList(
                         new LambdaQueryWrapper<ClassGroup>().eq(ClassGroup::getCourseId, id))
                 .stream().map(ClassGroup::getId).collect(Collectors.toSet());
@@ -213,7 +213,7 @@ public class CourseServiceImpl implements CourseService {
         if (classGroup.getClassName() == null || classGroup.getClassName().isBlank()) {
             throw new BusinessException(400, "班级名称不能为空");
         }
-        // M fix: 校验 courseId 指向存在的课程，防止创建孤立班级（破坏课程→班级导航与统计）
+        // 校验 courseId 指向存在的课程，防止创建孤立班级（破坏课程→班级导航与统计）
         if (classGroup.getCourseId() == null || courseMapper.selectById(classGroup.getCourseId()) == null) {
             throw new BusinessException(404, "所选课程不存在");
         }
@@ -229,12 +229,12 @@ public class CourseServiceImpl implements CourseService {
         if (classGroup.getMaxStudentCount() != null && classGroup.getMaxStudentCount() <= 0) {
             throw new BusinessException(400, "班级容量必须大于0");
         }
-        // M10 fix: 校验班级存在
+        // 校验班级存在
         ClassGroup existing = classGroupMapper.selectById(classGroup.getId());
         if (existing == null) {
             throw new BusinessException(404, "班级不存在");
         }
-        // M fix: 白名单字段拷贝，禁止 mass assignment。courseId 创建后不可变更（否则破坏与既有报名的引用完整性），
+        // 白名单字段拷贝，禁止 mass assignment。courseId 创建后不可变更（否则破坏与既有报名的引用完整性），
         // createTime/updateTime 等服务端字段一律不接收客户端值。
         if (classGroup.getClassName() != null) existing.setClassName(classGroup.getClassName());
         if (classGroup.getTeacherId() != null) existing.setTeacherId(classGroup.getTeacherId());
@@ -254,7 +254,7 @@ public class CourseServiceImpl implements CourseService {
         if (studentCount > 0) {
             throw new BusinessException(409, "该班级中存在学员，无法删除");
         }
-        // Issue #21: 检查是否有未来的排课
+        // 检查是否有未来的排课
         Long futureLessonCount = scheduleLessonMapper.selectCount(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getClassId, id)
@@ -310,7 +310,7 @@ public class CourseServiceImpl implements CourseService {
         if (classGroup == null) {
             throw new BusinessException(404, "班级不存在");
         }
-        // M fix: 校验学员存在，防止插入引用不存在学员的孤立 ClassStudent 记录
+        // 校验学员存在，防止插入引用不存在学员的孤立 ClassStudent 记录
         if (classStudent.getStudentId() == null) {
             throw new BusinessException(400, "学员ID不能为空");
         }
@@ -334,7 +334,7 @@ public class CourseServiceImpl implements CourseService {
         if (maxCount > 0 && currentCount >= maxCount) {
             throw new BusinessException(409, "班级已满（容量" + maxCount + "），无法加入更多学员");
         }
-        // H fix: class_student 唯一键 uk_class_student(class_id, student_id) 不含 status，
+        // class_student 唯一键 uk_class_student(class_id, student_id) 不含 status，
         // 学员被移除（status=3）或转出（status=2）后旧行仍物理存在，直接 insert 会触发 DuplicateKeyException
         // （全局异常处理转成误导性 409），导致学员永远无法重新加入。与 transferStudent 一致：
         // 优先复用已有行重新激活，无历史行才 insert 并 catch DKE 兜底软删除占用唯一键的边界。
@@ -356,7 +356,7 @@ public class CourseServiceImpl implements CourseService {
                 throw new BusinessException(409, "该学员在此班级存在历史记录，无法重复添加");
             }
         }
-        // C4 fix: 插入后二次校验容量（防止并发 TOCTOU 超员），超出则回滚
+        // 插入后二次校验容量（防止并发 TOCTOU 超员），超出则回滚
         if (inserted && maxCount > 0) {
             Long postCount = classStudentMapper.selectCount(
                     new LambdaQueryWrapper<ClassStudent>()
@@ -379,7 +379,7 @@ public class CourseServiceImpl implements CourseService {
             throw new BusinessException(404, "该学员不在此班级中");
         }
         ClassStudent record = records.get(0);
-        // Critical fix: 原实现用 deleteById（逻辑删除）会隐藏记录，导致流失统计（统计 status=3）永远为 0。
+        // 原实现用 deleteById（逻辑删除）会隐藏记录，导致流失统计（统计 status=3）永远为 0。
         // 改为置 status=3（已退出），保留记录用于统计。
         record.setStatus(3);
         boolean updated = classStudentMapper.updateById(record) > 0;

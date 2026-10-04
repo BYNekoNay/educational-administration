@@ -7,6 +7,7 @@ import com.pzhu.eduadmin.common.Result;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.service.AttendanceService;
 import com.pzhu.eduadmin.security.RequireRole;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,8 +37,8 @@ public class AdminAttendanceController {
 
     @PostMapping("/attendances")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<Attendance> submit(@RequestBody Attendance attendance) {
-        // Bug3 fix: 防止客户端传入已有id/时间戳（mass assignment保护）
+    public Result<Attendance> submit(@Valid @RequestBody Attendance attendance) {
+        // 防止客户端传入已有id/时间戳（mass assignment保护）
         attendance.setId(null);
         attendance.setCreateTime(null);
         attendance.setUpdateTime(null);

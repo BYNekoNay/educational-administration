@@ -2,6 +2,11 @@
 -- 艺术培训机构全流程教务管理平台 - 数据库建表脚本
 -- 版本：v0.9（与 docs/10-数据库规范.md 保持一致）
 -- 字符集：utf8mb4，存储引擎：InnoDB
+--
+-- 双轨管理说明（详见 docs/10-数据库规范.md §1.1）：
+--   1) 本脚本用于"全新建库"（本地开发 / 演示环境）；
+--   2) 存量与生产库使用 Flyway 版本化迁移（backend/src/main/resources/db/migration，仅 prod profile 启用）；
+--   3) 新增结构变更时，先写迁移脚本，再同步进本文件，保证两轨结构一致。
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS edu_admin DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;

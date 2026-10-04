@@ -47,18 +47,9 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import { operationLogApi } from '@/api/auth'
+import type { OperationLog } from '@/types'
 
-interface LogItem {
-  id: number
-  operatorId: number
-  operatorName: string
-  module: string
-  operation: string
-  ip: string
-  createTime: string
-}
-
-const logs = ref<LogItem[]>([])
+const logs = ref<OperationLog[]>([])
 const loading = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const currentPage = ref(1)
@@ -83,7 +74,7 @@ async function loadLogs() {
 
 function handleSearch() { currentPage.value = 1; loadLogs() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; currentPage.value = 1; loadLogs() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   currentPage.value = 1; loadLogs()

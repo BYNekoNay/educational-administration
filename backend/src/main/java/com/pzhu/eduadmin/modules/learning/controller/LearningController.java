@@ -17,6 +17,7 @@ import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
 import com.pzhu.eduadmin.security.RequireRole;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,7 +44,7 @@ public class LearningController {
 
     @PostMapping("/edu/homeworks")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "TEACHER"})
-    public Result<Homework> createHomework(@RequestBody Homework homework) {
+    public Result<Homework> createHomework(@Valid @RequestBody Homework homework) {
         // Mass assignment protection: strip server-controlled fields
         homework.setId(null);
         homework.setCreateTime(null);
@@ -69,7 +70,7 @@ public class LearningController {
     @GetMapping("/teacher/students/{studentId}/archive")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Map<String, Object>> studentArchive(@PathVariable Long studentId) {
-        // H13 fix: 教师角色校验学员归属，防止任意教师查看任意学员档案
+        // 教师角色校验学员归属，防止任意教师查看任意学员档案
         com.pzhu.eduadmin.security.LoginUser loginUser = CurrentUserHolder.get();
         if ("TEACHER".equals(loginUser.getRoleCode())) {
             learningService.verifyTeacherStudentAccess(loginUser.getUserId(), studentId);
@@ -82,7 +83,7 @@ public class LearningController {
     @GetMapping("/teacher/homeworks/{lessonId}")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<Homework>> lessonHomeworks(@PathVariable Long lessonId) {
-        // H7 fix: 教师角色校验课次归属
+        // 教师角色校验课次归属
         checkTeacherLessonAccess(lessonId);
         return Result.success(learningService.getHomeworksByLessonId(lessonId));
     }
@@ -91,7 +92,7 @@ public class LearningController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Homework> createLessonHomework(@PathVariable Long lessonId,
                                                   @RequestBody Homework homework) {
-        // H7 fix: 教师角色校验课次归属
+        // 教师角色校验课次归属
         checkTeacherLessonAccess(lessonId);
         // Mass assignment protection: 剥离服务端控制字段（与 createHomework 一致）
         homework.setId(null);
@@ -105,7 +106,7 @@ public class LearningController {
     @GetMapping("/teacher/lessons/{lessonId}/learning-records")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<LearningRecord>> lessonLearningRecords(@PathVariable Long lessonId) {
-        // H7 fix: 教师角色校验课次归属
+        // 教师角色校验课次归属
         checkTeacherLessonAccess(lessonId);
         return Result.success(learningService.getRecordsByLessonId(lessonId));
     }
@@ -113,8 +114,8 @@ public class LearningController {
     @PostMapping("/teacher/lessons/{lessonId}/learning-records")
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<LearningRecord>> batchCreateRecords(@PathVariable Long lessonId,
-                                                            @RequestBody List<LearningRecord> records) {
-        // L9 fix: 请求体可能为 null（客户端发送 JSON null），先判空防止 size() NPE
+                                                            @Valid @RequestBody List<LearningRecord> records) {
+        // 请求体可能为 null（客户端发送 JSON null），先判空防止 size() NPE
         if (records == null || records.isEmpty()) {
             throw new BusinessException(400, "学情记录列表不能为空");
         }
@@ -122,7 +123,7 @@ public class LearningController {
         if (records.size() > 100) {
             throw new BusinessException(400, "单次批量学情记录不能超过100条");
         }
-        // M29: 教师角色校验课次归属，防止向非自己授课的课次写入记录
+        // 教师角色校验课次归属，防止向非自己授课的课次写入记录
         LoginUser loginUser = CurrentUserHolder.get();
         ScheduleLesson lesson = scheduleLessonMapper.selectById(lessonId);
         if (lesson == null) {
@@ -134,7 +135,7 @@ public class LearningController {
             }
         }
         // Issue 2: 校验学员是否在该课次所属班级中（class_student status=1）
-        // M5 fix: classId 为 null 时无法校验学员归属，直接拒绝，防止绕过行级隔离向任意学员写记录
+        // classId 为 null 时无法校验学员归属，直接拒绝，防止绕过行级隔离向任意学员写记录
         if (lesson.getClassId() == null) {
             throw new BusinessException(400, "该课次未关联班级，无法校验学员归属，不能创建学情记录");
         }
@@ -264,7 +265,7 @@ public class LearningController {
     }
 
     /**
-     * H7 fix: 教师角色校验课次归属，防止越权访问非自己授课的课次数据
+     * 教师角色校验课次归属，防止越权访问非自己授课的课次数据
      */
     private void checkTeacherLessonAccess(Long lessonId) {
         LoginUser loginUser = CurrentUserHolder.get();

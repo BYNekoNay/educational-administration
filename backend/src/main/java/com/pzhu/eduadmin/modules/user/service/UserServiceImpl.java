@@ -73,7 +73,7 @@ public class UserServiceImpl implements UserService {
                 .eq(User::getUsername, request.getUsername())) != null) {
             throw new BusinessException("用户名已存在");
         }
-        // Bug #34: 校验角色编码是否存在
+        // 校验角色编码是否存在
         if (roleMapper.selectCount(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, request.getRoleCode())) == 0) {
             throw new BusinessException(400, "角色编码不存在: " + request.getRoleCode());
         }
@@ -86,7 +86,7 @@ public class UserServiceImpl implements UserService {
         user.setRoleCode(request.getRoleCode());
         user.setStatus(1);
 
-        // Bug #36: 捕获唯一键冲突，防止并发注册 TOCTOU 竞态
+        // 捕获唯一键冲突，防止并发注册 TOCTOU 竞态
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException e) {
@@ -124,11 +124,11 @@ public class UserServiceImpl implements UserService {
         if (request.getRealName() != null) user.setRealName(request.getRealName());
         if (request.getPhone() != null) user.setPhone(request.getPhone());
         if (request.getRoleCode() != null && !request.getRoleCode().equals(user.getRoleCode())) {
-            // Bug #34: 校验角色编码是否存在
+            // 校验角色编码是否存在
             if (roleMapper.selectCount(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, request.getRoleCode())) == 0) {
                 throw new BusinessException(400, "角色编码不存在: " + request.getRoleCode());
             }
-            // High fix: 保护最后一个 SUPER_ADMIN，角色降级会导致系统永久不可管理
+            // 保护最后一个 SUPER_ADMIN，角色降级会导致系统永久不可管理
             // （M16 仅在 updateUserStatus 中防护，此处补齐角色变更路径）
             if ("SUPER_ADMIN".equals(user.getRoleCode()) && !"SUPER_ADMIN".equals(request.getRoleCode())) {
                 Long activeSuperAdminCount = userMapper.selectCount(
@@ -143,8 +143,8 @@ public class UserServiceImpl implements UserService {
             user.setRoleCode(request.getRoleCode());
             roleChanged = true;
         }
-        // Bug #47: 角色或用户名变更时递增 version 使旧 Token 失效
-        // C5 fix: 原子 SQL 递增，防止并发操作丢失递增
+        // 角色或用户名变更时递增 version 使旧 Token 失效
+        // 原子 SQL 递增，防止并发操作丢失递增
         if (roleChanged || usernameChanged) {
             userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
                     .eq(User::getId, id)
@@ -185,7 +185,7 @@ public class UserServiceImpl implements UserService {
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        // M16: 保护最后一个 SUPER_ADMIN，防止系统永久不可管理
+        // 保护最后一个 SUPER_ADMIN，防止系统永久不可管理
         if (status != 1 && "SUPER_ADMIN".equals(user.getRoleCode())) {
             Long activeSuperAdminCount = userMapper.selectCount(
                     new LambdaQueryWrapper<User>()
@@ -196,7 +196,7 @@ public class UserServiceImpl implements UserService {
                 throw new BusinessException(400, "不能禁用最后一个超级管理员");
             }
         }
-        // C5 fix: 原子 SQL 递增 version，防止并发操作丢失递增导致 Token 失效机制被绕过
+        // 原子 SQL 递增 version，防止并发操作丢失递增导致 Token 失效机制被绕过
         userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
                 .eq(User::getId, id)
                 .set(User::getStatus, status)
@@ -214,8 +214,8 @@ public class UserServiceImpl implements UserService {
         if (newPassword.length() < 6) {
             throw new BusinessException(400, "新密码长度不能少于6位");
         }
-        // H6 fix: BCrypt 有效上限 72 字节，超长密码会导致 CPU 密集型哈希（DoS 风险）
-        // L2 fix: 上限是 72「字节」而非 72 字符，多字节密码（如中文）按字符校验会超过 72 字节被 BCrypt
+        // BCrypt 有效上限 72 字节，超长密码会导致 CPU 密集型哈希（DoS 风险）
+        // 上限是 72「字节」而非 72 字符，多字节密码（如中文）按字符校验会超过 72 字节被 BCrypt
         // 静默截断，导致前 72 字节相同的两个密码哈希一致。改用 UTF-8 字节长度校验。
         if (newPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
             throw new BusinessException(400, "新密码过长（超出72字节限制）");
@@ -224,7 +224,7 @@ public class UserServiceImpl implements UserService {
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        // C5 fix: 原子 SQL 递增 version，防止并发操作丢失递增
+        // 原子 SQL 递增 version，防止并发操作丢失递增
         userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
                 .eq(User::getId, id)
                 .set(User::getPassword, new BCryptPasswordEncoder().encode(newPassword))
@@ -238,7 +238,7 @@ public class UserServiceImpl implements UserService {
     private void saveSpecialties(Long userId, List<Long> courseIds) {
         teacherCourseMapper.realDeleteByUserId(userId);
         if (courseIds != null && !courseIds.isEmpty()) {
-            // A4#3 fix: 去重并剔除 null，避免重复插入触发唯一键冲突 / 插入非法空 courseId
+            // 去重并剔除 null，避免重复插入触发唯一键冲突 / 插入非法空 courseId
             java.util.Set<Long> seen = new java.util.LinkedHashSet<>();
             for (Long cid : courseIds) {
                 if (cid == null || !seen.add(cid)) continue;

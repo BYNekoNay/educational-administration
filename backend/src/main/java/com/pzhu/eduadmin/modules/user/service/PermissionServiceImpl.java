@@ -62,7 +62,7 @@ public class PermissionServiceImpl implements PermissionService {
     public Permission update(Permission permission) {
         Permission existing = getById(permission.getId());
         // 如果修改了权限码，校验唯一性
-        // fix: 仅在请求确实携带新权限码时才进入改名分支，防止部分更新传 null 把关联权限码级联成 NULL
+        // 仅在请求确实携带新权限码时才进入改名分支，防止部分更新传 null 把关联权限码级联成 NULL
         if (permission.getPermissionCode() != null
                 && !java.util.Objects.equals(existing.getPermissionCode(), permission.getPermissionCode())) {
             Long count = permissionMapper.selectCount(
@@ -71,11 +71,11 @@ public class PermissionServiceImpl implements PermissionService {
             if (count > 0) {
                 throw new BusinessException(400, "权限码已存在：" + permission.getPermissionCode());
             }
-            // H2 fix: 级联更新 role_permission 中的旧权限码，防止关联孤立
+            // 级联更新 role_permission 中的旧权限码，防止关联孤立
             rolePermissionMapper.update(null, new LambdaUpdateWrapper<RolePermission>()
                     .eq(RolePermission::getPermissionCode, existing.getPermissionCode())
                     .set(RolePermission::getPermissionCode, permission.getPermissionCode()));
-            // M4 fix: 同步级联 sys_menu.permission_code，否则菜单残留旧码，
+            // 同步级联 sys_menu.permission_code，否则菜单残留旧码，
             // 非超管角色按权限集过滤菜单时该菜单（及其目录子树）会从所有侧边栏消失
             menuMapper.update(null, new LambdaUpdateWrapper<Menu>()
                     .eq(Menu::getPermissionCode, existing.getPermissionCode())
@@ -96,7 +96,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         Permission permission = getById(id);
-        // M5 fix: 若有菜单仍引用该权限码，删除会使菜单 permission_code 悬空，
+        // 若有菜单仍引用该权限码，删除会使菜单 permission_code 悬空，
         // 非超管角色按权限集过滤时该菜单会从侧边栏消失。先校验再删除。
         Long menuRefs = menuMapper.selectCount(
                 new LambdaQueryWrapper<Menu>()

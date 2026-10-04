@@ -66,7 +66,7 @@ public class FinanceController {
     @PostMapping("/refunds")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<RefundRecord> createRefund(@Valid @RequestBody RefundRecord record) {
-        // M10 fix: 清除客户端不应设置的审核字段
+        // 清除客户端不应设置的审核字段
         record.setId(null);
         record.setAuditorId(null);
         record.setCreateTime(null);
@@ -98,7 +98,7 @@ public class FinanceController {
         } catch (NumberFormatException e) {
             throw new BusinessException(400, "退费金额格式不正确");
         }
-        // L1: 审核通过时退费金额必须大于0，防止零元退费与"未提供"不可区分
+        // 审核通过时退费金额必须大于0，防止零元退费与"未提供"不可区分
         if (status == 2 && refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(400, "审核通过时退费金额必须大于0");
         }

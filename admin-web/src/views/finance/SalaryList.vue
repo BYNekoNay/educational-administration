@@ -26,7 +26,7 @@
 
         <el-table :data="rules" v-loading="rulesLoading" border stripe
                   style="margin-top: 12px"
-                  @sort-change="(v:any) => handleSortChange(v, 'rules')">
+                  @sort-change="handleSortChange($event, 'rules')">
           <el-table-column prop="id" label="ID" width="60" sortable="custom" />
           <el-table-column prop="teacherName" label="教师" min-width="100" />
           <el-table-column prop="courseName" label="课程" min-width="120" />
@@ -182,7 +182,7 @@
 
           <el-table :data="salaries" v-loading="salariesLoading" border stripe
                     empty-text="暂无符合条件的薪资记录"
-                    @sort-change="(v:any) => handleSortChange(v, 'salaries')">
+                    @sort-change="handleSortChange($event, 'salaries')">
             <el-table-column prop="id" label="ID" width="60" sortable="custom" />
             <el-table-column prop="teacherName" label="教师" min-width="100">
               <template #default="{ row }">
@@ -221,10 +221,10 @@
             <el-table-column label="操作" width="220" fixed="right" align="center">
               <template #default="{ row }">
                 <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center; justify-content: center">
-                  <el-button v-if="row.status === 1" size="small" type="success" link @click="handleConfirm(row.id)">确认</el-button>
-                  <el-button v-if="row.status === 1 || row.status === 2" size="small" type="warning" link @click="handleVoid(row.id)">作废</el-button>
-                  <el-button v-if="row.status === 2" size="small" type="primary" link @click="showAdjust(row.id)">调整</el-button>
-                  <el-button v-if="row.status === 2" size="small" type="success" link @click="handlePay(row.id)">发放</el-button>
+                  <el-button v-if="row.status === 1 && canSalary" size="small" type="success" link @click="handleConfirm(row.id)">确认</el-button>
+                  <el-button v-if="(row.status === 1 || row.status === 2) && canSalary" size="small" type="warning" link @click="handleVoid(row.id)">作废</el-button>
+                  <el-button v-if="row.status === 2 && canSalary" size="small" type="primary" link @click="showAdjust(row.id)">调整</el-button>
+                  <el-button v-if="row.status === 2 && canSalary" size="small" type="success" link @click="handlePay(row.id)">发放</el-button>
                   <span v-if="row.status === 3" class="muted-tip">已发放 · 终态</span>
                   <span v-if="row.status === 4" class="muted-tip">已撤销</span>
                 </div>
@@ -303,17 +303,22 @@ import ExportButton from '@/components/ExportButton.vue'
 import { salaryApi } from '@/api/finance'
 import { teacherApi, courseApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import { useAuthStore } from '@/stores/auth'
+import type { Course, SalaryBatchResult, SalaryRule, TeacherInfo, TeacherSalary } from '@/types'
+
+// 按钮级权限：仅持有薪资菜单权限的角色可见行内确认/作废/调整/发放按钮（防御性隐藏，避免点击后 403）
+const canSalary = computed(() => useAuthStore().hasPermission('menu:salary'))
 
 const activeTab = ref('rules')
 
 // ---- 规则 Tab ----
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
-const rules = ref<any[]>([]), rulesLoading = ref(false), rulesPage = ref(1), rulesPageSize = ref(10), rulesTotal = ref(0)
+const rules = ref<SalaryRule[]>([]), rulesLoading = ref(false), rulesPage = ref(1), rulesPageSize = ref(10), rulesTotal = ref(0)
 const ruleVisible = ref(false), ruleSaving = ref(false)
-const editingRule = ref<any>(null)
-const teacherList = ref<any[]>([])
-const courseList = ref<any[]>([])
-const ruleForm = reactive<any>({ teacherId: null, courseId: null, lessonUnitPrice: 100, substituteRate: 1.0 })
+const editingRule = ref<SalaryRule | null>(null)
+const teacherList = ref<TeacherInfo[]>([])
+const courseList = ref<Course[]>([])
+const ruleForm = reactive<Partial<SalaryRule>>({ teacherId: null, courseId: null, lessonUnitPrice: 100, substituteRate: 1.0 })
 
 async function loadOptions() {
   try {
@@ -349,12 +354,12 @@ function resetSearch() {
   filterStatus.value = null; filterMonth.value = null
   activeTab.value === 'rules' ? loadRules() : loadSalaries()
 }
-function handleSortChange({ prop, order }: any, tab: string) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }, tab: string) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   if (tab === 'rules') { rulesPage.value = 1; loadRules() } else { salariesPage.value = 1; loadSalaries() }
 }
-function showRuleDialog(row: any) {
+function showRuleDialog(row: SalaryRule | null) {
   editingRule.value = row
   if (row) { ruleForm.teacherId = row.teacherId; ruleForm.courseId = row.courseId; ruleForm.lessonUnitPrice = row.lessonUnitPrice; ruleForm.substituteRate = row.substituteRate }
   else { ruleForm.teacherId = null; ruleForm.courseId = null; ruleForm.lessonUnitPrice = 100; ruleForm.substituteRate = 1.0 }
@@ -373,12 +378,12 @@ async function saveRule() {
 }
 
 // ---- 薪资 Tab ----
-const salaries = ref<any[]>([]), salariesLoading = ref(false), salariesPage = ref(1), salariesPageSize = ref(10), salariesTotal = ref(0)
-const salariesAll = ref<any[]>([])  // 全量数据，供概览卡和按月统计使用，不受分页影响
+const salaries = ref<TeacherSalary[]>([]), salariesLoading = ref(false), salariesPage = ref(1), salariesPageSize = ref(10), salariesTotal = ref(0)
+const salariesAll = ref<TeacherSalary[]>([])  // 全量数据，供概览卡和按月统计使用，不受分页影响
 const calculating = ref(false)
 const batchCalculating = ref(false)
 const batchResultVisible = ref(false)
-const batchResult = ref<any>(null)
+const batchResult = ref<SalaryBatchResult | null>(null)
 const calcTeacherId = ref<number | null>(null)
 const calcMonthDate = ref<string>(new Date().toISOString().slice(0, 7))
 const calcBonus = ref<number>(0)
@@ -444,7 +449,7 @@ const monthlyStats = computed(() => {
       groups.set(r.salaryMonth, g)
     }
     g.totalAmount += Number(r.totalAmount || 0)
-    g.cntByStatus[r.status] = (g.cntByStatus[r.status] || 0) + 1
+    g.cntByStatus[r.status as number] = (g.cntByStatus[r.status as number] || 0) + 1
   }
   return Array.from(groups.entries())
     .map(([month, v]) => ({ month, ...v }))
@@ -489,7 +494,7 @@ async function handleCalculate() {
     const res = await salaryApi.calculate({ salaryMonth: calcMonthDate.value, teacherId: calcTeacherId.value, bonusAmount: calcBonus.value || 0 })
     ElMessage.success(`核算完成：主讲${res.data.lessonCount}课时 代课${res.data.substituteCount}课时 应发¥${res.data.totalAmount}`)
     loadSalaries()
-  } catch (e: any) { showError(e, '核算失败') } finally { calculating.value = false }
+  } catch (e) { showError(e, '核算失败') } finally { calculating.value = false }
 }
 
 async function handleBatchCalculate() {
@@ -505,14 +510,14 @@ async function handleBatchCalculate() {
     batchResult.value = res.data
     batchResultVisible.value = true
     loadSalaries()
-  } catch (e: any) { showError(e, '批量结算失败') } finally { batchCalculating.value = false }
+  } catch (e) { showError(e, '批量结算失败') } finally { batchCalculating.value = false }
 }
 
 async function handleConfirm(id: number) {
   try {
     await salaryApi.confirm(id)
     ElMessage.success('薪资已确认'); loadSalaries()
-  } catch (e: any) { showError(e, '确认失败') }
+  } catch (e) { showError(e, '确认失败') }
 }
 async function handleVoid(id: number) {
   try {
@@ -522,7 +527,7 @@ async function handleVoid(id: number) {
   try {
     await salaryApi.void(id)
     ElMessage.success('已作废，可重新核算'); loadSalaries()
-  } catch (e: any) { showError(e, '作废失败') }
+  } catch (e) { showError(e, '作废失败') }
 }
 
 async function handlePay(id: number) {
@@ -533,7 +538,7 @@ async function handlePay(id: number) {
   try {
     await salaryApi.pay(id)
     ElMessage.success('薪资已发放，记入终态'); loadSalaries()
-  } catch (e: any) { showError(e, '发放失败') }
+  } catch (e) { showError(e, '发放失败') }
 }
 function showAdjust(salaryId: number) { adjustForm.salaryId = salaryId; adjustForm.adjustAmount = 0; adjustForm.reason = ''; adjustVisible.value = true }
 async function saveAdjust() {
@@ -544,7 +549,7 @@ async function saveAdjust() {
     await salaryApi.adjustments({ ...adjustForm })
     ElMessage.success('调整已保存'); adjustVisible.value = false
     loadSalaries()
-  } catch (e: any) { showError(e, '调整失败') } finally { adjustSaving.value = false }
+  } catch (e) { showError(e, '调整失败') } finally { adjustSaving.value = false }
 }
 
 onMounted(() => { loadOptions(); loadRules(); loadSalaries() })

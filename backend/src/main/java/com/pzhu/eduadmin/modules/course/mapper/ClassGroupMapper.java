@@ -28,7 +28,7 @@ public interface ClassGroupMapper extends BaseMapper<ClassGroup> {
     List<Map<String, Object>> selectCourseNamesByIdsIncludeDeleted(@Param("ids") Collection<Long> ids);
 
     /**
-     * M1 fix: 绕过 @TableLogic 查询班级的 courseId（含已软删班级）
+     * 绕过 @TableLogic 查询班级的 courseId（含已软删班级）
      */
     @Select("SELECT course_id FROM class_group WHERE id = #{classId}")
     Long selectCourseIdByIdIncludeDeleted(@Param("classId") Long classId);

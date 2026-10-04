@@ -50,8 +50,8 @@
             <el-button link type="primary" size="small" @click="showDialog(row)">
               新增子菜单
             </el-button>
-            <el-button link type="primary" size="small" @click="showDialog(row, true)">编辑</el-button>
-            <el-popconfirm title="确定删除该菜单？所有子菜单也将被删除" @confirm="handleDelete(row.id)">
+            <el-button v-if="canManageMenu" link type="primary" size="small" @click="showDialog(row, true)">编辑</el-button>
+            <el-popconfirm v-if="canManageMenu" title="确定删除该菜单？所有子菜单也将被删除" @confirm="handleDelete(row.id)">
               <template #reference>
                 <el-button link type="danger" size="small">删除</el-button>
               </template>
@@ -99,13 +99,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import { Plus } from '@element-plus/icons-vue'
 import { menuApi } from '@/api/auth'
+import { useAuthStore } from '@/stores/auth'
+import type { MenuItem } from '@/types'
 
-const menuTree = ref<any[]>([])
+// 按钮级权限：仅持有菜单管理权限的角色可见行内编辑/删除按钮（防御性隐藏，避免点击后 403）
+const canManageMenu = computed(() => useAuthStore().hasPermission('menu:menu'))
+
+const menuTree = ref<MenuItem[]>([])
 const loading = ref(false)
 
 /** 已注册图标白名单——须与 AppLayout.vue 侧栏 iconMap 保持同步，
@@ -113,8 +118,8 @@ const loading = ref(false)
 const knownIcons = new Set(['Monitor', 'Setting', 'Document', 'Money'])
 const dialogVisible = ref(false)
 const saving = ref(false)
-const editing = ref<any>(null)
-const parentForChild = ref<any>(null)
+const editing = ref<MenuItem | null>(null)
+const parentForChild = ref<MenuItem | null>(null)
 
 function defaultForm() {
   return reactive({
@@ -144,7 +149,7 @@ async function loadTree() {
   finally { loading.value = false }
 }
 
-function showDialog(row?: any, isEdit?: boolean) {
+function showDialog(row?: MenuItem, isEdit?: boolean) {
   editing.value = null
   parentForChild.value = null
 
@@ -189,7 +194,7 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    const payload: any = {
+    const payload: Partial<MenuItem> = {
       menuName: form.menuName,
       icon: form.icon || null,
       path: form.path || null,
@@ -208,7 +213,7 @@ async function handleSave() {
     }
     dialogVisible.value = false
     await loadTree()
-  } catch (e: any) {
+  } catch (e) {
     showError(e, '操作失败')
   } finally { saving.value = false }
 }
@@ -218,7 +223,7 @@ async function handleDelete(id: number) {
     await menuApi.delete(id)
     ElMessage.success('菜单已删除（含子节点）')
     await loadTree()
-  } catch (e: any) {
+  } catch (e) {
     showError(e, '删除失败')
   }
 }

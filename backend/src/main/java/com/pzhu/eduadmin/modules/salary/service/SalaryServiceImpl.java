@@ -82,7 +82,7 @@ public class SalaryServiceImpl implements SalaryService {
     private void applyTeacherKeywordFilter(LambdaQueryWrapper<SalaryRule> wrapper, String keyword) {
         Set<Long> teacherIds = findTeacherIdsByName(keyword);
         if (teacherIds != null) {
-            // A5#1 fix: 空集合会生成非法 "teacher_id IN ()"，用 -1 哨兵确保合法地返回空结果
+            // 空集合会生成非法 "teacher_id IN ()"，用 -1 哨兵确保合法地返回空结果
             wrapper.in(SalaryRule::getTeacherId, teacherIds.isEmpty() ? Set.of(-1L) : teacherIds);
         }
     }
@@ -112,7 +112,7 @@ public class SalaryServiceImpl implements SalaryService {
         if (rule.getSubstituteRate().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(400, "代课系数必须大于0");
         }
-        // Issue #19: 检查教师+课程唯一性
+        // 检查教师+课程唯一性
         Long existCount = salaryRuleMapper.selectCount(
                 new LambdaQueryWrapper<SalaryRule>()
                         .eq(SalaryRule::getTeacherId, rule.getTeacherId())
@@ -120,7 +120,7 @@ public class SalaryServiceImpl implements SalaryService {
         if (existCount > 0) {
             throw new BusinessException(409, "该教师在此课程已有薪资规则，不可重复创建");
         }
-        // H6 fix: 软删除行仍占用物理唯一键，捕获 DuplicateKeyException
+        // 软删除行仍占用物理唯一键，捕获 DuplicateKeyException
         try {
             salaryRuleMapper.insert(rule);
         } catch (DuplicateKeyException e) {
@@ -141,7 +141,7 @@ public class SalaryServiceImpl implements SalaryService {
         if (rule.getSubstituteRate() != null && rule.getSubstituteRate().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(400, "代课系数必须大于0");
         }
-        // M24: 禁止修改 teacherId/courseId，防止历史薪资重算使用错误费率
+        // 禁止修改 teacherId/courseId，防止历史薪资重算使用错误费率
         rule.setTeacherId(null);
         rule.setCourseId(null);
         salaryRuleMapper.updateById(rule);
@@ -158,7 +158,7 @@ public class SalaryServiceImpl implements SalaryService {
         LambdaQueryWrapper<TeacherSalary> wrapper = new LambdaQueryWrapper<>();
         Set<Long> teacherIds = findTeacherIdsByName(keyword);
         if (teacherIds != null) {
-            // A5#1 fix: 空集合会生成非法 "teacher_id IN ()"，用 -1 哨兵确保合法地返回空结果
+            // 空集合会生成非法 "teacher_id IN ()"，用 -1 哨兵确保合法地返回空结果
             wrapper.in(TeacherSalary::getTeacherId, teacherIds.isEmpty() ? Set.of(-1L) : teacherIds);
         }
         if (status != null) {
@@ -271,7 +271,7 @@ public class SalaryServiceImpl implements SalaryService {
         substituteLessons.forEach(l -> classIds.add(l.getClassId()));
         Map<Long, Long> classCourseMap;
         if (!classIds.isEmpty()) {
-            // A5#4 fix: 班级可能已软删，selectList 遵循 @TableLogic 会漏掉历史课次的班级 → 误用默认规则算错薪资。
+            // 班级可能已软删，selectList 遵循 @TableLogic 会漏掉历史课次的班级 → 误用默认规则算错薪资。
             // 逐个用绕过逻辑删除的 selectCourseIdByIdIncludeDeleted 解析 class→course
             classCourseMap = new java.util.HashMap<>();
             for (Long cid : classIds) {
@@ -329,7 +329,7 @@ public class SalaryServiceImpl implements SalaryService {
                 throw new BusinessException(409, "该月薪资已确认，不可覆盖。请先作废后再重新核算");
             }
         }
-        // H2 fix: salary 是 existing 的别名，下方 setStatus(1) 会改写同一对象，
+        // salary 是 existing 的别名，下方 setStatus(1) 会改写同一对象，
         // 必须在改写前先捕获原始状态，否则 CAS 条件恒为 status=1，
         // 导致"作废(status=4)后重新核算"流程必然 409 卡死。
         Integer originalStatus = existing != null ? existing.getStatus() : null;
@@ -340,14 +340,14 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setLessonCount(mainLessonCount);
         salary.setSubstituteCount(substituteCount);
         salary.setBaseAmount(baseAmount);
-        salary.setSubstituteAmount(substituteAmount); // Bug #32 fix: 代课金额单独持久化
+        salary.setSubstituteAmount(substituteAmount); // 代课金额单独持久化
         salary.setBonusAmount(bonusAmount);
         salary.setTotalAmount(totalAmount);
         salary.setStatus(1); // 待确认
         salary.setCalcSnapshotTime(calcSnapshot);
 
         if (existing != null) {
-            // M1 fix: 条件更新（CAS on status），防止并发确认(1→2)/作废(→4)被核算写回覆盖。
+            // 条件更新（CAS on status），防止并发确认(1→2)/作废(→4)被核算写回覆盖。
             // 仅当状态仍等于核算开始时读到的状态才允许写回，否则说明已被其他操作改变。
             LambdaUpdateWrapper<TeacherSalary> updateWrapper = new LambdaUpdateWrapper<TeacherSalary>()
                     .eq(TeacherSalary::getId, existing.getId())
@@ -521,7 +521,7 @@ public class SalaryServiceImpl implements SalaryService {
         if (adjustAmount == null || adjustAmount.compareTo(BigDecimal.ZERO) == 0) {
             throw new BusinessException(400, "调整金额不能为空或为零");
         }
-        // L fix: 允许负向调整（更正）但禁止把薪资总额减为负数
+        // 允许负向调整（更正）但禁止把薪资总额减为负数
         if (salary.getTotalAmount() != null
                 && salary.getTotalAmount().add(adjustAmount).compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException(400, "调整金额过大会导致薪资总额为负，请核对");
@@ -534,9 +534,9 @@ public class SalaryServiceImpl implements SalaryService {
         adj.setOperatorId(operatorId);
         salaryAdjustmentMapper.insert(adj);
 
-        // H12 fix: 原子 SQL 递增 totalAmount，防止并发调整丢失更新
+        // 原子 SQL 递增 totalAmount，防止并发调整丢失更新
         // （原 read-sum-write 在 REPEATABLE_READ 下并发时 SUM 仅见自身插入）
-        // Medium fix: 更新条件附带 status=2，防止并发 voidSalary 后调整落到已作废薪资上
+        // 更新条件附带 status=2，防止并发 voidSalary 后调整落到已作废薪资上
         int updated = teacherSalaryMapper.update(null,
                 new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<TeacherSalary>()
                         .eq(TeacherSalary::getId, salaryId)

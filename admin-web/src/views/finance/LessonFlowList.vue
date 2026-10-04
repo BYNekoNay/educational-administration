@@ -34,17 +34,18 @@
 import { ref, computed, onMounted } from 'vue'
 import { lessonFlowApi } from '@/api/finance'
 import { showError } from '@/utils/error'
+import type { LessonFlow } from '@/types'
 
 const loading = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const filteredData = computed(() => {
   if (!keyword.value) return tableData.value
   const kw = keyword.value.toLowerCase()
-  return tableData.value.filter((r: any) =>
+  return tableData.value.filter((r: LessonFlow) =>
     (r.studentName && String(r.studentName).toLowerCase().includes(kw))
   )
 })
-const tableData = ref<any[]>([])
+const tableData = ref<LessonFlow[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 
 function sourceTypeLabel(v: number) {
@@ -68,7 +69,7 @@ async function loadData() {
   }
 }
 
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()

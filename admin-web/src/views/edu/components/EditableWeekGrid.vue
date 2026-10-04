@@ -64,9 +64,10 @@ import {
   targetForPeriod,
   timeToMinutes,
 } from './useScheduleDrag'
+import type { Period, ScheduleLesson } from '@/types'
 
 const props = defineProps<{
-  lessons: any[]
+  lessons: ScheduleLesson[]
   /** 表头标签（如 7/6 周一） */
   weekDays: string[]
   /** 周一~周日 7 个 yyyy-MM-dd */
@@ -76,11 +77,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'scheduleMove', payload: { lesson: any; target: { lessonDate: string; startTime: string; endTime: string } }): void
+  (e: 'scheduleMove', payload: { lesson: ScheduleLesson; target: { lessonDate: string; startTime: string; endTime: string } }): void
 }>()
 
-const periods = ref<any[]>([])
-const dragLesson = ref<any>(null)
+const periods = ref<Period[]>([])
+const dragLesson = ref<ScheduleLesson | null>(null)
 const hoverKey = ref('')
 const hoverConflicts = ref<string[]>([])
 const message = ref('')
@@ -88,13 +89,13 @@ const message = ref('')
 onMounted(async () => {
   try {
     const res = await periodApi.list()
-    periods.value = (res.data || []) as any[]
+    periods.value = res.data || []
   } catch {
     periods.value = []
   }
 })
 
-function cellKey(day: string, p: any): string {
+function cellKey(day: string, p: Period): string {
   return day + '|' + String(p.id ?? p.name)
 }
 
@@ -102,7 +103,7 @@ function isPast(day: string): boolean {
   return isPastDay(day)
 }
 
-function lessonsInCell(day: string, p: any): any[] {
+function lessonsInCell(day: string, p: Period): ScheduleLesson[] {
   const start = timeToMinutes(p.startTime)
   const end = timeToMinutes(p.endTime)
   if (start === null || end === null) return []
@@ -112,11 +113,11 @@ function lessonsInCell(day: string, p: any): any[] {
   })
 }
 
-function canDrag(l: any) {
+function canDrag(l: ScheduleLesson) {
   return canDragLesson(l)
 }
 
-function onDragStart(e: DragEvent, l: any) {
+function onDragStart(e: DragEvent, l: ScheduleLesson) {
   dragLesson.value = l
   hoverKey.value = ''
   hoverConflicts.value = []
@@ -137,7 +138,7 @@ function resetDragState() {
   hoverConflicts.value = []
 }
 
-function onDragOver(day: string, p: any) {
+function onDragOver(day: string, p: Period) {
   if (!props.canEdit || !dragLesson.value) return
   const key = cellKey(day, p)
   if (isPast(day)) {
@@ -151,14 +152,14 @@ function onDragOver(day: string, p: any) {
   hoverConflicts.value = conflicts
 }
 
-function onDragLeave(day: string, p: any) {
+function onDragLeave(day: string, p: Period) {
   if (hoverKey.value === cellKey(day, p)) {
     hoverKey.value = ''
     hoverConflicts.value = []
   }
 }
 
-function onDrop(day: string, p: any) {
+function onDrop(day: string, p: Period) {
   const lesson = dragLesson.value
   if (!props.canEdit || !lesson) return
   const dragState = canDragLesson(lesson)
@@ -183,7 +184,7 @@ function onDrop(day: string, p: any) {
   resetDragState()
 }
 
-function cellClass(day: string, p: any): string {
+function cellClass(day: string, p: Period): string {
   const classes: string[] = []
   if (isPast(day)) classes.push('cell-past')
   if (hoverKey.value === cellKey(day, p)) {

@@ -262,7 +262,7 @@ class SalaryServiceMockTest {
 
         when(salaryMapper.selectById(1L)).thenReturn(confirmed);
         when(adjustMapper.insert(any(SalaryAdjustment.class))).thenReturn(1);
-        // H12 fix: 现在使用原子 SQL 递增 totalAmount
+        // 现在使用原子 SQL 递增 totalAmount
         when(salaryMapper.update(any(), any())).thenReturn(1);
 
         SalaryAdjustment result = salaryService.createAdjustment(
@@ -274,7 +274,7 @@ class SalaryServiceMockTest {
         assertThat(result.getReason()).isEqualTo("绩效奖金");
         assertThat(result.getOperatorId()).isEqualTo(1L);
 
-        // H12 fix: totalAmount 通过原子 SQL 递增，验证 update(null, wrapper) 被调用
+        // totalAmount 通过原子 SQL 递增，验证 update(null, wrapper) 被调用
         verify(adjustMapper).insert(any(SalaryAdjustment.class));
         verify(salaryMapper).update(any(), any());
     }

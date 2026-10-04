@@ -145,7 +145,7 @@ public class ExamServiceImpl implements ExamService {
         if (student == null) {
             throw new BusinessException(404, "学员不存在");
         }
-        // L7 fix: 与 Enrollment.create 保持一致，拒绝已退班(status=4)学员报名考级
+        // 与 Enrollment.create 保持一致，拒绝已退班(status=4)学员报名考级
         if (student.getStatus() != null && student.getStatus() == 4) {
             throw new BusinessException(409, "该学员已退班，无法报名考级");
         }
@@ -165,23 +165,23 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public ExamSignup updateExamSignup(ExamSignup signup) {
-        // Bug#41: 校验记录存在性及状态变更合法性
+        // 校验记录存在性及状态变更合法性
         ExamSignup existing = examSignupMapper.selectById(signup.getId());
         if (existing == null) {
             throw new BusinessException(404, "报名记录不存在");
         }
         // 有效状态变更: 1→2(通过), 1→3(未通过)，不允许其他变更
         if (signup.getStatus() != null && !signup.getStatus().equals(existing.getStatus())) {
-            // M14 fix: 使用 Integer.equals 防止 null 自动拆箱 NPE
+            // 使用 Integer.equals 防止 null 自动拆箱 NPE
             if (!Integer.valueOf(1).equals(existing.getStatus())
                     || (!Integer.valueOf(2).equals(signup.getStatus()) && !Integer.valueOf(3).equals(signup.getStatus()))) {
                 throw new BusinessException(400, "无效的状态变更");
             }
         }
-        // Low fix: studentId/examId 创建后不可变更，防止 mass-assignment 将报名转移到其他学员/考试
+        // studentId/examId 创建后不可变更，防止 mass-assignment 将报名转移到其他学员/考试
         signup.setStudentId(null);
         signup.setExamId(null);
-        // L6 fix: 剥离服务端控制的审计字段，防止客户端覆盖报名时间
+        // 剥离服务端控制的审计字段，防止客户端覆盖报名时间
         signup.setCreateTime(null);
         signup.setUpdateTime(null);
         examSignupMapper.updateById(signup);

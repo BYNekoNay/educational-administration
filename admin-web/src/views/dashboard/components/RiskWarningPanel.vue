@@ -125,12 +125,13 @@ import { classApi, courseApi } from '@/api/edu'
 import ExportButton from '@/components/ExportButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { showError } from '@/utils/error'
+import type { ClassGroup, Course, PageParams, RiskStudentRow } from '@/types'
 
 const authStore = useAuthStore()
 // 跟进/通知动作仅教务管理员、超级管理员可操作（财务管理员仅查看统计口径）
 const canOperate = computed(() => ['SUPER_ADMIN', 'EDU_ADMIN'].includes(authStore.roleCode))
 
-const list = ref<any[]>([])
+const list = ref<RiskStudentRow[]>([])
 const total = ref(0)
 const loading = ref(false)
 const pageNum = ref(1)
@@ -143,9 +144,9 @@ const filters = reactive({
   courseId: null as number | null,
   followUpStatus: null as number | null,
 })
-const classOptions = ref<any[]>([])
-const courseOptions = ref<any[]>([])
-const selectedRows = ref<any[]>([])
+const classOptions = ref<ClassGroup[]>([])
+const courseOptions = ref<Course[]>([])
+const selectedRows = ref<RiskStudentRow[]>([])
 
 const exportParams = computed(() => ({
   level: filters.level || undefined,
@@ -184,7 +185,7 @@ async function loadSummary() {
 async function loadList() {
   loading.value = true
   try {
-    const params: any = { pageNum: pageNum.value, pageSize: pageSize.value }
+    const params: PageParams = { pageNum: pageNum.value, pageSize: pageSize.value }
     if (filters.keyword?.trim()) params.keyword = filters.keyword.trim()
     if (filters.level) params.level = filters.level
     if (filters.classId) params.classId = filters.classId
@@ -223,13 +224,13 @@ function onPageChange(p: number) {
   pageNum.value = p
   loadList()
 }
-function onSelectionChange(rows: any[]) {
+function onSelectionChange(rows: RiskStudentRow[]) {
   selectedRows.value = rows
 }
 
-async function changeFollowUp(row: any, status: number) {
+async function changeFollowUp(row: RiskStudentRow, status: number) {
   try {
-    await statisticsApi.riskFollowUp(row.studentId, { status, remark: '' })
+    await statisticsApi.riskFollowUp(row.studentId!, { status, remark: '' })
     row.followUpStatus = status
     ElMessage.success('跟进状态已更新')
     loadSummary()
@@ -239,7 +240,7 @@ async function changeFollowUp(row: any, status: number) {
 }
 
 async function handleMarkFollowed() {
-  const ids = selectedRows.value.map((r) => r.studentId)
+  const ids = selectedRows.value.map((r) => r.studentId!)
   try {
     for (const id of ids) {
       await statisticsApi.riskFollowUp(id, { status: 1, remark: '批量标记已跟进' })
@@ -253,7 +254,7 @@ async function handleMarkFollowed() {
 }
 
 async function handleNotify() {
-  const ids = selectedRows.value.map((r) => r.studentId)
+  const ids = selectedRows.value.map((r) => r.studentId!)
   try {
     const res = await statisticsApi.riskNotify({ studentIds: ids })
     const n = res.data?.notifiedParentCount ?? 0

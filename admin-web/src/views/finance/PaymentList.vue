@@ -67,24 +67,25 @@ import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import { paymentApi } from '@/api/finance'
 import { studentApi, courseApi, enrollmentApi } from '@/api/edu'
+import type { Course, Enrollment, PaymentRecord, Student } from '@/types'
 
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const loading = ref(false), saving = ref(false)
-const tableData = ref<any[]>([])
+const tableData = ref<PaymentRecord[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const dialogVisible = ref(false)
-const studentList = ref<any[]>([])
-const courseList = ref<any[]>([])
-const enrollmentList = ref<any[]>([])
+const studentList = ref<Student[]>([])
+const courseList = ref<Course[]>([])
+const enrollmentList = ref<Enrollment[]>([])
 // 后端仅允许 status=2(审核通过)/3(已缴费，续费) 的报名缴费，其余状态会 409，这里提前过滤避免无效选项
-const payableEnrollments = computed(() => enrollmentList.value.filter((e: any) => e.status === 2 || e.status === 3))
+const payableEnrollments = computed(() => enrollmentList.value.filter((e: Enrollment) => e.status === 2 || e.status === 3))
 // 后端会强制用报名记录的 studentId/courseId 覆盖前端传值，选择报名后自动带出，禁止手工改动
-function onEnrollmentChange(id: any) {
-  const e = enrollmentList.value.find((x: any) => x.id === id)
+function onEnrollmentChange(id: number | null) {
+  const e = enrollmentList.value.find((x: Enrollment) => x.id === id)
   form.studentId = e ? e.studentId : null
   form.courseId = e ? e.courseId : null
 }
-const form = reactive<any>({ enrollmentId: null, studentId: null, courseId: null, lessonCount: 24, amount: 2400, payType: 2, remark: '' })
+const form = reactive<Partial<PaymentRecord>>({ enrollmentId: null, studentId: null, courseId: null, lessonCount: 24, amount: 2400, payType: 2, remark: '' })
 
 async function loadOptions() {
   try {
@@ -107,7 +108,7 @@ async function loadData() {
 
 function handleSearch() { pageNum.value = 1; loadData() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()

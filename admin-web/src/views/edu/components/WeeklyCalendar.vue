@@ -24,14 +24,15 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { ScheduleLesson } from '@/types'
 
 const props = defineProps<{
-  lessons: any[]
+  lessons: ScheduleLesson[]
   weekDays: string[]
 }>()
 
 const lessonsByDay = computed(() => {
-  const map: Record<number, any[]> = {}
+  const map: Record<number, ScheduleLesson[]> = {}
   for (const l of props.lessons) {
     const d = new Date(l.lessonDate + 'T00:00:00')
     let dow = d.getDay() - 1
@@ -46,19 +47,19 @@ const lessonsByDay = computed(() => {
 })
 
 const colors = ['#0E7490','#D97706','#059669','#7C3AED','#DB2777','#2563EB','#DC2626','#0891B2','#A21CAF','#4D7C0F']
-function hashColor(id: number | null): string {
+function hashColor(id: number | null | undefined): string {
   if (!id) return colors[0]
   return colors[Math.abs(id ^ (id >> 4)) % colors.length]
 }
 
 // 与 DailyTimeline 保持一致的状态映射
-function statusLabel(status: number): string {
+function statusLabel(status: number | undefined): string {
   const map: Record<number, string> = { 1: '待上课', 2: '已完成', 3: '已取消', 4: '已调课' }
-  return map[status] || ''
+  return map[status as number] || ''
 }
-function statusType(status: number): string {
+function statusType(status: number | undefined): string {
   const map: Record<number, string> = { 1: 'warning', 2: 'success', 3: 'info', 4: 'danger' }
-  return map[status] || ''
+  return map[status as number] || ''
 }
 </script>
 

@@ -24,7 +24,7 @@ public class TeacherSalary {
 
     private BigDecimal baseAmount;
 
-    /** Bug #32 fix: 代课金额单独持久化，避免 totalAmount = base + substitute + bonus 中代课部分丢失 */
+    /** 代课金额单独持久化，避免 totalAmount = base + substitute + bonus 中代课部分丢失 */
     private BigDecimal substituteAmount;
 
     private BigDecimal bonusAmount;

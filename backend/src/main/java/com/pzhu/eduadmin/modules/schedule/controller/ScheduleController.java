@@ -110,7 +110,7 @@ public class ScheduleController {
         if (lessons == null || lessons.isEmpty()) {
             throw new BusinessException(400, "排课列表不能为空");
         }
-        // M8 fix: 限制批量大小，防止 O(n²) 冲突检测耗尽资源
+        // 限制批量大小，防止 O(n²) 冲突检测耗尽资源
         if (lessons.size() > 200) {
             throw new BusinessException(400, "单次批量排课不能超过200条");
         }
@@ -120,7 +120,7 @@ public class ScheduleController {
             lesson.setIsDeleted(null);
             lesson.setCreateTime(null);
             lesson.setUpdateTime(null);
-            // High fix: sourceLessonId 仅由调课审批流程设置，决定薪资主/代课分类，禁止客户端指定
+            // sourceLessonId 仅由调课审批流程设置，决定薪资主/代课分类，禁止客户端指定
             lesson.setSourceLessonId(null);
         });
         scheduleService.batchCreate(lessons);
@@ -141,9 +141,9 @@ public class ScheduleController {
         lesson.setIsDeleted(null);
         lesson.setCreateTime(null);
         lesson.setUpdateTime(null);
-        // High fix: sourceLessonId 仅由调课审批流程设置，决定薪资主/代课分类，禁止客户端指定
+        // sourceLessonId 仅由调课审批流程设置，决定薪资主/代课分类，禁止客户端指定
         lesson.setSourceLessonId(null);
-        // Medium fix: 与 batchCreate/autoSchedule 一致，新建课次强制为待上课（status=1），
+        // 与 batchCreate/autoSchedule 一致，新建课次强制为待上课（status=1），
         // 否则客户端传入 status=4 等会绕过冲突检测（仅查 status IN 1,2）导致重复排课
         lesson.setStatus(1);
         List<String> conflicts = scheduleService.checkConflict(lesson);

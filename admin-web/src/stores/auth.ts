@@ -1,18 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-
-interface MenuNode {
-  id: number
-  parentId: number
-  menuName: string
-  icon: string | null
-  path: string | null
-  permissionCode: string | null
-  sortOrder: number
-  visible: number
-  children?: MenuNode[]
-}
+import type { MenuItem } from '@/types'
 
 interface UserInfo {
   userId: number
@@ -56,7 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** 当前用户可见菜单树（数据驱动侧栏） */
-  const menuTree = ref<MenuNode[]>([])
+  const menuTree = ref<MenuItem[]>([])
 
   /** 从后端拉取当前用户可见菜单树 */
   async function fetchMyMenus() {

@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.user.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ public class Menu {
 
     private Long parentId;
 
+    @NotBlank(message = "菜单名称不能为空")
     private String menuName;
 
     private String icon;

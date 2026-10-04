@@ -90,7 +90,7 @@ async function customUpload(options: any) {
     })
     const url = extractUrl(res)
     if (!url) {
-      ElMessage.error(res?.data?.message || '上传失败')
+      ElMessage.error(res?.message || '上传失败')
       options.onError(new Error('upload failed'))
       return
     }

@@ -8,6 +8,7 @@ import com.pzhu.eduadmin.modules.statistics.entity.Organization;
 import com.pzhu.eduadmin.modules.statistics.entity.StatisticsSnapshot;
 import com.pzhu.eduadmin.modules.statistics.service.StatisticsService;
 import com.pzhu.eduadmin.security.RequireRole;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,7 +35,7 @@ public class StatisticsController {
 
     @PutMapping("/organization")
     @RequireRole({"SUPER_ADMIN"})
-    public Result<Organization> updateOrganization(@RequestBody Organization organization) {
+    public Result<Organization> updateOrganization(@Valid @RequestBody Organization organization) {
         // Mass assignment protection: createTime/updateTime are server-controlled, prevent overwrite on update
         organization.setCreateTime(null);
         organization.setUpdateTime(null);
@@ -96,7 +97,7 @@ public class StatisticsController {
     public Result<Map<String, Object>> revenueStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> charts = (Map<String, Object>) dashboard.get("charts");
-        // L8 fix: 与兄弟接口保持一致的判空，防止 charts 为 null 时 NPE
+        // 与兄弟接口保持一致的判空，防止 charts 为 null 时 NPE
         if (charts == null) return Result.fail(500, "统计数据获取失败");
         return Result.success(Map.of("revenueTrend", charts.get("revenueTrend")));
     }

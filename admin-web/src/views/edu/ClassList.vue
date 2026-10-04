@@ -178,6 +178,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { showError } from '@/utils/error'
 import { classApi, studentApi, courseApi, teacherApi } from '@/api/edu'
+import type { ClassGroup, ClassStudent, Course, Student, TeacherInfo } from '@/types'
 
 const keyword = ref('')
 const loading = ref(false)
@@ -185,7 +186,7 @@ const saving = ref(false)
 const adding = ref(false)
 const studentLoading = ref(false)
 const transferring = ref(false)
-const tableData = ref<any[]>([])
+const tableData = ref<ClassGroup[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
@@ -194,17 +195,17 @@ const addStudentVisible = ref(false)
 const studentListVisible = ref(false)
 const transferVisible = ref(false)
 const isEdit = ref(false)
-const currentClass = ref<any>(null)
-const classStudents = ref<any[]>([])
-const allClasses = ref<any[]>([])
-const courses = ref<any[]>([])
-const teachers = ref<any[]>([])
+const currentClass = ref<ClassGroup | null>(null)
+const classStudents = ref<ClassStudent[]>([])
+const allClasses = ref<ClassGroup[]>([])
+const courses = ref<Course[]>([])
+const teachers = ref<TeacherInfo[]>([])
 const targetClassId = ref<number | null>(null)
 const transferringStudentId = ref<number | null>(null)
 const transferringStudentName = ref<string>('')
-const form = reactive<any>({ className: '', courseId: null, teacherId: null, maxStudentCount: 15, startDate: '', status: 1 })
+const form = reactive<Partial<ClassGroup>>({ className: '', courseId: null, teacherId: null, maxStudentCount: 15, startDate: '', status: 1 })
 const addForm = reactive({ studentId: null as number | null })
-const studentOptions = ref<any[]>([])
+const studentOptions = ref<Student[]>([])
 const studentSearchLoading = ref(false)
 let studentSearchTimer: number | null = null
 
@@ -239,7 +240,7 @@ async function loadOptions() {
   } catch (e) { showError(e, '加载课程或教师数据失败') }
 }
 
-async function openDialog(row: any) {
+async function openDialog(row: ClassGroup | null) {
   isEdit.value = !!row
   await loadOptions()
   if (row) Object.assign(form, row)
@@ -253,7 +254,8 @@ async function handleSave() {
     const payload = { ...form }
     if (!payload.startDate) payload.startDate = null
     if (isEdit.value) {
-      await classApi.update(form.id, payload)
+      // 编辑态必然有 id
+      await classApi.update(form.id!, payload)
       ElMessage.success('班级已更新')
     } else {
       await classApi.create(payload)
@@ -264,18 +266,18 @@ async function handleSave() {
   } catch (e) { showError(e, '保存失败') } finally { saving.value = false }
 }
 
-async function handleDelete(row: any) {
+async function handleDelete(row: ClassGroup) {
   try {
     await ElMessageBox.confirm('确定删除该班级？', '提示', { type: 'warning' })
   } catch { return /* canceled */ }
   try {
-    await classApi.delete(row.id)
+    await classApi.delete(row.id!)
     ElMessage.success('已删除')
     loadData()
   } catch (e) { showError(e, '删除失败') }
 }
 
-async function openAddStudent(row: any) {
+async function openAddStudent(row: ClassGroup) {
   currentClass.value = row
   addForm.studentId = null
   studentOptions.value = []
@@ -292,7 +294,7 @@ function searchStudents(keyword: string) {
     try {
       const res = await studentApi.list({ pageNum: 1, pageSize: 50, keyword: keyword || undefined })
       // 仅展示在读学员
-      studentOptions.value = (res.data?.records || []).filter((s: any) => s.status === 1)
+      studentOptions.value = (res.data?.records || []).filter((s: Student) => s.status === 1)
     } catch (e) {
       showError(e, '搜索学员失败')
       studentOptions.value = []
@@ -306,7 +308,7 @@ async function handleAddStudent() {
   if (!addForm.studentId) { ElMessage.warning('请先选择学员'); return }
   adding.value = true
   try {
-    await classApi.addStudent(currentClass.value.id, {
+    await classApi.addStudent(currentClass.value!.id!, {
       studentId: addForm.studentId,
       status: 1
     })
@@ -315,29 +317,29 @@ async function handleAddStudent() {
   } catch (e) { showError(e, '加入学员失败') } finally { adding.value = false }
 }
 
-async function openStudentList(row: any) {
+async function openStudentList(row: ClassGroup) {
   currentClass.value = row
   studentListVisible.value = true
   studentLoading.value = true
   try {
-    const res = await classApi.students(row.id, { pageSize: 100 })
+    const res = await classApi.students(row.id!, { pageSize: 100 })
     classStudents.value = res.data.records
   } catch (e) { showError(e, '加载学员列表失败') } finally { studentLoading.value = false }
 }
 
-async function handleWithdrawStudent(row: any) {
+async function handleWithdrawStudent(row: ClassStudent) {
   try {
     await ElMessageBox.confirm(`确定将学员"${row.studentName || row.studentId}"退班？`, '退班确认', { type: 'warning' })
   } catch { return /* canceled */ }
   try {
-    await classApi.removeStudent(currentClass.value.id, row.studentId)
+    await classApi.removeStudent(currentClass.value!.id!, row.studentId!)
     ElMessage.success('已将该学员从班级移除')
-    openStudentList(currentClass.value)
+    openStudentList(currentClass.value!)
   } catch (e) { showError(e, '退班操作失败') }
 }
 
-async function handleTransferStudent(row: any) {
-  transferringStudentId.value = row.studentId
+async function handleTransferStudent(row: ClassStudent) {
+  transferringStudentId.value = row.studentId ?? null
   transferringStudentName.value = row.studentName || `学员${row.studentId}`
   targetClassId.value = null
   allClasses.value = []
@@ -360,7 +362,7 @@ async function confirmTransfer() {
     await studentApi.transfer(transferringStudentId.value, targetClassId.value, currentClass.value?.id)
     ElMessage.success('转班成功')
     transferVisible.value = false
-    openStudentList(currentClass.value)
+    openStudentList(currentClass.value!)
   } catch (e) { showError(e, '转班失败') } finally { transferring.value = false }
 }
 

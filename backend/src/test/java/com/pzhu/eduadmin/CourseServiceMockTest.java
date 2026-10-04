@@ -443,7 +443,7 @@ class CourseServiceMockTest {
         boolean result = courseService.removeStudentFromClass(10L, 100L);
 
         assertThat(result).isTrue();
-        // Critical fix 后改为置 status=3 并 updateById（保留记录用于流失统计）
+        // 改为置 status=3 并 updateById（保留记录用于流失统计）
         assertThat(cs.getStatus()).isEqualTo(3);
         verify(classStudentMapper).updateById(cs);
         verify(operationLogService).log(anyString(), anyString());

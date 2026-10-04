@@ -141,7 +141,7 @@ public class LearningServiceImpl implements LearningService {
 
     @Override
     public Map<String, Object> getStudentArchive(Long studentId) {
-        // 1. 出勤统计（M11 fix: 分母与仪表盘统一口径，含 1=到场,2=迟到,3=请假,4=缺勤）
+        // 1. 出勤统计（分母与仪表盘统一口径，含 1=到场,2=迟到,3=请假,4=缺勤）
         List<Attendance> attendances = attendanceMapper.selectList(
                 new LambdaQueryWrapper<Attendance>().eq(Attendance::getStudentId, studentId));
         long present = attendances.stream().filter(a -> a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2)).count();
@@ -168,7 +168,7 @@ public class LearningServiceImpl implements LearningService {
 
         Map<String, Object> archive = new LinkedHashMap<>();
         archive.put("attendanceRate", attRate);
-        // Low fix: 与到课率分母保持一致（统计 status IN 1,2,3,4，M11 统一口径），避免前端总数与比率口径不符
+        // 与到课率分母保持一致（统计 status IN 1,2,3,4，M11 统一口径），避免前端总数与比率口径不符
         archive.put("totalAttendance", total);
         archive.put("totalHomeworks", totalHomeworks);
         archive.put("totalRecords", totalRecords);
@@ -179,7 +179,7 @@ public class LearningServiceImpl implements LearningService {
 
     @Override
     public void verifyTeacherStudentAccess(Long teacherId, Long studentId) {
-        // H13 fix: 查找学员所在的活跃班级
+        // 查找学员所在的活跃班级
         List<Long> studentClassIds = classStudentMapper.selectList(
                 new LambdaQueryWrapper<ClassStudent>()
                         .eq(ClassStudent::getStudentId, studentId)

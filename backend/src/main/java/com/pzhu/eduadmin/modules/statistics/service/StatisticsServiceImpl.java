@@ -76,7 +76,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             Organization existing = organizationMapper.selectOne(new LambdaQueryWrapper<Organization>().last("LIMIT 1"));
             if (existing != null) organization.setId(existing.getId());
         } else {
-            // L3: 校验指定 ID 的机构记录是否存在
+            // 校验指定 ID 的机构记录是否存在
             Organization existing = organizationMapper.selectById(organization.getId());
             if (existing == null) {
                 throw new com.pzhu.eduadmin.common.BusinessException(404, "机构配置记录不存在");
@@ -159,7 +159,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         BigDecimal monthlyRevenue = sumPaymentRevenue(monthStart, monthEnd);
         cards.put("monthlyRevenue", monthlyRevenue.setScale(2, RoundingMode.HALF_UP));
 
-        // 4. 到课率（Medium fix: 分母含全部有效考勤 1=到场,2=迟到,3=请假,4=缺勤，与班级活动统计口径一致）
+        // 4. 到课率（分母含全部有效考勤 1=到场,2=迟到,3=请假,4=缺勤，与班级活动统计口径一致）
         long totalAttendance = attendanceMapper.selectCount(
                 new LambdaQueryWrapper<Attendance>().in(Attendance::getStatus, 1, 2, 3, 4));
         long attendedCount = attendanceMapper.selectCount(
@@ -210,7 +210,7 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         // 3. 到课率趋势（近6月）
         List<Map<String, Object>> attendanceTrend = new ArrayList<>();
-        // Bug#43: 限制查询范围为近6个月，避免加载全量历史数据导致内存溢出
+        // 限制查询范围为近6个月，避免加载全量历史数据导致内存溢出
         LocalDate sixMonthsAgo = LocalDate.now().minusMonths(6).withDayOfMonth(1);
         List<ScheduleLesson> allLessons = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>()
@@ -236,7 +236,7 @@ public class StatisticsServiceImpl implements StatisticsService {
                 return d != null && YearMonth.from(d).equals(ym);
             }).map(ScheduleLesson::getId).collect(Collectors.toSet());
             long attended = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2)).count();
-            // M6 fix: 分母口径与仪表盘卡片(buildCards)统一，含 1=到场,2=迟到,3=请假,4=缺勤
+            // 分母口径与仪表盘卡片(buildCards)统一，含 1=到场,2=迟到,3=请假,4=缺勤
             long total = allAttendances.stream().filter(a -> monthLessonIds.contains(a.getLessonId()) && a.getStatus() != null && (a.getStatus() == 1 || a.getStatus() == 2 || a.getStatus() == 3 || a.getStatus() == 4)).count();
             BigDecimal rate = total > 0
                     ? BigDecimal.valueOf(attended).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(total), 1, RoundingMode.HALF_UP)
@@ -336,7 +336,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             LocalDate monthStart = ym.atDay(1);
             LocalDate monthEnd = ym.atEndOfMonth();
 
-            // Bug#4 修复: 使用时间逻辑代替当前状态过滤，避免历史月份数据偏低
+            // 修复: 使用时间逻辑代替当前状态过滤，避免历史月份数据偏低
             // 月初在班人数 = 月初之前入班 且 在月初时仍在班（当前仍活跃，或离班时间>=月初）
             long beginCount = classStudentMapper.selectCount(
                     new LambdaQueryWrapper<ClassStudent>()
@@ -407,7 +407,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         Map<Long, Long> attendancePresent = new HashMap<>();
         Map<Long, Long> attendanceTotal = new HashMap<>();
         if (!allLessonIds.isEmpty()) {
-            // L4 fix: 构建 Map 替代 O(n×m) 线性扫描
+            // 构建 Map 替代 O(n×m) 线性扫描
             Map<Long, ScheduleLesson> lessonMap = lessons.stream()
                     .collect(Collectors.toMap(ScheduleLesson::getId, l -> l));
             List<Attendance> attendances = attendanceMapper.selectList(
@@ -415,7 +415,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             for (Attendance a : attendances) {
                 ScheduleLesson sl = lessonMap.get(a.getLessonId());
                 if (sl == null) continue;
-                // M6 fix: 分母口径与仪表盘卡片统一，仅统计有效考勤状态 1=到场,2=迟到,3=请假,4=缺勤
+                // 分母口径与仪表盘卡片统一，仅统计有效考勤状态 1=到场,2=迟到,3=请假,4=缺勤
                 if (a.getStatus() == null || a.getStatus() < 1 || a.getStatus() > 4) continue;
                 Long cid = sl.getClassId();
                 attendanceTotal.merge(cid, 1L, Long::sum);
@@ -458,7 +458,7 @@ public class StatisticsServiceImpl implements StatisticsService {
                 new LambdaQueryWrapper<Course>().orderByDesc(Course::getId));
         if (courses.isEmpty()) return Collections.emptyList();
 
-        // M27: 仅加载现有课程的缴费记录，避免全表加载 OOM
+        // 仅加载现有课程的缴费记录，避免全表加载 OOM
         Set<Long> courseIds = courses.stream().map(Course::getId).collect(Collectors.toSet());
         List<PaymentRecord> payments = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>().in(PaymentRecord::getCourseId, courseIds));
@@ -479,7 +479,7 @@ public class StatisticsServiceImpl implements StatisticsService {
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             Map<Long, Enrollment> enrollmentMap = Collections.emptyMap();
             if (!enrollmentIds.isEmpty()) {
-                // Medium fix: 用 IncludeDeleted 查询，避免已退班（逻辑删除）报名的退费被丢弃导致利润高估
+                // 用 IncludeDeleted 查询，避免已退班（逻辑删除）报名的退费被丢弃导致利润高估
                 enrollmentMap = enrollmentMapper.selectBatchIdsIncludeDeleted(enrollmentIds).stream()
                         .collect(Collectors.toMap(Enrollment::getId, e -> e, (a, b) -> a));
             }
@@ -515,8 +515,8 @@ public class StatisticsServiceImpl implements StatisticsService {
                 new LambdaQueryWrapper<Course>().orderByDesc(Course::getId));
         if (courses.isEmpty()) return Collections.emptyList();
 
-        // Bug#39: 使用报名数量比率代替金额比率，避免课程调价导致历史数据不准确
-        // M27: 仅加载现有课程的缴费记录，避免全表加载 OOM
+        // 使用报名数量比率代替金额比率，避免课程调价导致历史数据不准确
+        // 仅加载现有课程的缴费记录，避免全表加载 OOM
         Set<Long> courseIds = courses.stream().map(Course::getId).collect(Collectors.toSet());
         List<PaymentRecord> payments = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>().in(PaymentRecord::getCourseId, courseIds));

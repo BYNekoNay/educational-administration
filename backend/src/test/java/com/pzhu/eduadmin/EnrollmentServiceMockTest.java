@@ -488,13 +488,13 @@ class EnrollmentServiceMockTest {
         cg.setId(classId);
         cg.setCourseId(courseId);
         cg.setClassName("测试班级");
-        cg.setStatus(1); // r20: create() 校验班级须为开放状态
+        cg.setStatus(1); // create() 校验班级须为开放状态
         return cg;
     }
 
     private com.pzhu.eduadmin.modules.course.entity.Course activeCourse() {
         com.pzhu.eduadmin.modules.course.entity.Course c = new com.pzhu.eduadmin.modules.course.entity.Course();
-        c.setStatus(1); // r20: create() 校验课程须为启用状态
+        c.setStatus(1); // create() 校验课程须为启用状态
         return c;
     }
 }

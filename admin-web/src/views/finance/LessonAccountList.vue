@@ -27,18 +27,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { lessonAccountApi } from '@/api/finance'
+import type { LessonAccount } from '@/types'
 
 const loading = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const filteredData = computed(() => {
   if (!keyword.value) return tableData.value
   const kw = keyword.value.toLowerCase()
-  return tableData.value.filter((r: any) =>
+  return tableData.value.filter((r: LessonAccount) =>
     (r.studentName && String(r.studentName).toLowerCase().includes(kw)) ||
     (r.courseName && String(r.courseName).toLowerCase().includes(kw))
   )
 })
-const tableData = ref<any[]>([])
+const tableData = ref<LessonAccount[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 
 async function loadData() {
@@ -47,7 +48,7 @@ async function loadData() {
   tableData.value = res.data.records; total.value = res.data.total; loading.value = false
 }
 
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()

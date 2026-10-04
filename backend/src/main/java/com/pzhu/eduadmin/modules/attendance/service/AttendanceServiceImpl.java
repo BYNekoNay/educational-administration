@@ -200,12 +200,12 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Attendance submit(Attendance attendance) {
-        // M6+M8 fix: 校验考勤状态非空且为合法值，防止 NPE 和幽灵记录
+        // 校验考勤状态非空且为合法值，防止 NPE 和幽灵记录
         if (attendance.getStatus() == null || !java.util.Set.of(1, 2, 3, 4).contains(attendance.getStatus())) {
             throw new BusinessException(400, "无效的考勤状态（仅支持1=到课/2=迟到/3=请假/4=缺勤）");
         }
 
-        // Bug2 fix: 校验客户端传入的扣减课时数，防止非法值（负数或过大）；0 表示不扣课时，合法
+        // 校验客户端传入的扣减课时数，防止非法值（负数或过大）；0 表示不扣课时，合法
         if (attendance.getDeductLessons() != null
                 && (attendance.getDeductLessons().compareTo(BigDecimal.ZERO) < 0
                     || attendance.getDeductLessons().compareTo(BigDecimal.TEN) > 0)) {
@@ -241,7 +241,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         if (attendance.getDeductLessons() == null) {
             attendance.setDeductLessons(BigDecimal.ONE); // 默认扣1课时
         }
-        // L2 fix: 请假(3)/缺勤(4)实际不扣课时（扣减仅对 status 1/2 执行），
+        // 请假(3)/缺勤(4)实际不扣课时（扣减仅对 status 1/2 执行），
         // 持久化值必须为 0，否则报表/审计显示"请假却扣了1课时"，且未来冲销若漏判状态会多退课时
         if (Integer.valueOf(3).equals(attendance.getStatus()) || Integer.valueOf(4).equals(attendance.getStatus())) {
             attendance.setDeductLessons(BigDecimal.ZERO);
@@ -265,7 +265,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         } else {
             // 3. 保存考勤
             if (attendance.getCheckTime() == null) attendance.setCheckTime(LocalDateTime.now());
-            // H3 fix: 捕获唯一键冲突（并发提交），转为更新路径
+            // 捕获唯一键冲突（并发提交），转为更新路径
             try {
                 attendanceMapper.insert(attendance);
             } catch (org.springframework.dao.DuplicateKeyException e) {
@@ -274,10 +274,10 @@ public class AttendanceServiceImpl implements AttendanceService {
                                 .eq(Attendance::getLessonId, attendance.getLessonId())
                                 .eq(Attendance::getStudentId, attendance.getStudentId()));
                 if (conflicted == null) {
-                    // Bug3 fix: 冲突来自主键（客户端传入了已存在的id），不能吞掉异常继续扣课时
+                    // 冲突来自主键（客户端传入了已存在的id），不能吞掉异常继续扣课时
                     throw new BusinessException(409, "考勤记录冲突，请重试");
                 }
-                // M6 fix: 并发分支同样需要请假保护——若并发请假审批已写入请假考勤(status=3, deduct=0)，
+                // 并发分支同样需要请假保护——若并发请假审批已写入请假考勤(status=3, deduct=0)，
                 // 不可覆盖为到课/迟到，否则已批准请假被静默取消且会扣课时（绕过业务规则）
                 if (Integer.valueOf(3).equals(conflicted.getStatus())
                         && BigDecimal.ZERO.compareTo(conflicted.getDeductLessons() != null ? conflicted.getDeductLessons() : BigDecimal.ZERO) == 0
@@ -299,7 +299,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             deductLessons(attendance, lesson);
         }
 
-        // 操作日志（M4 fix: 日志失败不应回滚考勤事务）
+        // 操作日志（日志失败不应回滚考勤事务）
         try {
             operationLogService.log("考勤管理", "提交考勤（学员=" + nameResolver.getStudentName(attendance.getStudentId())
                     + "，课次id=" + attendance.getLessonId() + "，状态=" + attendance.getStatus() + "）");
@@ -386,7 +386,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                         .eq(LeaveRequest::getStudentId, studentId)
                         .ne(LeaveRequest::getStatus, 3)
                         .ge(LeaveRequest::getLessonDate, LocalDate.now().minusDays(7)));
-        // M6 fix: 使用复合键（scheduleId + lessonDate）构建请假映射，
+        // 使用复合键（scheduleId + lessonDate）构建请假映射，
         // 避免同一日期不同班级/课次的请假相互影响。
         // 已关联具体课次的请假用 "scheduleId_date" 精确匹配；
         // 未关联课次的请假（待审核）用 "null_date" 作为日期级别兜底。
@@ -408,7 +408,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                 l.setCourseId(cg.getCourseId());
             }
             l.setClassroomName(classroomNameMap.getOrDefault(l.getClassroomId(), ""));
-            // M6 fix: 先按课次ID精确匹配请假状态，再回退到日期级别（兼容未关联课次的待审核请假）
+            // 先按课次ID精确匹配请假状态，再回退到日期级别（兼容未关联课次的待审核请假）
             Integer leaveStatus = leaveStatusMap.get(l.getId() + "_" + l.getLessonDate());
             if (leaveStatus == null) {
                 leaveStatus = leaveStatusMap.get("null_" + l.getLessonDate());
@@ -473,7 +473,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         for (ScheduleLesson l : lessons) {
             l.setClassName(getClassNameSafe(l.getClassId()));
             // 标记是否已迟（当前时间>开始时间 且 状态仍为待上课）
-            // Bug #24 fix: 使用99代替2，避免与请假状态语义冲突（2=请假已通过）
+            // 使用99代替2，避免与请假状态语义冲突（2=请假已通过）
             if (l.getStatus() == 1 && l.getStartTime() != null) {
                 l.setLeaveStatus(LocalTime.now().isAfter(l.getStartTime()) ? 99 : null);
             }
@@ -513,7 +513,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     /** 回冲旧考勤扣减（到课/迟到扣减均需回冲）*/
     private void reverseDeduct(Attendance old) {
-        // M7 fix: 跳过 null 和 <=0 的 deductLessons，防止负数导致回冲时窃取课时
+        // 跳过 null 和 <=0 的 deductLessons，防止负数导致回冲时窃取课时
         if ((old.getStatus() != 1 && old.getStatus() != 2)
                 || old.getDeductLessons() == null
                 || old.getDeductLessons().compareTo(BigDecimal.ZERO) <= 0) return;
@@ -521,7 +521,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         List<ScheduleLesson> lessons = scheduleLessonMapper.selectByIdsIncludeDeleted(Collections.singleton(old.getLessonId()));
         if (lessons.isEmpty()) return;
         ScheduleLesson lesson = lessons.get(0);
-        // M1 fix: 班级也可能已软删，绕过 @TableLogic 查 courseId
+        // 班级也可能已软删，绕过 @TableLogic 查 courseId
         Long courseId = classGroupMapper.selectCourseIdByIdIncludeDeleted(lesson.getClassId());
         if (courseId == null) return;
         LessonAccount account = lessonAccountMapper.selectOne(
@@ -532,7 +532,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         BigDecimal beforeBalance = account.getRemainingLessons();
         BigDecimal afterBalance = beforeBalance.add(old.getDeductLessons());
-        // C2 fix: CAS 中纳入 version 校验并递增，防止与财务模块 updateById 并发时丢失更新
+        // CAS 中纳入 version 校验并递增，防止与财务模块 updateById 并发时丢失更新
         int rows = lessonAccountMapper.update(null,
                 new LambdaUpdateWrapper<LessonAccount>()
                         .eq(LessonAccount::getId, account.getId())
@@ -575,7 +575,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             log.warn("考勤扣课时余额不足：studentId={}, lessonId={}, 请求扣减={}, 实际扣减={}",
                     attendance.getStudentId(), attendance.getLessonId(), deduct, actualDeduct);
         }
-        // C2 fix: CAS 中纳入 version 校验并递增，防止与财务模块 updateById 并发时丢失更新
+        // CAS 中纳入 version 校验并递增，防止与财务模块 updateById 并发时丢失更新
         int rows = lessonAccountMapper.update(null,
                 new LambdaUpdateWrapper<LessonAccount>()
                         .eq(LessonAccount::getId, account.getId())
@@ -585,7 +585,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                         .set(LessonAccount::getVersion, account.getVersion() + 1));
         if (rows == 0) throw new BusinessException(409, "课时账户更新冲突，请重试");
 
-        // Bug1 fix: 将实际扣减数回写考勤记录，防止回冲时按请求数多退课时
+        // 将实际扣减数回写考勤记录，防止回冲时按请求数多退课时
         if (actualDeduct.compareTo(deduct) != 0) {
             attendance.setDeductLessons(actualDeduct);
             attendanceMapper.update(null,

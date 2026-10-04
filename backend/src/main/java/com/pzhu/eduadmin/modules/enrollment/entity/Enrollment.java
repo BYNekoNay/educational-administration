@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.enrollment.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -13,10 +14,12 @@ public class Enrollment {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @NotNull(message = "学员ID不能为空")
     private Long studentId;
 
     private Long parentUserId;
 
+    @NotNull(message = "课程ID不能为空")
     private Long courseId;
 
     private Long classId;

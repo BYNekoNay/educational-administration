@@ -36,7 +36,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public SseEmitter subscribe(Long userId) {
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L); // 30分钟超时
-        // M4 fix: 替换前先 complete 旧 emitter，避免多标签页/多设备时旧连接被静默孤立
+        // 替换前先 complete 旧 emitter，避免多标签页/多设备时旧连接被静默孤立
         // （旧连接不关闭也不收到事件，直到 30 分钟超时才释放）
         SseEmitter old = emitters.put(userId, emitter);
         if (old != null) {
@@ -47,7 +47,7 @@ public class NotificationServiceImpl implements NotificationService {
             }
         }
 
-        // M15 fix: 条件移除，防止旧 emitter 超时回调误删新 emitter
+        // 条件移除，防止旧 emitter 超时回调误删新 emitter
         emitter.onCompletion(() -> emitters.remove(userId, emitter));
         emitter.onTimeout(() -> {
             businessMetrics.recordNotificationConnectionFailure("timeout");
@@ -188,7 +188,7 @@ public class NotificationServiceImpl implements NotificationService {
                 copy.setTitle(notification.getTitle());
                 copy.setContent(notification.getContent());
                 copy.setRelatedId(notification.getRelatedId());
-                // M16 fix: 为每个用户追加 userId，防止共享 dedupeKey 导致后续用户通知丢失
+                // 为每个用户追加 userId，防止共享 dedupeKey 导致后续用户通知丢失
                 String baseKey = notification.getDedupeKey();
                 copy.setDedupeKey(baseKey != null ? baseKey + ":" + userId : null);
                 send(userId, copy);
@@ -218,7 +218,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void markRead(Long id, Long userId) {
         Notification n = notificationMapper.selectById(id);
-        // A6#3 fix: userId 来自当前登录用户必非空，反向调用 equals 避免 n.getUserId() 为 null 时 NPE
+        // userId 来自当前登录用户必非空，反向调用 equals 避免 n.getUserId() 为 null 时 NPE
         if (n != null && userId.equals(n.getUserId())) {
             n.setIsRead(1);
             notificationMapper.updateById(n);

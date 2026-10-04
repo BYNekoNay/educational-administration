@@ -9,8 +9,10 @@ import urllib.request, urllib.error, json, re, os, datetime, sys
 urllib.request.install_opener(urllib.request.build_opener(urllib.request.ProxyHandler({})))
 
 BASE = os.environ.get("BASE_URL", "http://localhost:8080")
-SRC = os.environ.get("SRC_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend", "src", "main", "java", "com", "pzhu", "eduadmin"))
-OUT = os.environ.get("REPORT_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", f"test-all-report-{datetime.date.today()}.md"))
+# 脚本位于 scripts/ 下，仓库根目录为其上一级
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.environ.get("SRC_DIR", os.path.join(ROOT, "backend", "src", "main", "java", "com", "pzhu", "eduadmin"))
+OUT = os.environ.get("REPORT_PATH", os.path.join(ROOT, "docs", f"test-all-report-{datetime.date.today()}.md"))
 
 def req(method, path, token=None, body=None, query=None):
     """返回 (http_status, raw_text)"""

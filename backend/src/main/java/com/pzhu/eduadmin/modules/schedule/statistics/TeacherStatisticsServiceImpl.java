@@ -95,7 +95,7 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
     }
 
     private double calcCompletionRate(Long teacherId) {
-        // Medium fix: 分母仅统计有效课次（1=待上课,2=已完成），排除已取消/已调课（status=4）
+        // 分母仅统计有效课次（1=待上课,2=已完成），排除已取消/已调课（status=4）
         long total = scheduleLessonMapper.selectCount(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)
@@ -109,7 +109,7 @@ public class TeacherStatisticsServiceImpl implements TeacherStatisticsService {
     }
 
     private double calcAttendanceRate(Long teacherId) {
-        // Medium fix: 仅取有效课次（1=待上课,2=已完成），排除已取消/已调课（status=4）
+        // 仅取有效课次（1=待上课,2=已完成），排除已取消/已调课（status=4）
         java.util.List<Long> lessonIds = scheduleLessonMapper.selectList(
                 new LambdaQueryWrapper<ScheduleLesson>()
                         .eq(ScheduleLesson::getTeacherId, teacherId)

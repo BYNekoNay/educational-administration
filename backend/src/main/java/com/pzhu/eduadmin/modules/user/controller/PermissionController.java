@@ -43,7 +43,7 @@ public class PermissionController {
     @PutMapping("/{id}")
     public Result<Permission> update(@PathVariable Long id, @Valid @RequestBody Permission permission) {
         permission.setId(id);
-        // L4 fix: 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime
+        // 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime
         permission.setCreateTime(null);
         permission.setUpdateTime(null);
         return Result.success(permissionService.update(permission));

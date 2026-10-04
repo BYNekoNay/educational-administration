@@ -5,6 +5,7 @@ import com.pzhu.eduadmin.common.Result;
 import com.pzhu.eduadmin.modules.user.entity.Menu;
 import com.pzhu.eduadmin.modules.user.service.MenuService;
 import com.pzhu.eduadmin.security.RequireRole;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,7 +32,7 @@ public class MenuController {
 
         for (Menu m : all) {
             Map<String, Object> node = toMap(m);
-            // L1 fix: null parentId 归入顶层（0）
+            // null parentId 归入顶层（0）
             Long pid = m.getParentId() == null ? 0L : m.getParentId();
             childrenMap.computeIfAbsent(pid, k -> new ArrayList<>()).add(node);
         }
@@ -51,7 +52,7 @@ public class MenuController {
 
     @GetMapping("/{id}")
     public Result<Menu> getById(@PathVariable Long id) {
-        // L6 fix: 不存在时返回 404 而非 200/null
+        // 不存在时返回 404 而非 200/null
         Menu menu = menuService.getById(id);
         if (menu == null) {
             throw new BusinessException(404, "菜单不存在");
@@ -60,7 +61,7 @@ public class MenuController {
     }
 
     @PostMapping
-    public Result<Menu> create(@RequestBody Menu menu) {
+    public Result<Menu> create(@Valid @RequestBody Menu menu) {
         // Mass assignment protection: strip server-controlled fields
         menu.setId(null);
         menu.setIsDeleted(null);
@@ -70,7 +71,7 @@ public class MenuController {
     }
 
     @PutMapping("/{id}")
-    public Result<Menu> update(@PathVariable Long id, @RequestBody Menu menu) {
+    public Result<Menu> update(@PathVariable Long id, @Valid @RequestBody Menu menu) {
         menu.setId(id);
         // Mass assignment protection: strip server-controlled fields
         menu.setIsDeleted(null);

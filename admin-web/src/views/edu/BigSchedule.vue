@@ -95,7 +95,8 @@ import { useAuthStore } from '@/stores/auth'
 import MonthlyCalendar from './components/MonthlyCalendar.vue'
 import WeeklyCalendar from './components/WeeklyCalendar.vue'
 import EditableWeekGrid from './components/EditableWeekGrid.vue'
-import { buildQuickAdjustPayload } from './components/useScheduleDrag'
+import { buildQuickAdjustPayload, type DropTarget } from './components/useScheduleDrag'
+import type { ClassGroup, Classroom, Course, ScheduleLesson, ScheduleQueryParams, TeacherInfo } from '@/types'
 
 // 模式
 const viewMode = ref<'month' | 'week'>('week')
@@ -109,7 +110,7 @@ const editMode = ref(false)
 
 // 关键字搜索（防抖 300ms）
 const keyword = ref('')
-let searchTimer: any = null
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 function onKeywordInput() {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => loadLessons(), 300)
@@ -128,13 +129,13 @@ onBeforeUnmount(() => {
 const filters = reactive({ courseId: null as number | null, classId: null as number | null, teacherId: null as number | null, classroomId: null as number | null, status: null as number | null })
 
 // 选项列表
-const courseList = ref<any[]>([])
-const classList = ref<any[]>([])
-const teacherList = ref<any[]>([])
-const roomList = ref<any[]>([])
+const courseList = ref<Course[]>([])
+const classList = ref<ClassGroup[]>([])
+const teacherList = ref<TeacherInfo[]>([])
+const roomList = ref<Classroom[]>([])
 
 // 课次数据
-const lessons = ref<any[]>([])
+const lessons = ref<ScheduleLesson[]>([])
 
 // 计算日期范围
 const year = computed(() => currentDate.value.getFullYear())
@@ -170,7 +171,7 @@ const weekDayLabels = computed(() => {
 
 // P1 快速调课对话框状态
 const moveDialogVisible = ref(false)
-const pendingMove = ref<{ lesson: any; target: { lessonDate: string; startTime: string; endTime: string } } | null>(null)
+const pendingMove = ref<{ lesson: ScheduleLesson; target: DropTarget } | null>(null)
 const notifyScope = reactive({ teacherId: 0, teacherName: '', parentCount: 0 })
 const moveReason = ref('')
 const moving = ref(false)
@@ -190,7 +191,7 @@ function sliceTime(t?: string | null): string {
 }
 
 // 展示原时间：yyyy-MM-dd HH:mm-HH:mm
-function fmtLessonTime(lesson: any): string {
+function fmtLessonTime(lesson: ScheduleLesson): string {
   if (!lesson) return ''
   return `${lesson.lessonDate || ''} ${sliceTime(lesson.startTime)}-${sliceTime(lesson.endTime)}`
 }
@@ -202,7 +203,7 @@ function onViewModeChange() {
 }
 
 // 网格 drop 后的处理：查询影响范围并弹出确认对话框
-async function onScheduleMove(payload: { lesson: any; target: { lessonDate: string; startTime: string; endTime: string } }) {
+async function onScheduleMove(payload: { lesson: ScheduleLesson; target: DropTarget }) {
   if (!canEdit.value || !payload || !payload.lesson) return
   pendingMove.value = payload
   moveReason.value = ''
@@ -211,7 +212,7 @@ async function onScheduleMove(payload: { lesson: any; target: { lessonDate: stri
   notifyScope.parentCount = 0
   moveDialogVisible.value = true
   try {
-    const res = await scheduleApi.notifyScope(payload.lesson.id)
+    const res = await scheduleApi.notifyScope(payload.lesson.id!)
     const scope = res.data || {}
     notifyScope.teacherId = scope.teacherId ?? 0
     notifyScope.teacherName = scope.teacherName || ''
@@ -228,7 +229,7 @@ async function confirmQuickAdjust() {
   moving.value = true
   try {
     const data = buildQuickAdjustPayload(move.lesson, move.target, moveReason.value)
-    await scheduleApi.quickAdjust(move.lesson.id, data)
+    await scheduleApi.quickAdjust(move.lesson.id!, data)
     ElMessage.success('调课成功，原课次时间已更新并通知相关人员')
     moveDialogVisible.value = false
     pendingMove.value = null
@@ -267,7 +268,7 @@ async function loadOptions() {
     ])
     courseList.value = cRes.data?.records || []
     classList.value = clRes.data?.records || []
-    teacherList.value = (tRes.data || []) as any[]
+    teacherList.value = tRes.data || []
     roomList.value = rRes.data?.records || []
   } catch {
     // 选项加载失败时降级为空列表，不阻塞课表主体加载
@@ -279,7 +280,7 @@ async function loadLessons() {
   try {
     const { dateFrom, dateTo } = getDateRange()
     // 后端单页上限为 200，请求 500 会被静默截断，这里按上限请求并在超限时提示
-    const params: any = { pageNum: 1, pageSize: 200, dateFrom, dateTo }
+    const params: ScheduleQueryParams = { pageNum: 1, pageSize: 200, dateFrom, dateTo }
     if (keyword.value?.trim()) params.keyword = keyword.value.trim()
     if (filters.courseId) params.courseId = filters.courseId
     if (filters.classId) params.classId = filters.classId

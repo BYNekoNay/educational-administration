@@ -221,7 +221,7 @@ class ScheduleServiceMockTest {
     @Test
     @DisplayName("删除课次并写操作日志")
     void deleteLesson_Success() {
-        // High fix 后删除前先校验课次状态，仅待上课（status=1）可删除
+        // 后删除前先校验课次状态，仅待上课（status=1）可删除
         ScheduleLesson lesson = new ScheduleLesson();
         lesson.setId(1L);
         lesson.setStatus(1);
@@ -255,7 +255,7 @@ class ScheduleServiceMockTest {
     void updateLesson_HasConflict() {
         ScheduleLesson sl = new ScheduleLesson();
         sl.setId(100L);
-        // H6 fix: updateLesson 现在先加载现有记录再合并
+        // updateLesson 现在先加载现有记录再合并
         ScheduleLesson existing = new ScheduleLesson();
         existing.setId(100L);
         existing.setTeacherId(1L);
@@ -385,17 +385,17 @@ class ScheduleServiceMockTest {
     @DisplayName("创建教室预约")
     void createRoomBooking_Success() {
         RoomBooking rb = new RoomBooking();
-        // C3 fix: 必须提供 classroomId、startTime、endTime
+        // 必须提供 classroomId、startTime、endTime
         rb.setClassroomId(1L);
         rb.setStartTime(java.time.LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0));
         rb.setEndTime(java.time.LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0));
-        // L4 fix: 校验教室存在；r19: 教室须为启用状态(status=1)
+        // 校验教室存在；教室须为启用状态(status=1)
         Classroom activeRoom = new Classroom();
         activeRoom.setStatus(1);
         when(classroomMapper.selectById(1L)).thenReturn(activeRoom);
-        // M8 fix: 预约对称检查已排课次（无重叠）
+        // 预约对称检查已排课次（无重叠）
         when(scheduleLessonMapper.selectList(any())).thenReturn(Collections.emptyList());
-        // C3 fix: 冲突检查 + 插入后二次校验
+        // 冲突检查 + 插入后二次校验
         when(roomBookingMapper.selectCount(any())).thenReturn(0L);
         doAnswer(inv -> { inv.getArgument(0, RoomBooking.class).setId(1L); return 1; })
                 .when(roomBookingMapper).insert(any(RoomBooking.class));
@@ -447,7 +447,7 @@ class ScheduleServiceMockTest {
     void createAdjustRequest_Success() {
         ScheduleAdjustRequest req = new ScheduleAdjustRequest();
         req.setLessonId(10L);
-        // M9 fix: 需要校验课次存在；L fix: 仅待上课(status=1)课次可发起调课
+        // 需要校验课次存在；仅待上课(status=1)课次可发起调课
         ScheduleLesson adjustLesson = new ScheduleLesson();
         adjustLesson.setStatus(1);
         when(scheduleLessonMapper.selectById(10L)).thenReturn(adjustLesson);
@@ -686,7 +686,7 @@ class ScheduleServiceMockTest {
 
     private Classroom activeClassroom() {
         Classroom c = new Classroom();
-        c.setStatus(1); // r20: validateClassroomExists 要求教室为启用状态
+        c.setStatus(1); // validateClassroomExists 要求教室为启用状态
         return c;
     }
 }

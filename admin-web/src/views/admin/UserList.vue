@@ -68,10 +68,11 @@
             <el-button size="small" type="primary" @click="openEditDialog(row)">
               编辑
             </el-button>
-            <el-button size="small" type="warning" @click="openPasswordDialog(row)">
+            <el-button v-if="canManageUser" size="small" type="warning" @click="openPasswordDialog(row)">
               改密
             </el-button>
             <el-popconfirm
+              v-if="canManageUser"
               :title="row.status === 1 ? '确认禁用该用户？' : '确认启用该用户？'"
               @confirm="toggleStatus(row)"
             >
@@ -193,12 +194,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { userApi, roleApi } from '@/api/auth'
 import { courseApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import { useAuthStore } from '@/stores/auth'
+import type { Course, RoleInfo, UserInfo } from '@/types'
+
+// 按钮级权限：仅持有用户管理菜单权限的角色可见行内改密/禁用/启用按钮（防御性隐藏，避免点击后 403）
+const canManageUser = computed(() => useAuthStore().hasPermission('menu:user'))
 
 // ====== 角色映射（仅内置角色显示名兜底） ======
 const roleMap: Record<string, string> = {
@@ -217,7 +223,7 @@ const roleOptions = ref<{ code: string; name: string }[]>(
 async function loadRoleOptions() {
   try {
     const res = await roleApi.list()
-    const list: any[] = res.data || []
+    const list: RoleInfo[] = res.data || []
     if (list.length) {
       roleOptions.value = list.map(r => ({
         code: r.roleCode,
@@ -246,7 +252,7 @@ function roleTagType(code: string): string {
 
 // ====== 数据状态 ======
 const loading = ref(false)
-const tableData = ref<any[]>([])
+const tableData = ref<UserInfo[]>([])
 const searchKeyword = ref('')
 const sortField = ref(''), sortOrder = ref('')
 const pagination = reactive({ pageNum: 1, pageSize: 10, total: 0 })
@@ -254,7 +260,7 @@ const pagination = reactive({ pageNum: 1, pageSize: 10, total: 0 })
 async function fetchData() {
   loading.value = true
   try {
-    const res: any = await userApi.list({
+    const res = await userApi.list({
       pageNum: pagination.pageNum,
       pageSize: pagination.pageSize,
       keyword: searchKeyword.value || undefined,
@@ -264,8 +270,8 @@ async function fetchData() {
     const data = res.data
     tableData.value = data.records || []
     pagination.total = data.total || 0
-    pagination.pageNum = data.pageNum
-    pagination.pageSize = data.pageSize
+    pagination.pageNum = data.pageNum!
+    pagination.pageSize = data.pageSize!
   } catch (e) {
     showError(e, '加载用户列表失败')
   } finally {
@@ -285,17 +291,17 @@ function resetSearch() {
   fetchData()
 }
 
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pagination.pageNum = 1; fetchData()
 }
 
 // ====== 启用/禁用 ======
-async function toggleStatus(row: any) {
+async function toggleStatus(row: UserInfo) {
   const newStatus = row.status === 1 ? 0 : 1
   try {
-    await userApi.updateStatus(row.id, newStatus)
+    await userApi.updateStatus(row.id!, newStatus)
     row.status = newStatus
     ElMessage.success(newStatus === 1 ? '已启用' : '已禁用')
   } catch (e) {
@@ -320,7 +326,7 @@ const form = reactive({
 })
 
 // 课程选项（角色为教师时使用）
-const courseOptions = ref<any[]>([])
+const courseOptions = ref<Course[]>([])
 const courseLoading = ref(false)
 
 async function loadCourseOptions() {
@@ -358,10 +364,10 @@ function openCreateDialog() {
   dialogVisible.value = true
 }
 
-function openEditDialog(row: any) {
+function openEditDialog(row: UserInfo) {
   dialogMode.value = 'edit'
   resetForm()
-  editUserId.value = row.id
+  editUserId.value = row.id!
   form.username = row.username
   form.realName = row.realName || ''
   form.phone = row.phone || ''
@@ -409,10 +415,10 @@ async function handleSubmit() {
 // ====== 修改密码 ======
 const passwordVisible = ref(false)
 const passwordSaving = ref(false)
-const passwordTarget = ref<any>(null)
+const passwordTarget = ref<UserInfo | null>(null)
 const passwordForm = reactive({ newPassword: '' })
 
-function openPasswordDialog(row: any) {
+function openPasswordDialog(row: UserInfo) {
   passwordTarget.value = row
   passwordForm.newPassword = ''
   passwordVisible.value = true
@@ -425,7 +431,7 @@ async function handleResetPassword() {
   }
   passwordSaving.value = true
   try {
-    await userApi.resetPassword(passwordTarget.value.id, passwordForm.newPassword)
+    await userApi.resetPassword(passwordTarget.value!.id!, passwordForm.newPassword)
     ElMessage.success('密码已重置')
     passwordVisible.value = false
   } catch (e) {

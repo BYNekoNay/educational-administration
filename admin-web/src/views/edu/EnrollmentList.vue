@@ -31,7 +31,7 @@
       <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
           <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
-            <template v-if="row.status === 1">
+            <template v-if="row.status === 1 && canAuditEnrollment">
               <el-button size="small" type="success" @click="handleAudit(row, 2)" :loading="auditing">通过</el-button>
               <el-button size="small" type="danger" @click="showReject(row)">拒绝</el-button>
             </template>
@@ -59,16 +59,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { enrollmentApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import { useAuthStore } from '@/stores/auth'
+import type { Enrollment } from '@/types'
+
+// 按钮级权限：仅持有报名审核菜单权限的角色可见行内审核按钮（防御性隐藏，避免点击后 403）
+const canAuditEnrollment = computed(() => useAuthStore().hasPermission('menu:enrollment'))
 
 const loading = ref(false), auditing = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
-const tableData = ref<any[]>([])
+const tableData = ref<Enrollment[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
-const rejectVisible = ref(false), rejectRow = ref<any>(null), rejectRemark = ref('')
+const rejectVisible = ref(false), rejectRow = ref<Enrollment | null>(null), rejectRemark = ref('')
 
 async function loadData() {
   loading.value = true
@@ -82,18 +87,18 @@ async function loadData() {
 
 function handleSearch() { pageNum.value = 1; loadData() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()
 }
 
-function showReject(row: any) { rejectRow.value = row; rejectRemark.value = ''; rejectVisible.value = true }
+function showReject(row: Enrollment) { rejectRow.value = row; rejectRemark.value = ''; rejectVisible.value = true }
 
-async function handleAudit(row: any, status: number) {
+async function handleAudit(row: Enrollment | null, status: number) {
   auditing.value = true
   try {
-    await enrollmentApi.audit(row.id, { status, remark: status === 4 ? rejectRemark.value : '' })
+    await enrollmentApi.audit(row!.id!, { status, remark: status === 4 ? rejectRemark.value : '' })
     ElMessage.success(status === 2 ? '审核通过，进入待缴费' : '已拒绝')
     rejectVisible.value = false
     loadData()

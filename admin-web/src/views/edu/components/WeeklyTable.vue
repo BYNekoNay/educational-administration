@@ -40,12 +40,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { periodApi, scheduleApi, courseApi, teacherApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import type { Course, Period, ScheduleLesson, ScheduleQueryParams, TeacherInfo } from '@/types'
 
 const loading = ref(false)
-const periods = ref<any[]>([])
-const lessons = ref<any[]>([])
-const courseList = ref<any[]>([])
-const teacherList = ref<any[]>([])
+const periods = ref<Period[]>([])
+const lessons = ref<ScheduleLesson[]>([])
+const courseList = ref<Course[]>([])
+const teacherList = ref<TeacherInfo[]>([])
 const filters = ref({ courseId: null as number | null, teacherId: null as number | null })
 
 function getMonday(d: Date): Date {
@@ -74,7 +75,7 @@ const weekDays = computed(() => {
   })
 })
 
-function cellLesson(periodId: number, dateStr: string) {
+function cellLesson(periodId: number | undefined, dateStr: string) {
   return lessons.value.find(l => l.periodId === periodId && l.lessonDate === dateStr) || null
 }
 
@@ -83,7 +84,7 @@ function goThisWeek() {
   loadLessons()
 }
 
-function onCellClick(period: any, day: any) {
+function onCellClick(period: Period, day: { dateStr: string }) {
   const lesson = cellLesson(period.id, day.dateStr)
   if (!lesson) return
   // 无交互简洁视图：不弹窗
@@ -112,7 +113,7 @@ async function loadLessons() {
   try {
     const dateFrom = weekDays.value[0].dateStr
     const dateTo = weekDays.value[6].dateStr
-    const params: any = { pageNum: 1, pageSize: 500, dateFrom, dateTo }
+    const params: ScheduleQueryParams = { pageNum: 1, pageSize: 500, dateFrom, dateTo }
     if (filters.value.courseId) params.courseId = filters.value.courseId
     if (filters.value.teacherId) params.teacherId = filters.value.teacherId
     const res = await scheduleApi.list(params)

@@ -158,22 +158,24 @@ import { showError } from '@/utils/error'
 import ExportButton from '@/components/ExportButton.vue'
 import RiskWarningPanel from './components/RiskWarningPanel.vue'
 import { useAuthStore } from '@/stores/auth'
+import type { AttendanceTrendPoint, DashboardCards, LessonTrendPoint, RevenueTrendPoint } from '@/types'
 
 const authStore = useAuthStore()
 // 与后端 ExportController 的 @RequireRole({"SUPER_ADMIN","FINANCE"}) 对齐
 const canExport = computed(() => ['SUPER_ADMIN', 'FINANCE'].includes(authStore.roleCode))
 
-const cards = reactive<any>({ activeStudents: '--', monthlyLessons: '--', monthlyRevenue: '--', attendanceRate: '--' })
+// 指标卡显示值：后端返回数值，初始占位为 '--'
+const cards = reactive<Record<keyof DashboardCards, number | string>>({ activeStudents: '--', monthlyLessons: '--', monthlyRevenue: '--', attendanceRate: '--' })
 
 const lessonChartRef = ref<HTMLElement>()
 const revenueChartRef = ref<HTMLElement>()
 const attendanceChartRef = ref<HTMLElement>()
 const analysisTab = ref('teacher')
-const teacherWorkload = ref<any[]>([])
-const studentLoss = ref<any[]>([])
-const classActivity = ref<any[]>([])
-const courseProfit = ref<any[]>([])
-const paymentRate = ref<any[]>([])
+const teacherWorkload = ref<Array<Record<string, unknown>>>([])
+const studentLoss = ref<Array<Record<string, unknown>>>([])
+const classActivity = ref<Array<Record<string, unknown>>>([])
+const courseProfit = ref<Array<Record<string, unknown>>>([])
+const paymentRate = ref<Array<Record<string, unknown>>>([])
 let lessonChart: echarts.ECharts | null = null
 let revenueChart: echarts.ECharts | null = null
 let attendanceChart: echarts.ECharts | null = null
@@ -194,39 +196,39 @@ async function loadDashboard() {
   }
 }
 
-function initLessonChart(data: any[]) {
+function initLessonChart(data: LessonTrendPoint[]) {
   if (!lessonChartRef.value) return
   lessonChart?.dispose()
   lessonChart = echarts.init(lessonChartRef.value)
   lessonChart.setOption({
     tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: data.map((d: any) => d.month) },
+    xAxis: { type: 'category', data: data.map((d: LessonTrendPoint) => d.month) },
     yAxis: { type: 'value', name: '课时数' },
-    series: [{ data: data.map((d: any) => d.count), type: 'line', smooth: true, areaStyle: { color: 'rgba(14,116,144,0.12)' }, itemStyle: { color: '#0E7490' } }]
+    series: [{ data: data.map((d: LessonTrendPoint) => d.count), type: 'line', smooth: true, areaStyle: { color: 'rgba(14,116,144,0.12)' }, itemStyle: { color: '#0E7490' } }]
   })
 }
 
-function initRevenueChart(data: any[]) {
+function initRevenueChart(data: RevenueTrendPoint[]) {
   if (!revenueChartRef.value) return
   revenueChart?.dispose()
   revenueChart = echarts.init(revenueChartRef.value)
   revenueChart.setOption({
     tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: data.map((d: any) => d.month) },
+    xAxis: { type: 'category', data: data.map((d: RevenueTrendPoint) => d.month) },
     yAxis: { type: 'value', name: '金额(¥)' },
-    series: [{ data: data.map((d: any) => d.amount), type: 'bar', itemStyle: { color: '#10B981', borderRadius: [4, 4, 0, 0] } }]
+    series: [{ data: data.map((d: RevenueTrendPoint) => d.amount), type: 'bar', itemStyle: { color: '#10B981', borderRadius: [4, 4, 0, 0] } }]
   })
 }
 
-function initAttendanceChart(data: any[]) {
+function initAttendanceChart(data: AttendanceTrendPoint[]) {
   if (!attendanceChartRef.value) return
   attendanceChart?.dispose()
   attendanceChart = echarts.init(attendanceChartRef.value)
   attendanceChart.setOption({
     tooltip: { trigger: 'axis', formatter: '{b}: {c}%' },
-    xAxis: { type: 'category', data: data.map((d: any) => d.month) },
+    xAxis: { type: 'category', data: data.map((d: AttendanceTrendPoint) => d.month) },
     yAxis: { type: 'value', name: '%', max: 100 },
-    series: [{ data: data.map((d: any) => d.rate), type: 'line', smooth: true, areaStyle: { color: 'rgba(225,29,72,0.12)' }, itemStyle: { color: '#E11D48' } }]
+    series: [{ data: data.map((d: AttendanceTrendPoint) => d.rate), type: 'line', smooth: true, areaStyle: { color: 'rgba(225,29,72,0.12)' }, itemStyle: { color: '#E11D48' } }]
   })
 }
 
@@ -251,7 +253,7 @@ async function loadAnalytics() {
     statisticsApi.courseProfit(),
     statisticsApi.paymentRate()
   ])
-  const assign = (idx: number, target: { value: any[] }) => {
+  const assign = (idx: number, target: { value: Array<Record<string, unknown>> }) => {
     const r = results[idx]
     if (r.status === 'fulfilled') target.value = r.value.data || []
   }

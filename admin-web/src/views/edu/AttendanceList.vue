@@ -132,16 +132,17 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { attendanceApi, scheduleApi, studentApi, leaveRequestApi, classApi } from '@/api/edu'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { Attendance, ClassStudent, LeaveRequest, ScheduleLesson, Student } from '@/types'
 
 // ─── 考勤管理 ───
 const activeTab = ref('attendance')
-const tableData = ref<any[]>([])
+const tableData = ref<Attendance[]>([])
 const loading = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const filteredData = computed(() => {
   if (!keyword.value) return tableData.value
   const kw = keyword.value.toLowerCase()
-  return tableData.value.filter((r: any) =>
+  return tableData.value.filter((r: Attendance) =>
     (r.studentName && String(r.studentName).toLowerCase().includes(kw)) ||
     (r.lessonInfo && String(r.lessonInfo).toLowerCase().includes(kw))
   )
@@ -150,15 +151,15 @@ const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const dialogVisible = ref(false)
-const scheduleList = ref<any[]>([])
-const studentList = ref<any[]>([])
-const allStudents = ref<any[]>([])
+const scheduleList = ref<ScheduleLesson[]>([])
+const studentList = ref<Student[]>([])
+const allStudents = ref<Student[]>([])
 const form = ref({ lessonId: null as number | null, studentId: null as number | null, status: 1, deductLessons: 1, remark: '' })
 
 function statusType(s: number) { return s === 1 ? 'success' : s === 2 ? 'warning' : s === 3 ? 'info' : 'danger' }
 function statusText(s: number) { return { 1: '到课', 2: '迟到', 3: '请假', 4: '缺勤' }[s] || s }
 
-function scheduleOptionLabel(s: any): string {
+function scheduleOptionLabel(s: ScheduleLesson): string {
   const cn = s.className || ''
   const date = s.lessonDate || ''
   const st = s.startTime || ''
@@ -167,7 +168,7 @@ function scheduleOptionLabel(s: any): string {
 }
 
 // 仅待上课(1)/已完成(2)课次可考勤（其余状态后端 409 拒绝），下拉只列可选课次
-const lessonOptions = computed(() => (scheduleList.value || []).filter((s: any) => Number(s.status) === 1 || Number(s.status) === 2))
+const lessonOptions = computed(() => (scheduleList.value || []).filter((s: ScheduleLesson) => Number(s.status) === 1 || Number(s.status) === 2))
 
 // 请假(3)/缺勤(4)后端强制 deductLessons=0，切换状态时同步默认值，避免提交被后端静默改写
 watch(() => form.value.status, (st) => {
@@ -177,13 +178,13 @@ watch(() => form.value.status, (st) => {
 // 选定课次后将学员下拉收窄为该班级在读学员（后端校验学员班级归属，跨班学员会 409）；加载失败保留全量兜底
 watch(() => form.value.lessonId, async (lid) => {
   if (!lid) return
-  const lesson = (scheduleList.value || []).find((s: any) => s.id === lid)
+  const lesson = (scheduleList.value || []).find((s: ScheduleLesson) => s.id === lid)
   if (!lesson?.classId) return
   try {
     const res = await classApi.students(lesson.classId, { pageSize: 100 })
     const records = res.data?.records || []
     if (records.length > 0) {
-      studentList.value = records.map((cs: any) => ({ id: cs.studentId, name: cs.studentName || `学员${cs.studentId}` }))
+      studentList.value = records.map((cs: ClassStudent) => ({ id: cs.studentId, name: cs.studentName || `学员${cs.studentId}` }))
     }
   } catch { /* 保持全量学员列表兜底 */ }
 })
@@ -215,7 +216,7 @@ function handleSizeChange() {
   loadData()
 }
 
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()
@@ -238,18 +239,18 @@ async function handleSubmit() {
     dialogVisible.value = false
     pageNum.value = 1
     loadData()
-  } catch (e: any) { showError(e, '提交失败') }
+  } catch (e) { showError(e, '提交失败') }
 }
 
 // ─── 请假审核 ───
-const leaveList = ref<any[]>([])
+const leaveList = ref<LeaveRequest[]>([])
 const leaveLoading = ref(false)
 const leavePageNum = ref(1)
 const leavePageSize = ref(10)
 const leaveTotal = ref(0)
 const rejectDialogVisible = ref(false)
 const rejectRemark = ref('')
-const rejectingRow = ref<any>(null)
+const rejectingRow = ref<LeaveRequest | null>(null)
 
 function leaveStatusType(s: number) {
   return s === 1 ? 'warning' : s === 2 ? 'success' : 'danger'
@@ -273,18 +274,18 @@ function handleLeaveSizeChange() {
   loadLeaveData()
 }
 
-async function handleApprove(row: any) {
+async function handleApprove(row: LeaveRequest) {
   try {
     await ElMessageBox.confirm('确定通过该请假申请？', '确认', { type: 'info' })
   } catch { return }
   try {
-    await leaveRequestApi.audit(row.id, { status: 2, remark: '' })
+    await leaveRequestApi.audit(row.id!, { status: 2, remark: '' })
     ElMessage.success('已通过')
     loadLeaveData()
   } catch (e) { showError(e, '审核失败') }
 }
 
-function showRejectDialog(row: any) {
+function showRejectDialog(row: LeaveRequest) {
   rejectingRow.value = row
   rejectRemark.value = ''
   rejectDialogVisible.value = true
@@ -293,7 +294,7 @@ function showRejectDialog(row: any) {
 async function handleReject() {
   if (!rejectingRow.value) return
   try {
-    await leaveRequestApi.audit(rejectingRow.value.id, { status: 3, remark: rejectRemark.value })
+    await leaveRequestApi.audit(rejectingRow.value.id!, { status: 3, remark: rejectRemark.value })
     ElMessage.success('已拒绝')
     rejectDialogVisible.value = false
     loadLeaveData()
@@ -308,8 +309,9 @@ watch(activeTab, (val) => {
 })
 
 // ─── 通用 ───
-function showError(e: any, msg: string) {
-  const detail = e?.response?.data?.message || e?.message || ''
+function showError(e: unknown, msg: string) {
+  const err = e as { response?: { data?: { message?: string } }; message?: string } | null
+  const detail = err?.response?.data?.message || err?.message || ''
   ElMessage.error(detail ? `${msg}: ${detail}` : msg)
 }
 

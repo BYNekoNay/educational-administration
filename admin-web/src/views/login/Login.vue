@@ -37,7 +37,8 @@
           </el-form-item>
         </el-form>
 
-        <div class="demo-accounts">
+        <!-- 演示凭据仅开发环境显示，生产构建不包含 -->
+        <div v-if="isDev" class="demo-accounts">
           <p class="demo-title">管理端演示账号</p>
           <div class="demo-tags">
             <el-tag size="small" effect="plain">admin / 123456</el-tag>
@@ -62,6 +63,8 @@ import { User, Lock } from '@element-plus/icons-vue'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+/** 发布构建不展示演示凭据（仅开发/演示环境可见） */
+const isDev = import.meta.env.DEV
 
 // 路由守卫在"已登录但无看板权限"时会清除登录态并跳转 /login?reason=no_permission，
 // 这里给出明确提示，避免用户陷入"登录即被弹回、不知原因"的困惑（同组件实例 query 变化需用 watch）
@@ -107,8 +110,9 @@ async function handleLogin() {
       ? redirect
       : '/admin/dashboard'
     router.push(target)
-  } catch (e: any) {
-    if (e?.message) ElMessage.error(e.message)
+  } catch (e) {
+    const msg = (e as { message?: string })?.message
+    if (msg) ElMessage.error(msg)
   } finally {
     loading.value = false
   }

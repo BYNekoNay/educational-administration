@@ -81,7 +81,7 @@ public class SalaryController {
             throw new BusinessException(400, "teacherId格式不正确");
         }
 
-        // M12 fix: 安全类型转换，防止客户端传入数字类型导致 ClassCastException
+        // 安全类型转换，防止客户端传入数字类型导致 ClassCastException
         Object salaryMonthObj = body.get("salaryMonth");
         String salaryMonth = salaryMonthObj != null ? String.valueOf(salaryMonthObj) : null;
         if (salaryMonth == null || salaryMonth.isBlank()) throw new BusinessException(400, "salaryMonth不能为空");
@@ -93,7 +93,7 @@ public class SalaryController {
             } catch (NumberFormatException e) {
                 throw new BusinessException(400, "bonusAmount格式不正确");
             }
-            // L fix: 奖金不能为负，负向调整应走 createAdjustment 通道
+            // 奖金不能为负，负向调整应走 createAdjustment 通道
             if (bonusAmount.signum() < 0) {
                 throw new BusinessException(400, "bonusAmount不能为负数");
             }
@@ -171,7 +171,7 @@ public class SalaryController {
             throw new BusinessException(400, "adjustAmount格式不正确");
         }
 
-        // M11 fix: 校验 reason 非空（DB 列为 NOT NULL），并安全转换类型
+        // 校验 reason 非空（DB 列为 NOT NULL），并安全转换类型
         Object reasonObj = body.get("reason");
         String reason = reasonObj != null ? String.valueOf(reasonObj) : null;
         if (reason == null || reason.isBlank()) {

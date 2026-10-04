@@ -60,7 +60,7 @@ public class MenuServiceImpl implements MenuService {
         if (menu.getParentId() == null) menu.setParentId(0L);
         if (menu.getSortOrder() == null) menu.setSortOrder(0);
         if (menu.getVisible() == null) menu.setVisible(1);
-        // H1/M3 fix: 校验父菜单合法性（存在性 + 非自引用）
+        // H1/校验父菜单合法性（存在性 + 非自引用）
         validateParentId(menu.getId(), menu.getParentId());
         menuMapper.insert(menu);
 
@@ -82,7 +82,7 @@ public class MenuServiceImpl implements MenuService {
                 throw new BusinessException(400, "权限码不存在：" + menu.getPermissionCode());
             }
         }
-        // H1/M3 fix: 仅在请求携带 parentId 时校验（部分更新不传则不变更父节点），
+        // H1/仅在请求携带 parentId 时校验（部分更新不传则不变更父节点），
         // 防止自引用/移到自身子树下形成环（环上菜单从所有侧边栏消失且 delete 递归 StackOverflow 永久无法删除）
         if (menu.getParentId() != null) {
             validateParentId(menu.getId(), menu.getParentId());
@@ -107,7 +107,7 @@ public class MenuServiceImpl implements MenuService {
     }
 
     /**
-     * H1/M3 fix: 校验父菜单合法性。
+     * H1/校验父菜单合法性。
      * - parentId 为 null/0 视为根节点，放行；
      * - 不允许以自身为父（自引用）；
      * - 父菜单必须存在（selectById 遵循 @TableLogic，逻辑删除的父视为不存在）；
@@ -143,7 +143,7 @@ public class MenuServiceImpl implements MenuService {
         }
     }
 
-    /** 递归删除指定 parentId 的所有子节点（A1#3 fix: visited 集防止历史脏数据成环导致栈溢出） */
+    /** 递归删除指定 parentId 的所有子节点（visited 集防止历史脏数据成环导致栈溢出） */
     private void deleteChildren(Long parentId, Set<Long> visited) {
         List<Menu> children = menuMapper.selectList(
                 new LambdaQueryWrapper<Menu>().eq(Menu::getParentId, parentId));

@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.schedule.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -17,6 +18,7 @@ public class ScheduleAdjustRequest {
 
     private Long applicantId;
 
+    @Size(max = 255, message = "调课原因长度不能超过255")
     private String reason;
 
     private LocalDateTime expectTime;
@@ -26,6 +28,7 @@ public class ScheduleAdjustRequest {
 
     private Long auditorId;
 
+    @Size(max = 255, message = "审核备注长度不能超过255")
     private String auditRemark;
 
     @TableField(fill = FieldFill.INSERT)

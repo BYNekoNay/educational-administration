@@ -20,7 +20,7 @@ public class PageQuery implements Serializable {
      * Clamp pageSize to [1, 200] to prevent excessive database load or invalid pagination.
      */
     public int getPageSize() {
-        // L5 fix: 增加下界，防止 pageSize<=0 导致分页异常
+        // 增加下界，防止 pageSize<=0 导致分页异常
         return Math.max(1, Math.min(pageSize, 200));
     }
 }

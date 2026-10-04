@@ -83,11 +83,12 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { courseApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import type { Course } from '@/types'
 
 const loading = ref(false)
 const saving = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
-const tableData = ref<any[]>([])
+const tableData = ref<Course[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
@@ -95,7 +96,7 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 // 已有的课程分类（去重），用于"分类"下拉的搜索+新增
 const categoryOptions = ref<string[]>([])
-const form = reactive<any>({ name: '', category: '', totalLessons: 1, lessonDuration: 45, price: 0, status: 1 })
+const form = reactive<Partial<Course>>({ name: '', category: '', totalLessons: 1, lessonDuration: 45, price: 0, status: 1 })
 
 async function loadData() {
   loading.value = true
@@ -109,13 +110,13 @@ async function loadData() {
 
 function handleSearch() { pageNum.value = 1; loadData() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()
 }
 
-function openDialog(row: any) {
+function openDialog(row: Course | null) {
   isEdit.value = !!row
   if (row) Object.assign(form, row)
   else Object.assign(form, { name: '', category: '', totalLessons: 1, lessonDuration: 45, price: 0, status: 1 })
@@ -128,7 +129,7 @@ async function loadCategoryOptions() {
   try {
     const res = await courseApi.list({ pageNum: 1, pageSize: 200 })
     const set = new Set<string>()
-    ;(res.data?.records || []).forEach((c: any) => {
+    ;(res.data?.records || []).forEach((c: Course) => {
       if (c.category) set.add(c.category)
     })
     categoryOptions.value = Array.from(set).sort()
@@ -139,7 +140,8 @@ async function handleSave() {
   saving.value = true
   try {
     if (isEdit.value) {
-      await courseApi.update(form.id, form)
+      // 编辑态必然有 id
+      await courseApi.update(form.id!, form)
       ElMessage.success('课程已更新')
     } else {
       await courseApi.create(form)
@@ -152,10 +154,10 @@ async function handleSave() {
   } finally { saving.value = false }
 }
 
-async function handleDelete(row: any) {
+async function handleDelete(row: Course) {
   try {
     await ElMessageBox.confirm('确定删除该课程？', '提示', { type: 'warning' })
-    await courseApi.delete(row.id)
+    await courseApi.delete(row.id!)
     ElMessage.success('已删除')
     loadData()
   } catch (e) {

@@ -14,6 +14,7 @@ import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.service.ScheduleService;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.RequireRole;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -64,7 +65,7 @@ public class TeacherAttendanceController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<List<Attendance>> batchSubmit(@PathVariable Long lessonId,
                                                  @RequestBody List<Attendance> list) {
-        // L3: 教师课次归属校验 + 批量大小限制
+        // 教师课次归属校验 + 批量大小限制
         attendanceService.checkTeacherLessonOwnership(lessonId);
         if (list == null || list.isEmpty()) {
             throw new com.pzhu.eduadmin.common.BusinessException(400, "考勤列表不能为空");
@@ -92,8 +93,8 @@ public class TeacherAttendanceController {
     @PostMapping({"/schedules/{lessonId}/adjust-requests", "/lessons/{lessonId}/adjust-requests"})
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<ScheduleAdjustRequest> createMyAdjustRequest(@PathVariable Long lessonId,
-                                                                @RequestBody ScheduleAdjustRequest request) {
-        // H3 fix: 校验课次归属，防止教师对非自己授课的课次提交调课申请
+                                                                @Valid @RequestBody ScheduleAdjustRequest request) {
+        // 校验课次归属，防止教师对非自己授课的课次提交调课申请
         attendanceService.checkTeacherLessonOwnership(lessonId);
         // Mass assignment protection: strip server-controlled fields
         request.setId(null);
@@ -122,7 +123,7 @@ public class TeacherAttendanceController {
     @RequireRole({"TEACHER", "SUPER_ADMIN", "EDU_ADMIN"})
     public Result<LeaveRequest> auditLeaveRequest(@PathVariable Long id,
                                                    @RequestBody Map<String, Object> body) {
-        // L3 fix: 安全类型转换，防止客户端传入字符串类型导致 ClassCastException
+        // 安全类型转换，防止客户端传入字符串类型导致 ClassCastException
         Object statusObj = body.get("status");
         Integer status = null;
         if (statusObj instanceof Number) {

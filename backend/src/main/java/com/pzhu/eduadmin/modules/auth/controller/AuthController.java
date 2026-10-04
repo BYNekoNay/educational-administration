@@ -47,7 +47,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public Result<Void> logout() {
-        // C6 fix: 登出时原子递增 version，使该用户所有现有 Token 立即失效
+        // 登出时原子递增 version，使该用户所有现有 Token 立即失效
         LoginUser loginUser = CurrentUserHolder.get();
         if (loginUser != null) {
             userMapper.update(null, new LambdaUpdateWrapper<User>()

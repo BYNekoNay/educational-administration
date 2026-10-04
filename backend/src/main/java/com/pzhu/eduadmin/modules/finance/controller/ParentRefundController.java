@@ -138,7 +138,7 @@ public class ParentRefundController {
                         .eq(ParentStudent::getStudentId, enrollment.getStudentId()));
         if (bindingCount == 0) throw new BusinessException(403, "无权为该学员申请退费");
 
-        // Bug #12 fix: 使用累计缴费总额（含续费），而非仅最近一笔缴费金额
+        // 使用累计缴费总额（含续费），而非仅最近一笔缴费金额
         BigDecimal totalPaid = paymentRecordMapper.sumByEnrollmentId(enrollmentId);
         if (totalPaid.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(404, "未找到关联缴费记录");
@@ -164,7 +164,7 @@ public class ParentRefundController {
         record.setApplicantRole("PARENT");
 
         // 退费金额 = 累计已缴金额 × (剩余课时 / 原始总课时)，按比例扣除已上课时费用
-        // M1 fix: 使用稳定的原始总课时（不随退费缩小）作为分母，与审核端计算一致
+        // 使用稳定的原始总课时（不随退费缩小）作为分母，与审核端计算一致
         if (account != null) {
             record.setLessonCount(account.getRemainingLessons());
             BigDecimal remain = account.getRemainingLessons() != null ? account.getRemainingLessons() : BigDecimal.ZERO;
@@ -202,7 +202,7 @@ public class ParentRefundController {
         int pageNum = (int) Math.max(1, query.getPageNum());
         int pageSize = (int) Math.min(100, Math.max(1, query.getPageSize()));
         int total = records.size();
-        // L fix: 用 long 计算偏移并下限取 0，防止超大 pageNum 使 (pageNum-1)*pageSize int 溢出为负，
+        // 用 long 计算偏移并下限取 0，防止超大 pageNum 使 (pageNum-1)*pageSize int 溢出为负，
         // 导致 subList(负数, ...) 抛 IndexOutOfBoundsException(500)
         int from = (int) Math.min(Math.max(0L, (long) (pageNum - 1) * pageSize), total);
         int to = Math.min(from + pageSize, total);

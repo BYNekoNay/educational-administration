@@ -163,18 +163,27 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { showError } from '@/utils/error'
 import { scheduleApi, classApi, teacherApi, classroomApi } from '@/api/edu'
+import type { ClassGroup, Classroom, ScheduleLesson, TeacherInfo } from '@/types'
 
 const loading = ref(false), saving = ref(false), batching = ref(false), autoScheduling = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
-const tableData = ref<any[]>([]), pageNum = ref(1), pageSize = ref(10), total = ref(0)
+const tableData = ref<ScheduleLesson[]>([]), pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const dialogVisible = ref(false), batchVisible = ref(false), autoVisible = ref(false), isEdit = ref(false)
-const classList = ref<any[]>([])
-const teacherList = ref<any[]>([])
-const roomList = ref<any[]>([])
-const form = reactive<any>({ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '' })
-const batchItems = ref<any[]>([{ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '', status: 1 }])
+const classList = ref<ClassGroup[]>([])
+const teacherList = ref<TeacherInfo[]>([])
+const roomList = ref<Classroom[]>([])
+const form = reactive<Partial<ScheduleLesson>>({ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '' })
+const batchItems = ref<Array<Partial<ScheduleLesson>>>([{ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '', status: 1 }])
 const autoDateRange = ref<string[]>([])
-const autoForm = reactive<any>({ classId: null, teacherId: null, classroomId: null, startTime: '09:00:00', endTime: '10:00:00', lessonCount: 12, weekdays: [6] })
+const autoForm = reactive({
+  classId: null as number | null,
+  teacherId: null as number | null,
+  classroomId: null as number | null,
+  startTime: '09:00:00',
+  endTime: '10:00:00',
+  lessonCount: 12,
+  weekdays: [6] as number[],
+})
 const weekdayOptions = [
   { value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' },
   { value: 4, label: '周四' }, { value: 5, label: '周五' }, { value: 6, label: '周六' }, { value: 7, label: '周日' }
@@ -194,7 +203,7 @@ async function loadOptions() {
     teacherList.value = tRes.data || []
     // 仅保留启用中的教室：后端对停用教室排课直接 409 拒绝，下拉里展示只会误导
     const allRooms = rRes.data?.records || []
-    roomList.value = allRooms.filter((r: any) => r.status === 1)
+    roomList.value = allRooms.filter((r: Classroom) => r.status === 1)
     if ((rRes.data?.total || 0) > allRooms.length) {
       ElMessage.warning(`教室数量超过 ${allRooms.length}，下拉仅显示前 ${allRooms.length} 个`)
     }
@@ -213,13 +222,13 @@ async function loadData() {
 
 function handleSearch() { pageNum.value = 1; loadData() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()
 }
 
-function openDialog(row: any) {
+function openDialog(row: ScheduleLesson | null) {
   isEdit.value = !!row
   if (row) {
     form.id = row.id
@@ -254,7 +263,8 @@ async function handleSave() {
       endTime: form.endTime,
     }
     if (isEdit.value) {
-      await scheduleApi.update(form.id, payload)
+      // 编辑态必然有 id
+      await scheduleApi.update(form.id!, payload)
       ElMessage.success('已更新')
     } else {
       await scheduleApi.create(payload)
@@ -267,12 +277,12 @@ async function handleSave() {
   } finally { saving.value = false }
 }
 
-async function handleDelete(row: any) {
+async function handleDelete(row: ScheduleLesson) {
   try {
     await ElMessageBox.confirm('确定删除？', '提示', { type: 'warning' })
   } catch { return } // 用户取消
   try {
-    await scheduleApi.delete(row.id)
+    await scheduleApi.delete(row.id!)
     ElMessage.success('已删除')
     loadData()
   } catch (e) {
@@ -301,8 +311,11 @@ async function handleAutoSchedule() {
   }
   autoScheduling.value = true
   try {
+    // classId/teacherId 已由上方必选校验保证非空，显式取值为满足接口类型
     await scheduleApi.autoSchedule({
       ...autoForm,
+      classId: autoForm.classId,
+      teacherId: autoForm.teacherId,
       startDate: autoDateRange.value[0],
       endDate: autoDateRange.value[1]
     })

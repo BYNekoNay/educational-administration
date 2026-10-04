@@ -77,9 +77,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Right } from '@element-plus/icons-vue'
 import { adjustApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import type { AdjustRequestVO, PageParams } from '@/types'
 
 const loading = ref(false)
-const records = ref<any[]>([])
+const records = ref<AdjustRequestVO[]>([])
 const pagenum = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -90,10 +91,13 @@ const auditingId = ref<number | null>(null)
 /** 默认聚焦"待审核"——审核员进来先看待办，而不是混在历史单据里找 */
 const filters = reactive<{ status: number | null }>({ status: 1 })
 
-function statusLabel(s: number) { return { 1: '待审核', 2: '已通过', 3: '已驳回' }[s] || '未知' }
-function statusTagType(s: number) { return { 1: 'warning', 2: 'success', 3: 'danger' }[s] || 'info' as any }
+function statusLabel(s: number | undefined) { return ({ 1: '待审核', 2: '已通过', 3: '已驳回' } as Record<number, string>)[s as number] || '未知' }
+function statusTagType(s: number | undefined): 'primary' | 'success' | 'info' | 'warning' | 'danger' {
+  const map: Record<number, 'primary' | 'success' | 'info' | 'warning' | 'danger'> = { 1: 'warning', 2: 'success', 3: 'danger' }
+  return map[s as number] || 'info'
+}
 
-function fmtExpect(t: string | null) {
+function fmtExpect(t: string | null | undefined) {
   if (!t) return '-'
   const s = String(t).replace('T', ' ')
   return s.length >= 16 ? s.slice(0, 16) : s
@@ -119,7 +123,7 @@ function onSizeChange() {
 async function loadData() {
   loading.value = true
   try {
-    const params: any = { pageNum: pagenum.value, pageSize: pageSize.value }
+    const params: PageParams = { pageNum: pagenum.value, pageSize: pageSize.value }
     if (filters.status) params.status = filters.status
     const res = await adjustApi.list(params)
     records.value = res.data?.records || []
@@ -131,7 +135,7 @@ async function loadData() {
 }
 
 /** 一步式通过：确认框直接完成，备注留到需要时再补（减少一次弹窗表单） */
-async function quickApprove(item: any) {
+async function quickApprove(item: AdjustRequestVO) {
   try {
     await ElMessageBox.confirm(
       `${item.courseName || ''} ${item.className || ''} → ${fmtExpect(item.expectTime)}，确认通过？`,
@@ -139,9 +143,9 @@ async function quickApprove(item: any) {
       { confirmButtonText: '确认通过', cancelButtonText: '取消', type: 'success' }
     )
   } catch { return /* 用户取消 */ }
-  auditingId.value = item.id
+  auditingId.value = item.id ?? null
   try {
-    await adjustApi.audit(item.id, { status: 2, remark: '' })
+    await adjustApi.audit(item.id!, { status: 2, remark: '' })
     ElMessage.success('已通过')
     loadData()
   } catch (e) { showError(e, '审核失败') }
@@ -149,7 +153,7 @@ async function quickApprove(item: any) {
 }
 
 /** 驳回必须填原因（prompt 一步完成） */
-async function quickReject(item: any) {
+async function quickReject(item: AdjustRequestVO) {
   let reason: string
   try {
     const { value } = await ElMessageBox.prompt('请填写驳回原因（教师端可见）', '驳回调课申请', {
@@ -162,9 +166,9 @@ async function quickReject(item: any) {
     })
     reason = value
   } catch { return /* 用户取消 */ }
-  auditingId.value = item.id
+  auditingId.value = item.id ?? null
   try {
-    await adjustApi.audit(item.id, { status: 3, remark: reason })
+    await adjustApi.audit(item.id!, { status: 3, remark: reason })
     ElMessage.success('已驳回')
     loadData()
   } catch (e) { showError(e, '审核失败') }

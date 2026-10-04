@@ -69,7 +69,7 @@ class UserServiceMockTest {
         ipUtilMock = mockStatic(IpUtil.class);
         ipUtilMock.when(IpUtil::getCurrentIp).thenReturn("127.0.0.1");
         lenient().when(nameResolver.getUserDisplayName(anyLong())).thenReturn("测试用户");
-        // Bug #34: roleMapper 校验角色编码存在性
+        // roleMapper 校验角色编码存在性
         lenient().when(roleMapper.selectCount(any())).thenReturn(1L);
         // 默认让 teacherCourseMapper.selectList 返回空列表，避免 fillUserSpecialties 中 NPE
         lenient().when(teacherCourseMapper.selectList(any())).thenReturn(Collections.emptyList());
@@ -208,7 +208,7 @@ class UserServiceMockTest {
         User existing = buildExistingUser(1L, "STUDENT", 1);
         when(userMapper.selectById(1L)).thenReturn(existing);
         when(userMapper.updateById(any(User.class))).thenReturn(1);
-        // C5 fix: version 通过单独的原子 SQL 递增
+        // version 通过单独的原子 SQL 递增
         when(userMapper.update(any(), any())).thenReturn(1);
 
         UpdateUserRequest req = buildUpdateRequest();
@@ -219,7 +219,7 @@ class UserServiceMockTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getRoleCode()).isEqualTo("TEACHER");
-        // C5 fix: version 通过原子 SQL 递增，验证 update(null, wrapper) 被调用
+        // version 通过原子 SQL 递增，验证 update(null, wrapper) 被调用
         verify(userMapper).update(any(), any());
     }
 
@@ -250,12 +250,12 @@ class UserServiceMockTest {
     void updateUserStatus_disableUser_incrementsVersion() {
         User existing = buildExistingUser(1L, "STUDENT", 1);
         when(userMapper.selectById(1L)).thenReturn(existing);
-        // C5 fix: 现在使用 update(null, wrapper) 原子递增 version
+        // 现在使用 update(null, wrapper) 原子递增 version
         when(userMapper.update(any(), any())).thenReturn(1);
 
         userService.updateUserStatus(1L, 0);
 
-        // C5 fix: version 通过原子 SQL 递增，不再修改 Java 对象
+        // version 通过原子 SQL 递增，不再修改 Java 对象
         verify(userMapper).update(any(), any());
         verify(operationLogService).log(anyString(), anyString());
     }
@@ -267,12 +267,12 @@ class UserServiceMockTest {
     void resetPassword_normalSuccess_incrementsVersion() {
         User existing = buildExistingUser(1L, "STUDENT", 1);
         when(userMapper.selectById(1L)).thenReturn(existing);
-        // C5 fix: 现在使用 update(null, wrapper) 原子递增 version
+        // 现在使用 update(null, wrapper) 原子递增 version
         when(userMapper.update(any(), any())).thenReturn(1);
 
         userService.resetPassword(1L, "newpass123");
 
-        // C5 fix: 密码和 version 通过原子 SQL 更新，不再修改 Java 对象
+        // 密码和 version 通过原子 SQL 更新，不再修改 Java 对象
         verify(userMapper).update(any(), any());
         verify(operationLogService).log(anyString(), anyString());
     }

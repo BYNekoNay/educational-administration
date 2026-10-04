@@ -28,7 +28,7 @@
       <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
           <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
-            <template v-if="row.status === 1">
+            <template v-if="row.status === 1 && canRefund">
               <el-button size="small" type="success" @click="handleAudit(row, 2)">通过</el-button>
               <el-button size="small" type="danger" @click="handleAudit(row, 3)">拒绝</el-button>
             </template>
@@ -85,21 +85,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { refundApi, paymentApi } from '@/api/finance'
 import { studentApi, enrollmentApi } from '@/api/edu'
 import { showError } from '@/utils/error'
+import { useAuthStore } from '@/stores/auth'
+import type { Enrollment, PaymentRecord, RefundRecord, Student } from '@/types'
+
+// 按钮级权限：仅持有退费菜单权限的角色可见行内审核按钮（防御性隐藏，避免点击后 403）
+const canRefund = computed(() => useAuthStore().hasPermission('menu:refund'))
 
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const loading = ref(false), saving = ref(false), auditing = ref(false)
-const tableData = ref<any[]>([])
+const tableData = ref<RefundRecord[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const dialogVisible = ref(false)
-const studentList = ref<any[]>([])
-const enrollmentList = ref<any[]>([])
-const paymentList = ref<any[]>([])
-const form = reactive<any>({ studentId: null, enrollmentId: null, paymentRecordId: null, lessonCount: 0, amount: 0 })
+const studentList = ref<Student[]>([])
+const enrollmentList = ref<Enrollment[]>([])
+const paymentList = ref<PaymentRecord[]>([])
+const form = reactive<Partial<RefundRecord>>({ studentId: null, enrollmentId: null, paymentRecordId: null, lessonCount: 0, amount: 0 })
 
 async function loadOptions() {
   try {
@@ -114,7 +119,7 @@ async function loadOptions() {
   } catch (e) { showError(e, '加载选项数据失败') }
 }
 
-const auditVisible = ref(false), auditRow = ref<any>(null), auditAmount = ref(0)
+const auditVisible = ref(false), auditRow = ref<RefundRecord | null>(null), auditAmount = ref(0)
 
 async function loadData() {
   loading.value = true
@@ -124,7 +129,7 @@ async function loadData() {
 
 function handleSearch() { pageNum.value = 1; loadData() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()
@@ -144,14 +149,14 @@ async function handleCreateRefund() {
     ElMessage.success('退费申请已提交')
     dialogVisible.value = false
     loadData()
-  } catch (e: any) { showError(e, '提交失败') } finally { saving.value = false }
+  } catch (e) { showError(e, '提交失败') } finally { saving.value = false }
 }
 
-function handleAudit(row: any, status: number) {
+function handleAudit(row: RefundRecord, status: number) {
   if (status === 3) {
     ElMessageBox.confirm('确认拒绝该申请？', '拒绝确认', { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' })
-      .then(() => doAudit(row.id, 3, 0))
-      .catch((e: any) => { if (e !== 'cancel' && e !== 'close') showError(e, '操作失败') })
+      .then(() => doAudit(row.id!, 3, 0))
+      .catch((e) => { if (e !== 'cancel' && e !== 'close') showError(e, '操作失败') })
   } else {
     auditRow.value = row; auditAmount.value = row.amount || 0; auditVisible.value = true
   }
@@ -160,9 +165,9 @@ function handleAudit(row: any, status: number) {
 async function confirmAudit() {
   auditing.value = true
   try {
-    await doAudit(auditRow.value.id, 2, auditAmount.value)
+    await doAudit(auditRow.value!.id!, 2, auditAmount.value)
     auditVisible.value = false
-  } catch (e: any) {
+  } catch (e) {
     showError(e, '审核失败')
   } finally {
     auditing.value = false

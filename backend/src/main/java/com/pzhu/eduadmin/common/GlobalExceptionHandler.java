@@ -75,7 +75,7 @@ public class GlobalExceptionHandler {
         return Result.fail(400, message);
     }
 
-    // M9 fix: Spring 6.1 起，@Validated 控制器方法参数（@RequestParam 上的约束）校验失败
+    // Spring 6.1 起，@Validated 控制器方法参数（@RequestParam 上的约束）校验失败
     // 抛 HandlerMethodValidationException 而非 ConstraintViolationException，
     // 缺少此处理器时所有非法提交会落入通用兜底返回 500（如家长请假原因校验）
     @ExceptionHandler(HandlerMethodValidationException.class)
@@ -111,13 +111,13 @@ public class GlobalExceptionHandler {
         return Result.fail(405, "请求方式不正确，请使用：" + e.getSupportedHttpMethods());
     }
 
-    // L8 fix: Content-Type 不受支持语义上是 415，缺少处理器会落入通用兜底返回 500
+    // Content-Type 不受支持语义上是 415，缺少处理器会落入通用兜底返回 500
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public Result<Void> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
         return Result.fail(415, "不支持的请求内容类型：" + e.getContentType());
     }
 
-    // L8 fix: 上传文件超过大小限制应返回友好提示，而非通用 500
+    // 上传文件超过大小限制应返回友好提示，而非通用 500
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public Result<Void> handleMaxUploadSize(MaxUploadSizeExceededException e) {
         return Result.fail(400, "上传文件大小超过限制");

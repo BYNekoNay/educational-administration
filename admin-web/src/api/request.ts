@@ -1,14 +1,15 @@
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import { getErrorMessage } from '@/utils/error'
+import type { ApiResponse } from '@/types'
 
-const request = axios.create({
+const instance = axios.create({
   baseURL: '/api',
   timeout: 10000
 })
 
-request.interceptors.request.use((config) => {
+instance.interceptors.request.use((config) => {
   const authStore = useAuthStore()
   if (authStore.token) {
     config.headers.Authorization = `Bearer ${authStore.token}`
@@ -16,7 +17,7 @@ request.interceptors.request.use((config) => {
   return config
 })
 
-request.interceptors.response.use(
+instance.interceptors.response.use(
   (response) => {
     const data = response.data
     // 401 未登录 / Token 过期：清除登录态并跳转
@@ -51,5 +52,18 @@ request.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+/**
+ * 类型化客户端：响应拦截器已把后端统一响应体 { code, message, data } 解包为返回值，
+ * 这里用接口约束返回类型（T 为业务数据类型），API 层方法即可获得完整类型提示。
+ */
+interface ApiClient {
+  get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
+  post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
+  put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
+  delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
+}
+
+const request = instance as unknown as ApiClient
 
 export default request

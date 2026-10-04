@@ -632,7 +632,7 @@ class StudentServiceMockTest {
                 .thenReturn(List.of(cs));
         when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
         when(studentMapper.updateById(any(Student.class))).thenReturn(1);
-        // Critical fix 后改为 selectList 查询全部缴费记录
+        // 改为 selectList 查询全部缴费记录
         when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class)))
                 .thenReturn(List.of(payment));
         when(refundRecordMapper.insert(any(RefundRecord.class))).thenAnswer(invocation -> {
@@ -686,13 +686,13 @@ class StudentServiceMockTest {
                 .thenReturn(List.of(cs));
         when(classStudentMapper.updateById(any(ClassStudent.class))).thenReturn(1);
         when(studentMapper.updateById(any(Student.class))).thenReturn(1);
-        // Critical fix 后改为 selectList 查询全部缴费记录
+        // 改为 selectList 查询全部缴费记录
         when(paymentRecordMapper.selectList(any(LambdaQueryWrapper.class)))
                 .thenReturn(Collections.emptyList());
 
         Map<String, Object> result = studentService.withdrawStudent(1L);
 
-        // L9: 无缴费记录时不创建退费申请
+        // 无缴费记录时不创建退费申请
         assertThat(result).containsEntry("message", "退班完成，该学员无缴费记录");
         assertThat(result.get("refundRecordIds")).isEqualTo(Collections.emptyList());
         verify(refundRecordMapper, never()).insert(any(RefundRecord.class));

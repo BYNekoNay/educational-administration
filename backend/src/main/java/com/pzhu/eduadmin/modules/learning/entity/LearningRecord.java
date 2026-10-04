@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.learning.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -17,8 +18,10 @@ public class LearningRecord {
 
     private Long studentId;
 
+    @Size(max = 500, message = "教师评语长度不能超过500")
     private String teacherComment;
 
+    @Size(max = 100, message = "成长标签长度不能超过100")
     private String growthTag;
 
     @TableField(fill = FieldFill.INSERT)

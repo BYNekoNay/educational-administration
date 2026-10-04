@@ -37,9 +37,16 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { ScheduleLesson } from '@/types'
+
+interface TimelineSlot {
+  hour: number
+  items: ScheduleLesson[]
+  overlaps?: ScheduleLesson[]
+}
 
 const props = defineProps<{
-  lessons: any[]
+  lessons: ScheduleLesson[]
   date: string
 }>()
 
@@ -49,7 +56,7 @@ const timeSlots = computed(() => {
   // 按开始时间排序
   dayLessons.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''))
 
-  const slots: any[] = []
+  const slots: TimelineSlot[] = []
   // 默认展示 7:00-22:00；若当天存在更早/更晚的课次则动态扩展时段，
   // 避免 <07:00 或 ≥23:00 的课次匹配不到任何时段而被静默丢弃
   let startHour = 7
@@ -65,8 +72,8 @@ const timeSlots = computed(() => {
   for (let h = startHour; h <= endHour; h++) {
     const hStr = String(h).padStart(2, '0') + ':00'
     // 找出该小时开始的课程
-    const items: any[] = []
-    const remaining: any[] = []
+    const items: ScheduleLesson[] = []
+    const remaining: ScheduleLesson[] = []
     for (const l of dayLessons) {
       const s = l.startTime || ''
       const e = l.endTime || ''
@@ -98,18 +105,18 @@ function timeOverlap(s1: string, e1: string, s2: string, e2: string) {
   return s1 < e2 && s2 < e1
 }
 
-function statusLabel(status: number): string {
+function statusLabel(status: number | undefined): string {
   const map: Record<number, string> = { 1: '待上课', 2: '已完成', 3: '已取消', 4: '已调课' }
-  return map[status] || ''
+  return map[status as number] || ''
 }
 
-function statusType(status: number): string {
+function statusType(status: number | undefined): string {
   const map: Record<number, string> = { 1: 'warning', 2: 'success', 3: 'info', 4: 'danger' }
-  return map[status] || ''
+  return map[status as number] || ''
 }
 
 const colors = ['#0E7490','#D97706','#059669','#7C3AED','#DB2777','#2563EB','#DC2626','#0891B2','#A21CAF','#4D7C0F']
-function hashColor(id: number | null): string {
+function hashColor(id: number | null | undefined): string {
   if (!id) return colors[0]
   return colors[Math.abs(id ^ (id >> 4)) % colors.length]
 }

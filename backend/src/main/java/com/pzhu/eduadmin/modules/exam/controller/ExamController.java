@@ -61,10 +61,10 @@ public class ExamController {
     @PutMapping("/levels/{id}")
     public Result<ExamLevel> updateExamLevel(@PathVariable Long id, @RequestBody ExamLevel examLevel) {
         examLevel.setId(id);
-        // L5 fix: 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime（与 create 保持一致）
+        // 剥离服务端控制的审计字段，防止客户端覆盖 createTime/updateTime（与 create 保持一致）
         examLevel.setCreateTime(null);
         examLevel.setUpdateTime(null);
-        // L fix: 与 create 对齐校验——费用不可为负；提供名称时不可为空白（updateById 会写空串）
+        // 与 create 对齐校验——费用不可为负；提供名称时不可为空白（updateById 会写空串）
         if (examLevel.getFee() != null && examLevel.getFee().compareTo(java.math.BigDecimal.ZERO) < 0) {
             throw new com.pzhu.eduadmin.common.BusinessException(400, "考级费用不能为负数");
         }
@@ -111,7 +111,7 @@ public class ExamController {
                 notificationService.sendToUsers(parentUserIds, n);
             }
         } catch (Exception e) {
-            // L fix: 记录告警而非静默吞掉，否则通知持续失败（如 DB 异常）无任何可观测性
+            // 记录告警而非静默吞掉，否则通知持续失败（如 DB 异常）无任何可观测性
             log.warn("考级报名通知发送失败, signupId={}", signup.getId(), e);
         }
     }

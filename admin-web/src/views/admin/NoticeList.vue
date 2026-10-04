@@ -73,29 +73,30 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { noticeApi } from '@/api/auth'
 import { showError } from '@/utils/error'
+import type { Notice } from '@/types'
 
 const loading = ref(false), saving = ref(false)
-const tableData = ref<any[]>([])
+const tableData = ref<Notice[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const dialogVisible = ref(false)
-const editing = ref<any>(null)
-const form = reactive<any>({ title: '', content: '', noticeType: 1, receiverType: 'ALL' })
+const editing = ref<Notice | null>(null)
+const form = reactive<Partial<Notice>>({ title: '', content: '', noticeType: 1, receiverType: 'ALL' })
 
 // ---- 枚举映射 ----
 
 const noticeTypeLabels: Record<number, string> = { 1: '公告', 2: '调课通知', 3: '上课提醒', 4: '课时不足提醒', 5: '报名留位到期', 6: '考级通知' }
 
-function noticeTypeLabel(v: any): string {
+function noticeTypeLabel(v: number | null | undefined): string {
   return noticeTypeLabels[Number(v)] || '公告'
 }
 
-function tagStyle(v: any): string {
+function tagStyle(v: number | null | undefined): string {
   const n = Number(v)
   return n === 2 ? 'warning' : n === 3 ? 'primary' : n === 6 ? 'danger' : 'info'
 }
 
-function receiverTypeLabel(v: any): string {
+function receiverTypeLabel(v: string | number | null | undefined): string {
   const map: Record<string, string> = { 'ALL': '全体', 'TEACHER': '教师', 'PARENT': '家长' }
   // 兼容历史存为数字的情况
   const numMap: Record<string, string> = { '1': '全体', '2': '教师', '3': '家长' }
@@ -114,13 +115,13 @@ async function loadData() {
 
 function handleSearch() { pageNum.value = 1; loadData() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()
 }
 
-function showDialog(row: any) {
+function showDialog(row: Notice | null) {
   editing.value = row
   if (row) {
     form.title = row.title
@@ -147,7 +148,7 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    const payload: any = { ...form }
+    const payload: Partial<Notice> = { ...form }
     if (editing.value?.id) {
       await noticeApi.update(editing.value.id, payload)
     } else {

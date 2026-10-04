@@ -128,15 +128,16 @@ import { examApi, studentApi } from '@/api/edu'
 import { showError } from '@/utils/error'
 import UploadFile from '@/components/UploadFile.vue'
 import { openProtectedFile } from '@/utils/protectedFile'
+import type { ExamLevel, ExamSignup, ExamSignupForm, PageParams, Student } from '@/types'
 
 const activeTab = ref('levels')
 
 // ---- 考级项目 ----
 const levelKeyword = ref(''), levelSortField = ref(''), levelSortOrder = ref('')
-const levels = ref<any[]>([]), levelsLoading = ref(false), levelsPage = ref(1), levelsPageSize = ref(10), levelsTotal = ref(0)
+const levels = ref<ExamLevel[]>([]), levelsLoading = ref(false), levelsPage = ref(1), levelsPageSize = ref(10), levelsTotal = ref(0)
 const levelVisible = ref(false), levelSaving = ref(false)
-const editingLevel = ref<any>(null)
-const levelForm = reactive<any>({ name: '', levelName: '', examDate: '', fee: 0 })
+const editingLevel = ref<ExamLevel | null>(null)
+const levelForm = reactive<Partial<ExamLevel>>({ name: '', levelName: '', examDate: '', fee: 0 })
 
 async function loadLevels() {
   levelsLoading.value = true
@@ -151,12 +152,12 @@ async function loadLevels() {
 }
 function handleLevelSearch() { levelsPage.value = 1; loadLevels() }
 function resetLevelSearch() { levelKeyword.value = ''; levelSortField.value = ''; levelSortOrder.value = ''; levelsPage.value = 1; loadLevels() }
-function handleLevelSortChange({ prop, order }: any) {
+function handleLevelSortChange({ prop, order }: { prop: string; order: string | null }) {
   levelSortField.value = order ? prop : ''
   levelSortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   levelsPage.value = 1; loadLevels()
 }
-function showLevelDialog(row: any) {
+function showLevelDialog(row: ExamLevel | null) {
   editingLevel.value = row
   if (row) { Object.assign(levelForm, { name: row.name, levelName: row.levelName, examDate: row.examDate, fee: row.fee }) }
   else { Object.assign(levelForm, { name: '', levelName: '', examDate: '', fee: 0 }) }
@@ -172,7 +173,7 @@ async function saveLevel() {
       await examApi.createLevel(payload)
     }
     ElMessage.success('保存成功'); levelVisible.value = false; loadLevels()
-  } catch (e: any) { showError(e, '保存失败') } finally { levelSaving.value = false }
+  } catch (e) { showError(e, '保存失败') } finally { levelSaving.value = false }
 }
 async function deleteLevel(id: number) {
   ElMessageBox.confirm('确认删除？', '删除确认', { confirmButtonText: '确认', type: 'warning' }).then(async () => {
@@ -180,7 +181,7 @@ async function deleteLevel(id: number) {
       await examApi.deleteLevel(id)
       ElMessage.success('已删除')
       loadLevels()
-    } catch (e: any) {
+    } catch (e) {
       showError(e, '删除失败')
     }
   }).catch(() => {})
@@ -188,18 +189,18 @@ async function deleteLevel(id: number) {
 
 // ---- 报名管理 ----
 const signupSortField = ref(''), signupSortOrder = ref('')
-const signups = ref<any[]>([]), signupsLoading = ref(false), signupsPage = ref(1), signupsPageSize = ref(10), signupsTotal = ref(0)
+const signups = ref<ExamSignup[]>([]), signupsLoading = ref(false), signupsPage = ref(1), signupsPageSize = ref(10), signupsTotal = ref(0)
 const filterExamId = ref<number | null>(null)
 const signupVisible = ref(false), signupSaving = ref(false)
-const editingSignup = ref<any>(null)
-const studentList = ref<any[]>([])
-const signupForm = reactive<any>({ examId: null, studentId: null, score: null, certificateNo: '', status: 1 })
+const editingSignup = ref<ExamSignup | null>(null)
+const studentList = ref<Student[]>([])
+const signupForm = reactive<ExamSignupForm>({ examId: null, studentId: null, score: null, certificateNo: '', status: 1 })
 const certificateFiles = ref<string[]>([])
 
 async function loadSignups() {
   signupsLoading.value = true
   try {
-    const params: any = { pageNum: signupsPage.value, pageSize: signupsPageSize.value }
+    const params: PageParams = { pageNum: signupsPage.value, pageSize: signupsPageSize.value }
     if (filterExamId.value) params.examId = filterExamId.value
     if (signupSortField.value) params.sortField = signupSortField.value
     if (signupSortOrder.value) params.sortOrder = signupSortOrder.value
@@ -211,12 +212,12 @@ async function loadSignups() {
     signupsLoading.value = false
   }
 }
-function handleSignupSortChange({ prop, order }: any) {
+function handleSignupSortChange({ prop, order }: { prop: string; order: string | null }) {
   signupSortField.value = order ? prop : ''
   signupSortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   signupsPage.value = 1; loadSignups()
 }
-function showSignupDialog(row: any) {
+function showSignupDialog(row: ExamSignup | null) {
   editingSignup.value = row
   if (row) {
     Object.assign(signupForm, { examId: row.examId, studentId: row.studentId, score: row.score, certificateNo: row.certificateNo || '', status: row.status })
@@ -232,14 +233,20 @@ async function saveSignup() {
   if (!signupForm.studentId) { ElMessage.warning('请选择学员'); return }
   signupSaving.value = true
   try {
-    const payload = { ...signupForm, certificateFileUrl: certificateFiles.value[0] || null }
+    // examId/studentId 已由上方必选校验保证非空，显式取值为满足接口类型
+    const payload: Partial<ExamSignup> = {
+      ...signupForm,
+      examId: signupForm.examId,
+      studentId: signupForm.studentId,
+      certificateFileUrl: certificateFiles.value[0] || null,
+    }
     if (editingSignup.value?.id) {
       await examApi.score(editingSignup.value.id, payload)
     } else {
       await examApi.signup(payload)
     }
     ElMessage.success('保存成功'); signupVisible.value = false; loadSignups()
-  } catch (e: any) { showError(e, '保存失败') } finally { signupSaving.value = false }
+  } catch (e) { showError(e, '保存失败') } finally { signupSaving.value = false }
 }
 
 async function viewCertificate(url: string) {

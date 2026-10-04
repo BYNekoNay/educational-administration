@@ -63,8 +63,8 @@
         </button>
       </view>
 
-      <!-- Demo account hint -->
-      <view class="hint-area">
+      <!-- Demo account hint（仅开发环境显示，发布构建不包含演示凭据） -->
+      <view v-if="isDev" class="hint-area">
         <text class="hint-label">演示账号：</text>
         <text class="hint-value">parent1 / teacher1</text>
         <text class="hint-label">密码：</text>
@@ -91,6 +91,9 @@ import { api } from '@/utils/request'
 import { getErrorMessage } from '@/utils/error'
 
 const statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0
+
+/** 发布构建不展示演示凭据（仅开发/演示环境可见） */
+const isDev = import.meta.env.DEV
 
 const username = ref('')
 const password = ref('')

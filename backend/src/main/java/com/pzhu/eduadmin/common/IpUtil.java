@@ -28,7 +28,7 @@ public final class IpUtil {
      */
     public static String getClientIp(HttpServletRequest request) {
         if (request == null) return "0.0.0.0";
-        // M10 fix: 代理头完全可被客户端伪造，必须做格式/长度清洗，
+        // 代理头完全可被客户端伪造，必须做格式/长度清洗，
         // 否则超长 XFF 会撑爆 operation_log.ip(VARCHAR(50))，导致业务事务回滚
         String ip = sanitizeIp(request.getHeader("X-Forwarded-For"));
         if (ip != null) return ip;

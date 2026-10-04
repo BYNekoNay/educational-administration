@@ -110,7 +110,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                             (a, b) -> a));
         }
         Set<Long> userIds = java.util.stream.Stream.concat(parentIds.stream(), auditorIds.stream()).collect(Collectors.toSet());
-        // A2#6 fix: 空集合 selectBatchIds 生成非法 "IN ()"；值映射对 null 姓名降级
+        // 空集合 selectBatchIds 生成非法 "IN ()"；值映射对 null 姓名降级
         Map<Long, String> userNames = userIds.isEmpty() ? Collections.emptyMap()
                 : userMapper.selectBatchIds(userIds).stream()
                         .collect(Collectors.toMap(User::getId,
@@ -166,11 +166,11 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (student == null) {
             throw new BusinessException(404, "学员不存在");
         }
-        // Medium fix: 已退班学员（status=4）不允许再报名
+        // 已退班学员（status=4）不允许再报名
         if (student.getStatus() != null && student.getStatus() == 4) {
             throw new BusinessException(409, "该学员已退班，无法报名");
         }
-        // 校验课程是否存在且启用（A2#2 fix: 与_PARENT路径对齐，禁止报名已下架课程）
+        // 校验课程是否存在且启用（与_PARENT路径对齐，禁止报名已下架课程）
         Course course = courseMapper.selectById(enrollment.getCourseId());
         if (course == null) {
             throw new BusinessException(404, "课程不存在");
@@ -178,7 +178,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (course.getStatus() == null || course.getStatus() != 1) {
             throw new BusinessException(409, "该课程已下架，无法报名");
         }
-        // M19: 校验 classId 归属于 courseId
+        // 校验 classId 归属于 courseId
         if (enrollment.getClassId() != null) {
             ClassGroup classGroup = classGroupMapper.selectById(enrollment.getClassId());
             if (classGroup == null) {
@@ -187,7 +187,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
             if (!enrollment.getCourseId().equals(classGroup.getCourseId())) {
                 throw new BusinessException(400, "该班级不属于所选课程");
             }
-            // A2#2 fix: 与 transferStudent 对齐，仅允许报入开放班级
+            // 与 transferStudent 对齐，仅允许报入开放班级
             if (classGroup.getStatus() == null || classGroup.getStatus() != 1) {
                 throw new BusinessException(409, "该班级未开放，无法报名");
             }
@@ -201,12 +201,12 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         Long existCount = enrollmentMapper.selectCount(new LambdaQueryWrapper<Enrollment>()
                 .eq(Enrollment::getStudentId, enrollment.getStudentId())
                 .eq(Enrollment::getCourseId, enrollment.getCourseId())
-                .notIn(Enrollment::getStatus, List.of(4, 5, 6)));  // M3 fix: 排除终态（已拒绝、已失效、已退费），其余均不可重复报名
+                .notIn(Enrollment::getStatus, List.of(4, 5, 6)));  // 排除终态（已拒绝、已失效、已退费），其余均不可重复报名
         if (existCount > 0) {
             throw new BusinessException(409, "该学员已有此课程的报名记录（含待审核），不可重复报名");
         }
 
-        // Bug #23 fix: 捕获唯一约束冲突，防止并发请求绕过重复检查（TOCTOU）
+        // 捕获唯一约束冲突，防止并发请求绕过重复检查（TOCTOU）
         try {
             enrollmentMapper.insert(enrollment);
         } catch (DuplicateKeyException e) {
@@ -223,7 +223,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
     @Override
     public void updateClassId(Long id, Long classId) {
-        // M2 fix: 仅更新 classId，避免 updateById 覆盖并发修改的其他字段
+        // 仅更新 classId，避免 updateById 覆盖并发修改的其他字段
         enrollmentMapper.update(null, new LambdaUpdateWrapper<Enrollment>()
                 .eq(Enrollment::getId, id)
                 .set(Enrollment::getClassId, classId));
@@ -231,7 +231,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
     @Override
     public void validateClassBelongsToCourse(Long classId, Long courseId) {
-        // M4 fix: 校验班级归属于课程
+        // 校验班级归属于课程
         ClassGroup classGroup = classGroupMapper.selectById(classId);
         if (classGroup == null) {
             throw new BusinessException(404, "班级不存在");
@@ -244,7 +244,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean delete(Long id) {
-        // L8: 先加载报名记录并校验状态
+        // 先加载报名记录并校验状态
         Enrollment enrollment = enrollmentMapper.selectById(id);
         if (enrollment == null) {
             throw new BusinessException(404, "报名记录不存在");
@@ -252,7 +252,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (enrollment.getStatus() != null && (enrollment.getStatus() == 2 || enrollment.getStatus() == 3)) {
             throw new BusinessException(409, "已通过/在读的报名记录不可删除，请先办理退费或退班");
         }
-        // Issue #14: 检查是否有关联的财务记录
+        // 检查是否有关联的财务记录
         Long paymentCount = paymentRecordMapper.selectCount(
                 new LambdaQueryWrapper<PaymentRecord>().eq(PaymentRecord::getEnrollmentId, id));
         if (paymentCount > 0) {
@@ -265,7 +265,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         }
         boolean deleted = enrollmentMapper.deleteById(id) > 0;
         if (deleted && enrollment.getClassId() != null) {
-            // M fix: 置 status=3（已退出）而非逻辑删除，保留记录供流失统计（与 removeStudentFromClass 一致）。
+            // 置 status=3（已退出）而非逻辑删除，保留记录供流失统计（与 removeStudentFromClass 一致）。
             // deleteById/@TableLogic 会隐藏记录，导致按 status=3 计数的流失统计永远漏计。
             classStudentMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ClassStudent>()
                     .eq(ClassStudent::getClassId, enrollment.getClassId())
@@ -330,7 +330,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                 .set(Enrollment::getStatus, status)
                 .set(Enrollment::getAuditorId, auditorId)
                 .set(Enrollment::getAuditRemark, remark)
-                // A2#3 fix: update(null,wrapper) 不触发自动填充，显式刷新 update_time
+                // update(null,wrapper) 不触发自动填充，显式刷新 update_time
                 .set(Enrollment::getUpdateTime, LocalDateTime.now());
         if (status == 2) {
             updateWrapper.set(Enrollment::getHoldExpireTime, LocalDateTime.now().plusHours(24));
@@ -438,7 +438,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
         // 4. 逐一比对已报名班级
         for (Long enrolledClassId : enrolledClassIds) {
-            // L1 fix: 跳过目标班级自身，避免学员"已报名该班级"时把自己的课次和自己比对，
+            // 跳过目标班级自身，避免学员"已报名该班级"时把自己的课次和自己比对，
             // overlap(同一时段) 恒为 true 会误报"自我冲突"
             if (enrolledClassId.equals(targetClassId)) continue;
             Map<LocalDate, List<ScheduleLesson>> existingSlots = grouped.get(enrolledClassId);

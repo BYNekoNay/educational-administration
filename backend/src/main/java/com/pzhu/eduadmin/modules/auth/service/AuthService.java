@@ -51,7 +51,7 @@ public class AuthService implements IAuthService {
     @Override
     public LoginResponse login(LoginRequest request) {
         String username = request.getUsername();
-        // M fix: 锁定计数键归一化（trim+lowercase）。DB 用大小写/尾空格不敏感的排序规则，
+        // 锁定计数键归一化（trim+lowercase）。DB 用大小写/尾空格不敏感的排序规则，
         // admin/Admin/"admin " 解析到同一用户，若按原始串计数会各自独立计数，攻击者可借大小写/空格变体
         // 成倍扩大暴力破解额度。归一化后统一计数（DB 查询仍用原始 username）。
         String lockKey = lockKey(username);
@@ -69,7 +69,7 @@ public class AuthService implements IAuthService {
             recordFailedAttempt(username);
             throw new BusinessException("用户名或密码错误");
         }
-        // H10 fix: 先检查账号状态再验证密码，防止攻击者确认禁用账号的密码
+        // 先检查账号状态再验证密码，防止攻击者确认禁用账号的密码
         if (user.getStatus() == null || user.getStatus() != 1) {
             throw new BusinessException("用户名或密码错误");
         }
@@ -81,7 +81,7 @@ public class AuthService implements IAuthService {
         // 登录成功，清除失败计数
         loginAttempts.remove(lockKey);
 
-        // H1 fix: 仅更新 lastLoginTime，避免 updateById 将 stale status/version 写回覆盖并发操作
+        // 仅更新 lastLoginTime，避免 updateById 将 stale status/version 写回覆盖并发操作
         userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, user.getId())
                 .set(User::getLastLoginTime, LocalDateTime.now()));
@@ -147,7 +147,7 @@ public class AuthService implements IAuthService {
                             || permSet.contains(m.getPermissionCode()))
                     .map(Menu::getId)
                     .collect(Collectors.toSet());
-            // A1#1 fix: 目录节点即使自身权限码未授予，只要含可见子菜单也必须保留，
+            // 目录节点即使自身权限码未授予，只要含可见子菜单也必须保留，
             // 否则子菜单挂在被过滤掉的父节点下，从根(parentId=0)不可达而整体消失（如 TEACHER 丢失排课/教室/考勤菜单）
             Set<Long> withAncestors = new HashSet<>(visibleIds);
             for (Long vid : visibleIds) {
@@ -217,7 +217,7 @@ public class AuthService implements IAuthService {
     }
 
     /**
-     * Bug #37/#38: 清理过期的登录尝试记录，防止内存无限增长。
+     * 清理过期的登录尝试记录，防止内存无限增长。
      * 移除超过锁定时长（15分钟）的条目，将内存限制为仅保留近期尝试。
      */
     private void cleanExpiredAttempts() {
@@ -228,7 +228,7 @@ public class AuthService implements IAuthService {
 
     /** 记录登录失败，达到上限后锁定账号 */
     private void recordFailedAttempt(String username) {
-        // Bug #37/#38: 每次记录前清理过期条目，防止内存无限增长
+        // 每次记录前清理过期条目，防止内存无限增长
         cleanExpiredAttempts();
         loginAttempts.compute(lockKey(username), (key, info) -> {
             if (info == null) {
@@ -239,7 +239,7 @@ public class AuthService implements IAuthService {
         });
     }
 
-    /** 锁定计数键归一化：trim + lowercase（ROOT），与 DB 大小写/尾空格不敏感排序规则对齐 */
+    /** 锁定计数键归一化：trim + lowercase，与 DB 大小写/尾空格不敏感排序规则对齐 */
     private static String lockKey(String username) {
         return username == null ? "" : username.trim().toLowerCase(java.util.Locale.ROOT);
     }
@@ -250,7 +250,7 @@ public class AuthService implements IAuthService {
         private volatile long lockTime = 0;
         private volatile long lastAttemptTime = System.currentTimeMillis();
 
-        // H11 fix: synchronized 防止 isLocked/increment 并发竞态清除刚设置的锁
+        // synchronized 防止 isLocked/increment 并发竞态清除刚设置的锁
         synchronized void increment() {
             lastAttemptTime = System.currentTimeMillis();
             if (count.incrementAndGet() >= MAX_FAILED_ATTEMPTS) {

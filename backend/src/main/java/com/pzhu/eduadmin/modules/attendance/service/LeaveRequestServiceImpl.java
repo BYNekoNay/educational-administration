@@ -70,7 +70,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
             throw new BusinessException(400, "不可为过去的日期提交请假申请");
         }
 
-        // Issue #30: 校验家长与学员的绑定关系
+        // 校验家长与学员的绑定关系
         Long bindingCount = parentStudentMapper.selectCount(
                 new LambdaQueryWrapper<ParentStudent>()
                         .eq(ParentStudent::getParentUserId, parentUserId)
@@ -95,7 +95,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
         lr.setLessonDate(lessonDate);
         lr.setReason(reason);
         lr.setStatus(1); // pending
-        // H5 fix: 捕获唯一键冲突（并发提交竞态）
+        // 捕获唯一键冲突（并发提交竞态）
         try {
             leaveRequestMapper.insert(lr);
         } catch (org.springframework.dao.DuplicateKeyException e) {
@@ -140,7 +140,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
         if (lr.getStatus() != 1) {
             throw new BusinessException(409, "该请假申请已审核，不可重复操作");
         }
-        // A4#3 fix: audit_remark 列为 VARCHAR(200)，超长在 MySQL 严格模式抛 "Data too long" → 500
+        // audit_remark 列为 VARCHAR(200)，超长在 MySQL 严格模式抛 "Data too long" → 500
         if (remark != null && remark.length() > 200) {
             throw new BusinessException(400, "审核备注不能超过200字");
         }
@@ -203,7 +203,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
                             .eq(Attendance::getLessonId, lesson.getId())
                             .eq(Attendance::getStudentId, lr.getStudentId()));
             if (existing != null) {
-                // H4 + L7 fix: 已批准请假覆盖出勤/迟到记录时统一改为请假状态(status=3)保持一致；
+                // 已批准请假覆盖出勤/迟到记录时统一改为请假状态(status=3)保持一致；
                 // 仅当原记录确有扣减(deduct>0)时才做课时回冲，零扣减记录只改状态不回冲
                 if (existing.getStatus() == 1 || existing.getStatus() == 2) {
                     if (existing.getDeductLessons() != null
@@ -226,11 +226,11 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
             attendance.setDeductLessons(BigDecimal.ZERO);
             attendance.setCheckTime(LocalDateTime.now());
             attendance.setRemark("请假审批自动创建");
-            // M7 fix: 并发审批时可能重复插入，捕获唯一键冲突
+            // 并发审批时可能重复插入，捕获唯一键冲突
             try {
                 attendanceMapper.insert(attendance);
             } catch (DuplicateKeyException e) {
-                // M7 fix: 插入输给并发考勤插入时不能简单跳过——否则请假已批准但考勤仍是"到课"且扣减保留。
+                // 插入输给并发考勤插入时不能简单跳过——否则请假已批准但考勤仍是"到课"且扣减保留。
                 // 重新读取并套用同样的覆盖/回冲逻辑。
                 Attendance conflicted = attendanceMapper.selectOne(
                         new LambdaQueryWrapper<Attendance>()
@@ -324,8 +324,8 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
             if (!enrollments.isEmpty()) {
                 List<Long> classIds = enrollments.stream()
                         .map(ClassStudent::getClassId).collect(Collectors.toList());
-                // M5 fix: 限定到请假日期对应的课次，防止教师审批无关班级的请假
-                // M6 fix: 仅匹配有效状态的课次（排除已调课/已取消）
+                // 限定到请假日期对应的课次，防止教师审批无关班级的请假
+                // 仅匹配有效状态的课次（排除已调课/已取消）
                 Long matchCount = scheduleLessonMapper.selectCount(
                         new LambdaQueryWrapper<ScheduleLesson>()
                                 .in(ScheduleLesson::getClassId, classIds)
@@ -367,10 +367,10 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
     }
 
     /**
-     * H4 fix: 回冲已有出勤记录的课时扣减（请假审批覆盖出勤时调用）。
+     * 回冲已有出勤记录的课时扣减（请假审批覆盖出勤时调用）。
      */
     private void reverseAttendanceDeduction(Attendance attendance, ScheduleLesson lesson) {
-        // A4#2 fix: 班级可能已软删，绕过 @TableLogic 查 courseId（与 AttendanceServiceImpl.reverseDeduct 一致），
+        // 班级可能已软删，绕过 @TableLogic 查 courseId（与 AttendanceServiceImpl.reverseDeduct 一致），
         // 否则软删班级时此处静默 return 但调用方仍置 deduct=0，导致已扣课时永久丢失
         Long courseId = classGroupMapper.selectCourseIdByIdIncludeDeleted(lesson.getClassId());
         if (courseId == null) return;

@@ -157,6 +157,7 @@ import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import { Check, Plus } from '@element-plus/icons-vue'
 import { roleApi, permissionApi } from '@/api/auth'
+import type { PermissionItem } from '@/types'
 
 // === 权限码中文映射 ===
 const PERM_LABEL_MAP: Record<string, string> = {
@@ -274,8 +275,8 @@ function resetSearch() { keyword.value = '' }
 async function loadAllPermissions(): Promise<PermItem[]> {
   try {
     const res = await permissionApi.list()
-    const list: any[] = res.data || []
-    return list.map((p: any) => ({
+    const list: PermissionItem[] = res.data || []
+    return list.map((p: PermissionItem) => ({
       code: p.permissionCode,
       label: PERM_LABEL_MAP[p.permissionCode] || p.permissionCode.replace('menu:', ''),
     }))
@@ -321,8 +322,8 @@ async function handleRoleSave() {
     roleDialogVisible.value = false
     await loadRoles()
     allPermissions.value = await loadAllPermissions()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
+  } catch (e) {
+    ElMessage.error((e as { message?: string })?.message || '操作失败')
   } finally { roleSaving.value = false }
 }
 
@@ -331,7 +332,7 @@ async function handleRoleDelete(id: number) {
     await roleApi.delete(id)
     ElMessage.success('角色已删除')
     await loadRoles()
-  } catch (e: any) {
+  } catch (e) {
     showError(e, '删除失败')
   }
 }

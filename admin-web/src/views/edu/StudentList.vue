@@ -140,13 +140,14 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { showError } from '@/utils/error'
 import { studentApi, classApi } from '@/api/edu'
+import type { ClassGroup, ParentBinding, Student, UserInfo } from '@/types'
 
 const loading = ref(false)
 const saving = ref(false)
 const binding = ref(false)
 const transferring = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
-const tableData = ref<any[]>([])
+const tableData = ref<Student[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
@@ -154,13 +155,13 @@ const dialogVisible = ref(false)
 const bindVisible = ref(false)
 const transferVisible = ref(false)
 const isEdit = ref(false)
-const currentStudent = ref<any>(null)
-const form = reactive<any>({ name: '', gender: 1, birthday: '', school: '', contactPhone: '' })
+const currentStudent = ref<Student | null>(null)
+const form = reactive<Partial<Student>>({ name: '', gender: 1, birthday: '', school: '', contactPhone: '' })
 const bindForm = reactive({ parentUserId: null as number | null, relation: '父亲' })
 const transferTargetClassId = ref<number | null>(null)
-const transferClassList = ref<any[]>([])
-const userOptions = ref<any[]>([])
-const boundParents = ref<any[]>([])
+const transferClassList = ref<ClassGroup[]>([])
+const userOptions = ref<UserInfo[]>([])
+const boundParents = ref<ParentBinding[]>([])
 const parentsLoading = ref(false)
 
 async function loadUserOptions() {
@@ -183,13 +184,13 @@ async function loadData() {
 
 function handleSearch() { pageNum.value = 1; loadData() }
 function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
-function handleSortChange({ prop, order }: any) {
+function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
   pageNum.value = 1; loadData()
 }
 
-function openDialog(row: any) {
+function openDialog(row: Student | null) {
   isEdit.value = !!row
   if (row) Object.assign(form, row)
   else Object.assign(form, { name: '', gender: 1, birthday: '', school: '', contactPhone: '' })
@@ -199,11 +200,12 @@ function openDialog(row: any) {
 async function handleSave() {
   saving.value = true
   try {
-    const payload: any = { ...form }
+    const payload: Partial<Student> = { ...form }
     // 生日空字符串会导致后端 LocalDate 反序列化失败
     if (!payload.birthday) payload.birthday = null
     if (isEdit.value) {
-      await studentApi.update(form.id, payload)
+      // 编辑态必然有 id
+      await studentApi.update(form.id!, payload)
       ElMessage.success('学员已更新')
     } else {
       await studentApi.create(payload)
@@ -214,18 +216,18 @@ async function handleSave() {
   } catch (e) { showError(e, '保存失败') } finally { saving.value = false }
 }
 
-async function handleDelete(row: any) {
+async function handleDelete(row: Student) {
   try {
     await ElMessageBox.confirm('确定删除该学员？', '提示', { type: 'warning' })
   } catch { return /* canceled */ }
   try {
-    await studentApi.delete(row.id)
+    await studentApi.delete(row.id!)
     ElMessage.success('已删除')
     loadData()
   } catch (e) { showError(e, '删除失败') }
 }
 
-function openBindDialog(row: any) {
+function openBindDialog(row: Student) {
   currentStudent.value = row
   bindForm.parentUserId = null
   bindForm.relation = '父亲'
@@ -238,7 +240,7 @@ async function loadBoundParents() {
   if (!currentStudent.value) return
   parentsLoading.value = true
   try {
-    const res = await studentApi.listParents(currentStudent.value.id)
+    const res = await studentApi.listParents(currentStudent.value.id!)
     boundParents.value = res.data || []
   } catch (e) { showError(e, '加载已绑定家长失败') }
   finally { parentsLoading.value = false }
@@ -250,7 +252,7 @@ async function handleBind() {
   try {
     await studentApi.bindParent({
       parentUserId: bindForm.parentUserId,
-      studentId: currentStudent.value.id,
+      studentId: currentStudent.value!.id!,
       relation: bindForm.relation
     })
     ElMessage.success('家长绑定成功')
@@ -261,10 +263,10 @@ async function handleBind() {
   } catch (e) { showError(e, '绑定失败') } finally { binding.value = false }
 }
 
-async function handleUnbind(p: any) {
+async function handleUnbind(p: ParentBinding) {
   await ElMessageBox.confirm(`确定解除与家长"${p.realName}"的绑定？`, '解绑确认', { type: 'warning' })
   try {
-    await studentApi.unbindParent(currentStudent.value.id, p.parentUserId)
+    await studentApi.unbindParent(currentStudent.value!.id!, p.parentUserId!)
     ElMessage.success('已解绑')
     await loadBoundParents()
     loadData()
@@ -274,7 +276,7 @@ async function handleUnbind(p: any) {
   }
 }
 
-async function openTransferDialog(row: any) {
+async function openTransferDialog(row: Student) {
   currentStudent.value = row
   transferTargetClassId.value = null
   transferClassList.value = []
@@ -289,7 +291,7 @@ async function handleTransfer() {
   if (!transferTargetClassId.value) { ElMessage.warning('请选择目标班级'); return }
   transferring.value = true
   try {
-    await studentApi.transfer(currentStudent.value.id, transferTargetClassId.value)
+    await studentApi.transfer(currentStudent.value!.id!, transferTargetClassId.value)
     ElMessage.success('转班成功')
     transferVisible.value = false
     loadData()
@@ -297,12 +299,12 @@ async function handleTransfer() {
   finally { transferring.value = false }
 }
 
-async function handleWithdraw(row: any) {
+async function handleWithdraw(row: Student) {
   try {
     await ElMessageBox.confirm(`确定将学员"${row.name}"退班？退班申请将提交至财务审核。`, '退班确认', { type: 'warning' })
   } catch { return /* canceled */ }
   try {
-    await studentApi.withdraw(row.id)
+    await studentApi.withdraw(row.id!)
     ElMessage.success('退班申请已提交，待财务审核')
     loadData()
   } catch (e) { showError(e, '退班操作失败') }

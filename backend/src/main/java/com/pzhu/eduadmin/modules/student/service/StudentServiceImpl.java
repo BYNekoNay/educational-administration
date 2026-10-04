@@ -148,7 +148,7 @@ public class StudentServiceImpl implements StudentService {
         if (existing == null) {
             throw new BusinessException(404, "学员不存在");
         }
-        // M fix: null 安全白名单，防止部分更新（partial PUT）把未携带的字段覆盖为 null
+        // null 安全白名单，防止部分更新（partial PUT）把未携带的字段覆盖为 null
         if (student.getName() != null) {
             if (student.getName().isBlank()) {
                 throw new BusinessException(400, "学员姓名不能为空");
@@ -183,7 +183,7 @@ public class StudentServiceImpl implements StudentService {
             throw new BusinessException(409, "该学员仍有待处理的报名记录，无法删除");
         }
 
-        // Issue #26: 检查是否有财务记录
+        // 检查是否有财务记录
         Long paymentCount = paymentRecordMapper.selectCount(
                 new LambdaQueryWrapper<PaymentRecord>().eq(PaymentRecord::getStudentId, id));
         Long refundCount = refundRecordMapper.selectCount(
@@ -192,7 +192,7 @@ public class StudentServiceImpl implements StudentService {
             throw new BusinessException(409, "该学员已有财务记录，无法删除");
         }
 
-        // Issue #26: 检查是否有考级报名记录
+        // 检查是否有考级报名记录
         Long examCount = examSignupMapper.selectCount(
                 new LambdaQueryWrapper<com.pzhu.eduadmin.modules.exam.entity.ExamSignup>()
                         .eq(com.pzhu.eduadmin.modules.exam.entity.ExamSignup::getStudentId, id));
@@ -201,12 +201,12 @@ public class StudentServiceImpl implements StudentService {
         }
 
         Student student = studentMapper.selectById(id);
-        // H5 fix: 防止学员不存在时 NPE
+        // 防止学员不存在时 NPE
         if (student == null) {
             throw new BusinessException(404, "学员不存在");
         }
         operationLogService.log("学员管理", "删除学员（学员=" + student.getName() + "）");
-        // A2#5 fix: 清理由该学员的家长绑定关系，避免遗留孤立 parent_student 行
+        // 清理由该学员的家长绑定关系，避免遗留孤立 parent_student 行
         parentStudentMapper.delete(new LambdaQueryWrapper<ParentStudent>()
                 .eq(ParentStudent::getStudentId, id));
         return studentMapper.deleteById(id) > 0;
@@ -231,7 +231,7 @@ public class StudentServiceImpl implements StudentService {
         if (parentUser == null) {
             throw new BusinessException(404, "家长用户不存在");
         }
-        // Bug #35: 校验用户确实是家长角色且未被禁用
+        // 校验用户确实是家长角色且未被禁用
         if (!"PARENT".equals(parentUser.getRoleCode())) {
             throw new BusinessException(400, "只能绑定家长角色的用户");
         }
@@ -304,7 +304,7 @@ public class StudentServiceImpl implements StudentService {
         if (rows == 0) {
             throw new BusinessException(404, "未找到该家长的绑定关系");
         }
-        // Low fix: 日志记录失败不应影响解绑业务操作
+        // 日志记录失败不应影响解绑业务操作
         try {
             operationLogService.log("学员管理", "解绑家长（学员=" + nameResolver.getStudentName(studentId)
                     + "，家长=" + nameResolver.getUserDisplayName(parentUserId) + "）");
@@ -337,7 +337,7 @@ public class StudentServiceImpl implements StudentService {
         if (targetClass == null) {
             throw new BusinessException(404, "目标班级不存在");
         }
-        // Medium fix: 目标班级必须为开班状态（status=1），禁止转入已结课/已关闭班级
+        // 目标班级必须为开班状态（status=1），禁止转入已结课/已关闭班级
         if (targetClass.getStatus() != null && targetClass.getStatus() != 1) {
             throw new BusinessException(409, "目标班级非开班状态，无法转入");
         }
@@ -352,7 +352,7 @@ public class StudentServiceImpl implements StudentService {
             throw new BusinessException(409, "目标班级已满，无法转入");
         }
 
-        // 5. Issue #22: 精确指定源班级 or 自动选择
+        // 5. 精确指定源班级 or 自动选择
         ClassStudent sourceRecord;
         if (fromClassId != null) {
             sourceRecord = currentRecords.stream()
@@ -366,7 +366,7 @@ public class StudentServiceImpl implements StudentService {
                     "该学员在 " + currentRecords.size() + " 个班级中，请指定 fromClassId 参数");
         }
 
-        // Low fix: 禁止转入当前所在班级（无意义的同班转班）
+        // 禁止转入当前所在班级（无意义的同班转班）
         if (targetClassId.equals(sourceRecord.getClassId())) {
             throw new BusinessException(400, "目标班级与当前班级相同，无需转班");
         }
@@ -384,7 +384,7 @@ public class StudentServiceImpl implements StudentService {
         sourceRecord.setStatus(2); // 已转出
         classStudentMapper.updateById(sourceRecord);
 
-        // H1 fix: class_student 唯一键 uk_class_student(class_id, student_id) 不含 status，
+        // class_student 唯一键 uk_class_student(class_id, student_id) 不含 status，
         // 学员转回曾经离开过的班级时旧行仍存在，直接 insert 会触发 DuplicateKeyException(500)。
         // 优先复用已有行（含 status=2/3 的历史记录），将其重新激活；否则再插入新行。
         ClassStudent existingTarget = classStudentMapper.selectOne(
@@ -410,7 +410,7 @@ public class StudentServiceImpl implements StudentService {
             }
         }
 
-        // M13 fix: 插入后再次校验容量，防止并发转班超出上限
+        // 插入后再次校验容量，防止并发转班超出上限
         if (maxCount > 0) {
             Long newCount = classStudentMapper.selectCount(
                     new LambdaQueryWrapper<ClassStudent>()
@@ -421,7 +421,7 @@ public class StudentServiceImpl implements StudentService {
             }
         }
 
-        // H fix: 同步该学员在源班级的活跃报名记录 classId 到目标班级。
+        // 同步该学员在源班级的活跃报名记录 classId 到目标班级。
         // detectTimeConflict 依据 Enrollment.classId 构建在班集合，若不同步，
         // 转班后仍检查旧班级（误报）且漏检新班级（漏报，可在新班级时段重复排课）。
         enrollmentMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Enrollment>()
@@ -469,7 +469,7 @@ public class StudentServiceImpl implements StudentService {
         student.setStatus(4);
         studentMapper.updateById(student);
 
-        // H2 fix: 退班后同步将关联的报名记录状态更新为 6（已退班/终止），
+        // 退班后同步将关联的报名记录状态更新为 6（已退班/终止），
         // 避免报名记录仍显示为有效状态（待审核/待缴费/已完成）。
         // 仅更新非终态记录，已处于终态（4=已拒绝, 5=已失效, 6=已退班）的不重复处理。
         enrollmentMapper.update(null,
@@ -479,7 +479,7 @@ public class StudentServiceImpl implements StudentService {
                         .set(Enrollment::getStatus, 6));
 
         // 4. 查找该学员所有缴费记录，按 enrollmentId 分组，为每个已缴费的报名生成退费申请
-        // Critical fix: 原实现仅为最近一笔缴费创建退费，导致其他已缴费报名永久无法退费
+        // 原实现仅为最近一笔缴费创建退费，导致其他已缴费报名永久无法退费
         List<PaymentRecord> allPayments = paymentRecordMapper.selectList(
                 new LambdaQueryWrapper<PaymentRecord>()
                         .eq(PaymentRecord::getStudentId, studentId)

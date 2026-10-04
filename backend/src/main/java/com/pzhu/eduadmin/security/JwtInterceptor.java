@@ -75,7 +75,7 @@ public class JwtInterceptor implements HandlerInterceptor {
             writeUnauthorized(response, "用户不存在，请重新登录");
             return false;
         }
-        // Low fix: 与登录逻辑保持一致，status 为 null 视为禁用（原写法 null 会被放行）
+        // 与登录逻辑保持一致，status 为 null 视为禁用（原写法 null 会被放行）
         if (!Integer.valueOf(1).equals(currentUser.getStatus())) {
             writeUnauthorized(response, "账号已被禁用，请联系管理员");
             return false;
@@ -87,7 +87,7 @@ public class JwtInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // Bug #46: 使用数据库中的 roleCode 而非 Token 中的，确保角色变更后立即生效
+        // 使用数据库中的 roleCode 而非 Token 中的，确保角色变更后立即生效
         String dbRoleCode = currentUser.getRoleCode();
 
         RequireRole requireRole = handlerMethod.getMethodAnnotation(RequireRole.class);
@@ -99,7 +99,7 @@ public class JwtInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // L fix: 仅在鉴权完全通过后再设置 ThreadLocal。若在角色校验前设置，校验失败 return false 时
+        // 仅在鉴权完全通过后再设置 ThreadLocal。若在角色校验前设置，校验失败 return false 时
         // Spring 不会调用本拦截器的 afterCompletion，CurrentUserHolder.clear 永不执行 → LoginUser 泄漏到线程池工作线程。
         CurrentUserHolder.set(new LoginUser(userId, username, dbRoleCode));
 

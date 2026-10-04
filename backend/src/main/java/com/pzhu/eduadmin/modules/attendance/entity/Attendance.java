@@ -2,6 +2,8 @@ package com.pzhu.eduadmin.modules.attendance.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -14,8 +16,10 @@ public class Attendance {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @NotNull(message = "课次ID不能为空")
     private Long lessonId;
 
+    @NotNull(message = "学员ID不能为空")
     private Long studentId;
 
     private Integer status;
@@ -24,6 +28,7 @@ public class Attendance {
 
     private LocalDateTime checkTime;
 
+    @Size(max = 255, message = "备注长度不能超过255")
     private String remark;
 
     @TableField(fill = FieldFill.INSERT)
