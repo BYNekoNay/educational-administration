@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.CacheNames;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
@@ -27,6 +28,7 @@ import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -134,6 +136,7 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public Student createStudent(Student student) {
         if (student.getName() == null || student.getName().isBlank()) {
             throw new BusinessException(400, "学员姓名不能为空");
@@ -165,6 +168,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public boolean deleteStudent(Long id) {
         // 前置条件检查：不允许删除仍有在班记录或待处理报名的学员
         Long activeClassCount = classStudentMapper.selectCount(
@@ -316,6 +320,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public Map<String, Object> transferStudent(Long studentId, Long targetClassId, Long fromClassId) {
         // 1. 校验学员存在
         Student student = studentMapper.selectById(studentId);

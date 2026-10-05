@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.CacheNames;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.attendance.service.AttendanceService;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
@@ -32,6 +33,7 @@ import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -261,6 +263,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public ScheduleLesson createLesson(ScheduleLesson lesson) {
         // 关键字段为空时冲突检测会被跳过，导致插入无效课次
         if (lesson.getLessonDate() == null || lesson.getStartTime() == null || lesson.getEndTime() == null) {
@@ -355,6 +358,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public boolean deleteLesson(Long id) {
         ScheduleLesson lesson = scheduleLessonMapper.selectById(id);
         if (lesson == null) {
@@ -385,6 +389,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public void batchCreate(List<ScheduleLesson> lessons) {
         // 批量创建同样需要逐条校验，避免空时间或非法时间段绕过冲突检测被插入
         for (int idx = 0; idx < lessons.size(); idx++) {
@@ -435,6 +440,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public List<ScheduleLesson> autoSchedule(AutoScheduleRequest request) {
         if (scheduleLessonMapper.lockAutoSchedule() == null) {
             throw new BusinessException(500, "智能排课事务锁未初始化");

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.CacheNames;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.ClassStudent;
@@ -20,6 +21,7 @@ import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -247,6 +249,7 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public boolean deleteClassGroup(Long id) {
         Long studentCount = classStudentMapper.selectCount(new LambdaQueryWrapper<ClassStudent>()
                 .eq(ClassStudent::getClassId, id)
@@ -304,6 +307,7 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public boolean addStudentToClass(ClassStudent classStudent) {
         // 校验班级是否存在
         ClassGroup classGroup = classGroupMapper.selectById(classStudent.getClassId());
@@ -370,6 +374,7 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public boolean removeStudentFromClass(Long classId, Long studentId) {
         List<ClassStudent> records = classStudentMapper.selectList(new LambdaQueryWrapper<ClassStudent>()
                 .eq(ClassStudent::getClassId, classId)

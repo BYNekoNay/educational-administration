@@ -2,7 +2,7 @@ package com.pzhu.eduadmin.security;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +25,12 @@ import java.util.concurrent.TimeUnit;
  *
  * <p><b>降级约定</b>：Redis 不可用（未部署、连接失败）时自动回落到进程内计数，
  * 防护强度退回单机级别但服务保持可用——安全组件不应成为可用性的单点。</p>
+ *
+ * <p><b>为什么捕获 DataAccessException 而不是 RedisConnectionFailureException</b>：
+ * 两者互不为子类（{@code RedisConnectionFailureException extends DataAccessResourceFailureException}，
+ * 而命令超时经 Spring 转换后是 {@code RedisSystemException extends UncategorizedDataAccessException}）。
+ * 只捕获前者的话，Redis 变慢触发命令超时时异常会穿透，让登录直接 500——恰恰是
+ * 最该降级的路径最脆。因此统一捕获 Spring DAO 异常基类。</p>
  *
  * <p>对应 docs/11-后端开发详细文档.md §2。</p>
  */
@@ -95,7 +101,7 @@ public class LoginAttemptService {
                 String v = redis.opsForValue().get(key);
                 return v != null && Integer.parseInt(v) >= thresholdOf(key);
             }
-        } catch (RedisConnectionFailureException | NumberFormatException e) {
+        } catch (DataAccessException | NumberFormatException e) {
             log.warn("Redis 读取失败计数失败，降级为进程内判定: {}", e.getMessage());
         }
         FallbackState state = fallback.get(key);
@@ -112,7 +118,7 @@ public class LoginAttemptService {
                 }
                 return;
             }
-        } catch (RedisConnectionFailureException e) {
+        } catch (DataAccessException e) {
             log.warn("Redis 记录失败计数失败，降级为进程内计数: {}", e.getMessage());
         }
         sweep();
@@ -125,7 +131,7 @@ public class LoginAttemptService {
             if (redis != null) {
                 redis.delete(key);
             }
-        } catch (RedisConnectionFailureException e) {
+        } catch (DataAccessException e) {
             log.warn("Redis 清除失败计数失败，已忽略: {}", e.getMessage());
         }
         fallback.remove(key);
