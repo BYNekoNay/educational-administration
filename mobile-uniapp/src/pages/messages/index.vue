@@ -11,7 +11,7 @@
     <!-- Quick nav -->
     <view class="quick-actions">
       <view class="action-card" @click="goNotices">
-        <text class="action-emoji">🔔</text>
+        <view class="ic ic-sm ic-bell"></view>
         <text class="action-label">查看全部消息</text>
         <text class="action-desc">调课提醒、机构公告、系统通知</text>
       </view>

@@ -27,7 +27,7 @@
       <view class="att-panel" @click.stop>
         <view class="att-panel-header">
           <text class="att-panel-title">{{ currentLesson.lessonDate }} {{ currentLesson.startTime?.slice(0,5) }}-{{ currentLesson.endTime?.slice(0,5) }}</text>
-          <text class="att-panel-close" @click="currentLesson = null">✕</text>
+          <view class="ic ic-sm ic-close att-panel-close" @click="currentLesson = null"></view>
         </view>
         <text class="att-panel-class">{{ currentLesson.courseName || '' }}{{ currentLesson.courseName && currentLesson.className ? ' · ' : '' }}{{ currentLesson.className || '' }}</text>
 

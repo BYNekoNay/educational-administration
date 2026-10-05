@@ -36,11 +36,11 @@
                 <text class="tag" :class="tagClass(lesson.status)">{{ statusText(lesson.status) }}</text>
               </view>
               <view class="schedule-info">
-                <text class="schedule-row">🕐 {{ lesson.startTime }} - {{ lesson.endTime }}</text>
+                <text class="schedule-row"><view class="ic ic-sm ic-clock"></view> {{ lesson.startTime }} - {{ lesson.endTime }}</text>
               </view>
               <view class="schedule-info">
-                <text class="schedule-row">📚 {{ lesson.className || '—' }}</text>
-                <text class="schedule-row">🏫 {{ lesson.classroomName || '—' }}</text>
+                <text class="schedule-row"><view class="ic ic-sm ic-book"></view> {{ lesson.className || '—' }}</text>
+                <text class="schedule-row"><view class="ic ic-sm ic-building"></view> {{ lesson.classroomName || '—' }}</text>
               </view>
             </view>
             <view v-if="lesson.status === 1" class="cell-footer">

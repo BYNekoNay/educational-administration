@@ -11,7 +11,7 @@ html, body, #app {
   height: 100%;
   font-family: var(--font-body);
   font-size: var(--text-base);
-  color: var(--neutral-600);               /* 4D4139 — 在白底上 ≈9.5:1 ✅ */
+  color: var(--neutral-600);               /* 4D4139 — 在白底上 ≈9.5:1 AA 达标 */
   background: var(--surface-page);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

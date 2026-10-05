@@ -72,7 +72,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import { authApi } from '@/api/auth'
-import { Monitor, Setting, Document, Money, Fold, Expand, ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
+import { Monitor, Setting, Document, Money, DataAnalysis, Reading, Fold, Expand, ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import MenuItem from '@/components/MenuItem.vue'
 import type { Component } from 'vue'
@@ -84,7 +84,7 @@ const notificationStore = useNotificationStore()
 
 /** 图标名 → Vue 组件映射，上线有新图标时维护此表即可 */
 const iconMap: Record<string, Component> = {
-  Monitor, Setting, Document, Money,
+  Monitor, Setting, Document, Money, DataAnalysis, Reading,
 }
 
 /* ─── 侧边栏折叠（记忆到 localStorage）─── */

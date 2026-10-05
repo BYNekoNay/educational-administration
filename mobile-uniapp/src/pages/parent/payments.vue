@@ -19,7 +19,7 @@
     <text class="section-header">缴费记录</text>
 
     <view v-if="payments.length === 0" class="empty-state">
-      <text class="empty-icon">📭</text>
+      <view class="ic ic-empty-box ic-inbox"></view>
       <text class="empty-text">暂无缴费记录</text>
     </view>
 

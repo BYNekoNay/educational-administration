@@ -6,7 +6,7 @@
     <text class="section-header">可退费报名</text>
 
     <view v-if="available.length === 0" class="empty-state">
-      <text class="empty-icon">📭</text>
+      <view class="ic ic-empty-box ic-inbox"></view>
       <text class="empty-text">暂无可退费的报名</text>
     </view>
 
@@ -34,7 +34,7 @@
     <text class="section-header" style="margin-top: 40rpx">退费记录</text>
 
     <view v-if="records.length === 0" class="empty-state">
-      <text class="empty-icon">📝</text>
+      <view class="ic ic-empty-box ic-edit"></view>
       <text class="empty-text">暂无退费记录</text>
     </view>
 

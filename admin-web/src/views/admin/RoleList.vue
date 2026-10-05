@@ -193,10 +193,10 @@ interface PermGroup { name: string; icon: string; perms: PermItem[] }
 // 注意：分组必须覆盖 permission 表中的全部权限码，漏列的码在弹窗中不可见，
 // "清空→保存"会随全量覆盖（后端先删后插）被静默移除。新增权限码时务必同步此表。
 const PERM_CATEGORIES: { name: string; icon: string; codes: string[] }[] = [
-  { name: '运营看板', icon: '📊', codes: ['menu:dashboard'] },
-  { name: '系统管理', icon: '⚙️', codes: ['menu:user', 'menu:role', 'menu:menu', 'menu:permission', 'menu:organization', 'menu:notice', 'menu:log'] },
-  { name: '教务管理', icon: '📚', codes: ['menu:student', 'menu:course', 'menu:class', 'menu:enrollment', 'menu:schedule', 'menu:big-schedule', 'menu:adjust', 'menu:classroom', 'menu:attendance', 'menu:exam'] },
-  { name: '财务管理', icon: '💰', codes: ['menu:payment', 'menu:refund', 'menu:lesson-flow', 'menu:salary', 'menu:revenue'] },
+  { name: '运营看板', icon: 'DataAnalysis', codes: ['menu:dashboard'] },
+  { name: '系统管理', icon: 'Setting', codes: ['menu:user', 'menu:role', 'menu:menu', 'menu:permission', 'menu:organization', 'menu:notice', 'menu:log'] },
+  { name: '教务管理', icon: 'Reading', codes: ['menu:student', 'menu:course', 'menu:class', 'menu:enrollment', 'menu:schedule', 'menu:big-schedule', 'menu:adjust', 'menu:classroom', 'menu:attendance', 'menu:exam'] },
+  { name: '财务管理', icon: 'Money', codes: ['menu:payment', 'menu:refund', 'menu:lesson-flow', 'menu:salary', 'menu:revenue'] },
 ]
 
 // === 角色列表 ===

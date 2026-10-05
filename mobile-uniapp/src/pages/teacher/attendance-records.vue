@@ -28,7 +28,7 @@
       <view class="detail-panel" @click.stop>
         <view class="detail-header">
           <text class="detail-title">{{ detailLesson?.lessonDate }} {{ detailLesson?.startTime?.slice(0,5) }}-{{ detailLesson?.endTime?.slice(0,5) }}</text>
-          <text class="detail-close" @click="detailVisible = false">✕</text>
+          <view class="ic ic-sm ic-close detail-close" @click="detailVisible = false"></view>
         </view>
         <text class="detail-class">{{ detailLesson?.courseName || '' }}{{ detailLesson?.courseName && detailLesson?.className ? ' · ' : '' }}{{ detailLesson?.className || '' }}</text>
         <scroll-view v-if="detailStudents.length > 0" scroll-y class="detail-list" :style="{ maxHeight: '50vh' }">

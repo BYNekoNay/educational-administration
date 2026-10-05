@@ -19,7 +19,7 @@
     <text class="section-header">课时账户</text>
 
     <view v-if="accounts.length === 0" class="empty-state">
-      <text class="empty-icon">📭</text>
+      <view class="ic ic-empty-box ic-inbox"></view>
       <text class="empty-text">暂无课时账户</text>
     </view>
 
@@ -75,7 +75,7 @@
     <text class="section-header">课时流水</text>
 
     <view v-if="flows.length === 0" class="empty-state">
-      <text class="empty-icon">📋</text>
+      <view class="ic ic-empty-box ic-clipboard"></view>
       <text class="empty-text">暂无流水记录</text>
     </view>
 

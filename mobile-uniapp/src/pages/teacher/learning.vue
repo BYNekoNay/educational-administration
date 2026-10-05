@@ -27,7 +27,7 @@
       <view class="mgmt-panel" @click.stop>
         <view class="mgmt-header">
           <text class="mgmt-title">{{ currentLesson.lessonDate }} {{ currentLesson.startTime?.slice(0,5) }}-{{ currentLesson.endTime?.slice(0,5) }}</text>
-          <text class="mgmt-close" @click="currentLesson = null">✕</text>
+          <view class="ic ic-sm ic-close mgmt-close" @click="currentLesson = null"></view>
         </view>
         <text class="mgmt-class">{{ currentLesson.courseName || '' }}{{ currentLesson.courseName && currentLesson.className ? ' · ' : '' }}{{ currentLesson.className || '' }}</text>
 

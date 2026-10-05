@@ -47,7 +47,7 @@
       <view class="detail-panel" @click.stop>
         <view class="detail-header">
           <text class="detail-title">{{ detailMonth }} 授课明细</text>
-          <text class="detail-close" @click="detailVisible = false">✕</text>
+          <view class="ic ic-sm ic-close detail-close" @click="detailVisible = false"></view>
         </view>
         <view v-if="detailLoading" class="detail-loading"><text>加载中...</text></view>
         <view v-else-if="detailLessons.length === 0" class="empty-state"><text>该月无授课记录</text></view>

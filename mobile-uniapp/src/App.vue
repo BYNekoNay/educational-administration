@@ -4,6 +4,7 @@ export default {}
 
 <style>
 @import './styles/tokens.css';
+@import './styles/icons.css';
 @import './styles/content.css';
 
 /* 全局基础 — 艺术培训风格 */

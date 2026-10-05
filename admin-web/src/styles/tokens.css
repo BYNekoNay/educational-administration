@@ -28,10 +28,10 @@
   --neutral-100:  #f5f0ed;    /* 卡片浅底 */
   --neutral-200:  #e8e0da;    /* 边框、分割线 */
   --neutral-300:  #d4cbc3;    /* 禁用态边框 */
-  --neutral-400:  #7c6c61;    /* 占位文字 — 在白底上 ≈4.7:1 ✅ */
-  --neutral-500:  #66584e;    /* 次要文字 — 在白底上 ≈6.5:1 ✅ */
-  --neutral-600:  #4d4139;    /* 正文 — 在白底上 ≈9.5:1 ✅ */
-  --neutral-700:  #362c26;    /* 标题 — 在白底上 ≈13.5:1 ✅ */
+  --neutral-400:  #7c6c61;    /* 占位文字 — 在白底上 ≈4.7:1 AA 达标 */
+  --neutral-500:  #66584e;    /* 次要文字 — 在白底上 ≈6.5:1 AA 达标 */
+  --neutral-600:  #4d4139;    /* 正文 — 在白底上 ≈9.5:1 AA 达标 */
+  --neutral-700:  #362c26;    /* 标题 — 在白底上 ≈13.5:1 AA 达标 */
   --neutral-800:  #231b16;    /* 强调标题 */
   --neutral-900:  #140e0a;    /* 最深文字 */
 
@@ -105,9 +105,9 @@
   --sidebar-width: 240px;
   --sidebar-collapsed: 64px;
   --sidebar-bg: #0c4a6e;
-  --sidebar-text: rgba(255, 255, 255, 0.80);       /* 在深蓝上 ≈6.5:1 ✅ */
+  --sidebar-text: rgba(255, 255, 255, 0.80);       /* 在深蓝上 ≈6.5:1 AA 达标 */
   --sidebar-active-bg: rgba(255, 255, 255, 0.14);
-  --sidebar-active-text: #ffffff;                    /* 100% 白，在蓝底上 ≈8.5:1 ✅ */
+  --sidebar-active-text: #ffffff;                    /* 100% 白，在蓝底上 ≈8.5:1 AA 达标 */
   --sidebar-hover-bg: rgba(255, 255, 255, 0.08);    /* 在深蓝上可见的微亮底 */
 
   /* ─── Layout ─── */

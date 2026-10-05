@@ -9,9 +9,9 @@
         <div v-for="item in slot.items" :key="item.id" class="dt-card"
              :style="{ borderLeftColor: hashColor(item.courseId) }">
           <div class="dt-card-title">{{ item.courseName || item.className }}</div>
-          <div class="dt-card-row">🕐 {{ item.startTime?.slice(0,5) }} - {{ item.endTime?.slice(0,5) }}</div>
-          <div class="dt-card-row">👤 {{ item.teacherName }} · 🏫 {{ item.classroomName }}</div>
-          <div class="dt-card-row">📚 {{ item.className }}
+          <div class="dt-card-row"><el-icon class="dt-ic"><Clock /></el-icon> {{ item.startTime?.slice(0,5) }} - {{ item.endTime?.slice(0,5) }}</div>
+          <div class="dt-card-row"><el-icon class="dt-ic"><User /></el-icon> {{ item.teacherName }} · <el-icon class="dt-ic"><OfficeBuilding /></el-icon> {{ item.classroomName }}</div>
+          <div class="dt-card-row"><el-icon class="dt-ic"><Reading /></el-icon> {{ item.className }}
             <el-tag size="small" :type="statusType(item.status)">{{ statusLabel(item.status) }}</el-tag>
           </div>
         </div>
@@ -21,8 +21,8 @@
                class="dt-card dt-overlap-card"
                :style="{ borderLeftColor: hashColor(item.courseId) }">
             <div class="dt-card-title">{{ item.courseName || item.className }}</div>
-            <div>🕐 {{ item.startTime?.slice(0,5) }} - {{ item.endTime?.slice(0,5) }} · 👤 {{ item.teacherName }}</div>
-            <div>🏫 {{ item.classroomName }}
+            <div><el-icon class="dt-ic"><Clock /></el-icon> {{ item.startTime?.slice(0,5) }} - {{ item.endTime?.slice(0,5) }} · <el-icon class="dt-ic"><User /></el-icon> {{ item.teacherName }}</div>
+            <div><el-icon class="dt-ic"><OfficeBuilding /></el-icon> {{ item.classroomName }}
               <el-tag size="small" :type="statusType(item.status)">{{ statusLabel(item.status) }}</el-tag>
             </div>
           </div>
@@ -37,6 +37,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Clock, User, OfficeBuilding, Reading } from '@element-plus/icons-vue'
 import type { ScheduleLesson } from '@/types'
 
 interface TimelineSlot {
@@ -132,6 +133,8 @@ function hashColor(id: number | null | undefined): string {
 .dt-card { background:#f0f9ff; border-left:3px solid; border-radius:4px; padding:6px 8px; margin:2px 0; flex:1 }
 .dt-card-title { font-size:14px; font-weight:600; color:#303133 }
 .dt-card-row { font-size:12px; color:#606266; margin-top:2px }
+/* 行内图标：统一 12px 描边图标，与文字基线对齐（原为 emoji 字符） */
+.dt-ic { font-size:12px; vertical-align:-1px; margin-right:2px; color:#909399 }
 .dt-overlap-group { display:flex; flex-direction:column; gap:2px; flex:1 }
 .dt-overlap-card { flex:1; min-height:40px }
 .dt-more { font-size:12px; color:#909399; text-align:center; padding:4px }

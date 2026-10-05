@@ -21,7 +21,7 @@
           <el-icon v-if="row.icon && knownIcons.has(row.icon)" style="font-size: 18px">
             <component :is="row.icon" />
           </el-icon>
-          <span v-else-if="row.icon" style="color: #e6a23c" :title="`未注册的图标名: ${row.icon}`">⚠</span>
+          <el-icon v-else-if="row.icon" style="color:#e6a23c"><WarningFilled /></el-icon>
           <span v-else style="color: #c0c4cc">—</span>
         </template>
       </el-table-column>
@@ -102,7 +102,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, WarningFilled, Monitor, Setting, Document, Money, DataAnalysis, Reading } from '@element-plus/icons-vue'
 import { menuApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import type { MenuItem } from '@/types'
@@ -115,7 +115,7 @@ const loading = ref(false)
 
 /** 已注册图标白名单——须与 AppLayout.vue 侧栏 iconMap 保持同步，
     未注册的图标名直接 <component :is> 会触发 Vue 告警且侧栏静默无图标 */
-const knownIcons = new Set(['Monitor', 'Setting', 'Document', 'Money'])
+const knownIcons = new Set(['Monitor', 'Setting', 'Document', 'Money', 'DataAnalysis', 'Reading'])
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editing = ref<MenuItem | null>(null)

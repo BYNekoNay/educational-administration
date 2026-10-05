@@ -48,17 +48,17 @@
             <text class="lesson-value-strong">{{ lesson.startTime }} - {{ lesson.endTime }}</text>
           </view>
           <view class="lesson-row">
-            <text class="lesson-icon">📚</text>
+            <view class="ic ic-sm ic-book"></view>
             <text class="lesson-label">班级</text>
             <text class="lesson-value">{{ lesson.className || '—' }}</text>
           </view>
           <view class="lesson-row">
-            <text class="lesson-icon">👨‍🏫</text>
+            <view class="ic ic-sm ic-teacher"></view>
             <text class="lesson-label">教师</text>
             <text class="lesson-value">{{ lesson.teacherName || '未指定' }}</text>
           </view>
           <view class="lesson-row">
-            <text class="lesson-icon">🏫</text>
+            <view class="ic ic-sm ic-building"></view>
             <text class="lesson-label">教室</text>
             <text class="lesson-value">{{ lesson.classroomName || '—' }}</text>
           </view>

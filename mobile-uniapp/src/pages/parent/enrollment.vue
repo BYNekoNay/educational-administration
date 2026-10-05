@@ -38,9 +38,9 @@
               <text class="course-info">{{ course.totalLessons }}课时 · {{ course.lessonDuration }}分钟/节</text>
             </view>
             <view class="course-extra">
-              <text class="extra-item">🎯 {{ getCategoryDesc(course.category) }}</text>
+              <view class="ic ic-sm ic-target" style="margin-right:6rpx"></view><text class="extra-item">{{ getCategoryDesc(course.category) }}</text>
               <text class="extra-item" v-if="classCountMap[course.id] !== undefined">
-                📚 {{ classCountMap[course.id] }} 个开班可选
+                <view class="ic ic-sm ic-book" style="margin-right:6rpx"></view>{{ classCountMap[course.id] }} 个开班可选
               </text>
             </view>
           </view>
@@ -62,15 +62,15 @@
             <view class="class-row1">
               <text class="class-name">{{ cls.className }}</text>
               <text class="class-spots" :class="{ 'class-spots-full': isClassFull(cls), 'class-spots-conflict': isClassConflict(cls) }">
-                {{ isClassConflict(cls) ? '⛔ 冲突' : spotsText(cls) }}
+                {{ isClassConflict(cls) ? '时间冲突' : spotsText(cls) }}
               </text>
             </view>
             <view class="class-row2">
-              <text class="class-meta">👨‍🏫 {{ cls.teacherName }}</text>
-              <text class="class-meta">🕐 {{ cls.scheduleSummary }}</text>
+              <text class="class-meta"><view class="ic ic-sm ic-teacher"></view> {{ cls.teacherName }}</text>
+              <text class="class-meta"><view class="ic ic-sm ic-clock"></view> {{ cls.scheduleSummary }}</text>
             </view>
             <view class="class-row3">
-              <text v-if="cls.startDate" class="class-start">📅 {{ formatDate(cls.startDate) }} 开课</text>
+              <text v-if="cls.startDate" class="class-start"><view class="ic ic-sm ic-calendar"></view> {{ formatDate(cls.startDate) }} 开课</text>
               <text v-if="isClassFull(cls)" class="class-full-tip">已满</text>
               <text v-else-if="isClassConflict(cls)" class="class-conflict-desc">{{ getConflictText(cls) }}</text>
               <!-- maxStudentCount=0 表示不限名额（后端 null→0），直接相减会显示负数 -->
@@ -107,7 +107,7 @@
           <text class="sheet-value">{{ selectedClass.scheduleSummary }}</text>
         </view>
         <view v-if="selectedClass && isClassConflict(selectedClass)" class="sheet-warning">
-          <text class="sheet-warning-text">⚠️ {{ getConflictText(selectedClass) }}，报名将被拦截</text>
+          <text class="sheet-warning-text"><view class="ic ic-sm ic-warning"></view> {{ getConflictText(selectedClass) }}，报名将被拦截</text>
         </view>
         <view class="sheet-info">
           <text class="sheet-label">课时/价格</text>
@@ -182,7 +182,7 @@ function isClassConflict(cls) {
 /** 获取冲突描述文本 */
 function getConflictText(cls) {
   const c = conflictMap.value[cls.id]
-  return c ? `⛔ 与[${c.conflictClassName}]时间冲突：${c.description}` : ''
+  return c ? `与[${c.conflictClassName}]时间冲突：${c.description}` : ''
 }
 
 function formatDate(d) {
