@@ -14,7 +14,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -137,16 +139,30 @@ class LoginAttemptServiceTest {
     }
 
     @Test
-    @DisplayName("Spring 上下文未提供 StringRedisTemplate 时不抛异常（構造期降级）")
+    @DisplayName("Spring 上下文未提供 StringRedisTemplate：构造与调用不抛异常，且降级为进程内计数后防护仍生效（构造期降级）")
     void missingRedisBean_DoesNotFailConstruction() {
         @SuppressWarnings("unchecked")
         ObjectProvider<StringRedisTemplate> empty = mock(ObjectProvider.class);
         when(empty.getIfAvailable()).thenReturn(null);
 
         LoginAttemptService noRedis = new LoginAttemptService(empty);
-        noRedis.checkLocked("admin", "203.0.113.7"); // 放行
-        noRedis.recordFailure("admin", null);
-        noRedis.clearSuccess("admin", null);
+
+        // 1) 显式断言「降级不阻断服务」：构造与调用均不抛异常。
+        //    不用「没抛就是过」的隐式写法，否则任何实现（包括空实现）都恒绿。
+        assertThatCode(() -> noRedis.checkLocked("admin", "203.0.113.7")).doesNotThrowAnyException();
+        assertThatCode(() -> noRedis.recordFailure("admin", null)).doesNotThrowAnyException();
+        assertThatCode(() -> noRedis.clearSuccess("admin", null)).doesNotThrowAnyException();
+
+        // 2) 降级语义断言：无 Redis 时计数必须落在进程内，连续失败达账号阈值后 checkLocked 抛 429。
+        //    若降级路径退化成「什么都不做」的空实现（只吞掉异常不计数），本断言会红。
+        for (int i = 0; i < 5; i++) {
+            noRedis.recordFailure("degraded", null);
+        }
+        BusinessException ex = catchThrowableOfType(
+                () -> noRedis.checkLocked("degraded", null), BusinessException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(429);
+        assertThat(ex.getMessage()).contains("账号已锁定");
     }
 
     @Test
