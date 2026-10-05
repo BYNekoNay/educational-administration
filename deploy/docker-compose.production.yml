@@ -90,11 +90,24 @@ services:
       cache:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && echo ready'"]
+      # 与就绪探针对齐：/actuator/health/readiness 的 readiness 组包含
+      # readinessState 与 db（application-prod.yml），MySQL 不可用时返回 DOWN。
+      # 原实现是裸 TCP（只证明 8080 端口开着），DB 失联或连接池耗尽时仍判 healthy，
+      # 会让 release-production.sh / rollback-images.sh 误判发布与回滚成功。
+      # 只用 bash 内建的 /dev/tcp + printf + grep，不依赖镜像内是否安装 curl/wget：
+      # 本环境无法拉取 eclipse-temurin:17-jre-jammy 核实其是否自带 curl，因此不把
+      # 探测建立在未经验证的假设上（wget 同理，nginx:1.27-alpine 的 busybox 才有）。
+      test:
+        - CMD-SHELL
+        - "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080; printf %b \"GET /actuator/health/readiness HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n\" >&3; grep -qm1 UP <&3'"
       interval: 15s
       timeout: 5s
       retries: 12
       start_period: 60s
+    # 应用侧配了 server.shutdown=graceful + timeout-per-shutdown-phase=30s
+    # （application-prod.yml）；不显式放宽则 Docker 默认 10s 就 SIGKILL，优雅停机
+    # 窗口被容器截断，发布/备份停机会丢掉在途请求（缴费、考勤这类写操作）。
+    stop_grace_period: 40s
     deploy:
       resources:
         limits:
@@ -114,12 +127,18 @@ services:
     # OPS-01: rollback-images.sh and release-production.sh require the web
     # container to reach State.Health.Status == "healthy". The image is
     # nginx:1.27-alpine, whose busybox provides wget for this probe.
+    # 探 /healthz 而不是 /：nginx 把 /healthz 代理到 backend 的
+    # /actuator/health/readiness，因此 backend 或 MySQL 不可用时 web 才会真正
+    # 转为 unhealthy。探 / 只是取静态 index.html，后端全挂它也照样 200。
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1"]
       interval: 15s
       timeout: 5s
       retries: 6
       start_period: 20s
+    # nginx 收到 SIGTERM 后需先结束长连接（SSE 心跳周期 25s，proxy_read_timeout
+    # 300s）；与 backend 保持一致，避免 Docker 默认 10s 直接 SIGKILL。
+    stop_grace_period: 40s
     deploy:
       resources:
         limits:

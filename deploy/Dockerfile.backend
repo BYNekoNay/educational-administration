@@ -11,5 +11,11 @@ FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 COPY --from=build /workspace/target/eduadmin.jar app.jar
 
+# 显式固定时区：全库有 44 处 LocalDate.now()/LocalDateTime.now()（今日课次、报名占位
+# 到期、课时账户到期日等），一旦时区退回 UTC 会静默差一天且不报错。
+# compose 里虽已为 backend 传入 TZ，但脱离 compose 运行本镜像（本地 docker run、
+# 换编排、他人复用）时就不会有该变量，因此在镜像层就带上默认值。
+ENV TZ=Asia/Shanghai
+
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
