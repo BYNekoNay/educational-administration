@@ -304,6 +304,7 @@ import { salaryApi } from '@/api/finance'
 import { teacherApi, courseApi } from '@/api/edu'
 import { showError } from '@/utils/error'
 import { useAuthStore } from '@/stores/auth'
+import { currentYearMonth } from '@/utils/date'
 import type { Course, SalaryBatchResult, SalaryRule, TeacherInfo, TeacherSalary } from '@/types'
 
 // 按钮级权限：仅持有薪资菜单权限的角色可见行内确认/作废/调整/发放按钮（防御性隐藏，避免点击后 403）
@@ -385,7 +386,9 @@ const batchCalculating = ref(false)
 const batchResultVisible = ref(false)
 const batchResult = ref<SalaryBatchResult | null>(null)
 const calcTeacherId = ref<number | null>(null)
-const calcMonthDate = ref<string>(new Date().toISOString().slice(0, 7))
+// 用本地时区取年月：toISOString() 是 UTC，UTC+8 下每月 1 日 00:00–08:00 会得到
+// 「上个月」，一键结算就会算错月份（后端只做非空校验，会照单全收）。
+const calcMonthDate = ref<string>(currentYearMonth())
 const calcBonus = ref<number>(0)
 
 const filterStatus = ref<number | null>(null)

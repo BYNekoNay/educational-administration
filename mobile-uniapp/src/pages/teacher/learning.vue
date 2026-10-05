@@ -80,6 +80,7 @@
 import { ref, onMounted } from 'vue'
 import { api, downloadProtectedFile, uploadFile } from '@/utils/request'
 import { getErrorMessage } from '@/utils/error'
+import { todayLocalDate } from '@/utils/date'
 
 const lessons = ref([])
 const currentLesson = ref(null)
@@ -192,7 +193,8 @@ onMounted(async () => {
   try {
     const r = await api({ url: '/api/teacher/lessons?pageNum=1&pageSize=200' })
     const all = r.data?.records || []
-    const today = new Date().toISOString().slice(0, 10)
+    // 本地时区取日期，避免 UTC+8 下 00:00–08:00 取到前一天（见 utils/date.js 注释）
+    const today = todayLocalDate()
     // 今日待上课 + 历史已完成
     lessons.value = all
       .filter(l => l.lessonDate <= today)

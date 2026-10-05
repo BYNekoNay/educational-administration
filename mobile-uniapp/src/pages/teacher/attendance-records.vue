@@ -45,6 +45,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '@/utils/request'
+import { todayLocalDate } from '@/utils/date'
 
 const records = ref([])
 const detailVisible = ref(false)
@@ -74,7 +75,8 @@ onMounted(async () => {
   try {
     const r = await api({ url: '/api/teacher/lessons?pageNum=1&pageSize=200' })
     const all = r.data?.records || []
-    const today = new Date().toISOString().slice(0, 10)
+    // 本地时区取日期，避免 UTC+8 下 00:00–08:00 取到前一天（见 utils/date.js 注释）
+    const today = todayLocalDate()
     // 仅历史+今日已完成/已取消/已调课，不显示将来课次
     records.value = all
       .filter(l => l.lessonDate <= today)

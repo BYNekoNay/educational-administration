@@ -59,6 +59,7 @@
 import { ref, onMounted } from 'vue'
 import { api } from '@/utils/request'
 import { getErrorMessage } from '@/utils/error'
+import { todayLocalDate } from '@/utils/date'
 
 const lessons = ref([])
 const currentLesson = ref(null)
@@ -134,7 +135,9 @@ onMounted(async () => {
   try {
     const r = await api({ url: '/api/teacher/lessons?pageNum=1&pageSize=200' })
     const all = r.data?.records || []
-    const today = new Date().toISOString().slice(0, 10)
+    // 用本地时区取日期：toISOString() 得到的是 UTC，UTC+8 下每天 00:00–08:00
+    // 会取到「前一天」，与后端 LocalDate 比对不上导致今日课次为空。
+    const today = todayLocalDate()
     // 仅显示今日待上课(status=1)课次，历史课次请到"考勤记录"
     lessons.value = all.filter(l => l.lessonDate === today && Number(l.status) === 1)
   } catch (e) {
