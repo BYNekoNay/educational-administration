@@ -119,7 +119,26 @@ jobs:
           # 因此必须与 docker-compose.yml / Caddyfile 同级，不能放进 scripts/。
           scp deploy/acceptance_test.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/acceptance_test.sh"
           ssh "$DEPLOY_USER@$DEPLOY_HOST" "chmod +x '$DEPLOY_PATH'/scripts/*.sh"
+      - name: Verify release gate inputs (production precondition)
+        # B3: the release gate is a precondition for a production deployment,
+        # not a post-deployment check. secrets.* cannot be read from a step-level
+        # `if:` expression, so the emptiness test runs inside the script.
+        # Failing here stops the workflow before the deployment env is written
+        # and before any container is started; the previous behaviour deployed
+        # first and then printed a warning plus `exit 0`, which made the claim
+        # "release gate enforced" silently false.
+        if: inputs.environment == 'production'
+        env:
+          DEPLOY_SMOKE_PASSWORD: ${{ secrets.DEPLOY_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_SMOKE_PASSWORD:-}" ]; then
+            echo "::error::DEPLOY_SMOKE_PASSWORD is empty in the production GitHub Environment. The release gate is a precondition for production, so the workflow stops before writing the deployment env or starting containers. Configure the secret in the protected Environment, or deploy to staging."
+            exit 1
+          fi
+          printf 'Release gate inputs are present for production.\n'
       - name: Snapshot current release for rollback
+        id: snapshot
         # OPS-01(b): record the images and Flyway version running right now so
         # that the failure rollback step has valid inputs. release-state.env uses
         # exactly the five field names rollback-images.sh parses (see
@@ -130,8 +149,9 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          snapshot_output="$RUNNER_TEMP/release-snapshot-output.txt"
           ssh "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' EXPECTED_IMAGE_TAG='$IMAGE_TAG' EXPECTED_SCHEMA_VERSION='$EXPECTED_SCHEMA_VERSION' bash -s" <<'REMOTE'
+            "DEPLOY_PATH='$DEPLOY_PATH' EXPECTED_IMAGE_TAG='$IMAGE_TAG' EXPECTED_SCHEMA_VERSION='$EXPECTED_SCHEMA_VERSION' bash -s" <<'REMOTE' > "$snapshot_output"
           set -euo pipefail
           umask 077
           cd "$DEPLOY_PATH"
@@ -180,8 +200,27 @@ jobs:
           EOF
           chmod 600 -- "$evidence_dir/release-state.env"
           printf 'Rollback snapshot ready: %s\n' "$evidence_dir"
+          printf 'EVIDENCE_DIR=%s\n' "$evidence_dir"
           REMOTE
-      - name: Deploy containers
+          cat -- "$snapshot_output"
+          # B2: publish the pre-release snapshot directory so the rollback step
+          # uses it explicitly instead of picking "the newest directory on the
+          # host". release-production.sh creates a newer evidence directory
+          # after its own `compose up`, so the newest one is not the snapshot.
+          evidence_dir="$(sed -n 's/^EVIDENCE_DIR=//p' "$snapshot_output" | tail -n 1)"
+          if [ -z "$evidence_dir" ]; then
+            echo "::error::The rollback snapshot step did not report an evidence directory; automatic image rollback will be unavailable."
+            exit 1
+          fi
+          printf 'evidence_dir=%s\n' "$evidence_dir" >> "$GITHUB_OUTPUT"
+      - name: Write deployment env and authenticate registry
+        # Runs for every environment, including production: the release gate
+        # pulls and starts the stack itself (release-production.sh), and it
+        # reads BACKEND_IMAGE/WEB_IMAGE from this .env. Skipping the write for
+        # production would make the gate redeploy the previous tags.
+        # advisory 2: this file holds MYSQL_ROOT_PASSWORD and JWT_SECRET, so it
+        # is created mode 600 like every other secret file this workflow writes
+        # (.smoke-password, release-state.env, .backup-key-*).
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -195,7 +234,7 @@ jobs:
           DEPLOY_SITE_ADDRESS: ${{ secrets.DEPLOY_SITE_ADDRESS }}
           DEPLOY_ORIGIN: ${{ secrets.DEPLOY_ORIGIN }}
         run: |
-          cat <<EOF | base64 | ssh "$DEPLOY_USER@$DEPLOY_HOST" "base64 --decode > '$DEPLOY_PATH/.env'"
+          cat <<EOF | base64 | ssh "$DEPLOY_USER@$DEPLOY_HOST" "base64 --decode > '$DEPLOY_PATH/.env' && chmod 600 '$DEPLOY_PATH/.env'"
           MYSQL_DATABASE=edu_admin
           MYSQL_USER=edu_admin
           MYSQL_PASSWORD=$MYSQL_PASSWORD
@@ -206,7 +245,20 @@ jobs:
           BACKEND_IMAGE=$BACKEND_IMAGE:$IMAGE_TAG
           WEB_IMAGE=$WEB_IMAGE:$IMAGE_TAG
           EOF
-          printf '%s' "$ACR_PASSWORD" | ssh "$DEPLOY_USER@$DEPLOY_HOST" "docker login '$ACR_REGISTRY' -u '$ACR_USERNAME' --password-stdin && cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans && docker compose ps"
+          printf '%s' "$ACR_PASSWORD" | ssh "$DEPLOY_USER@$DEPLOY_HOST" "docker login '$ACR_REGISTRY' -u '$ACR_USERNAME' --password-stdin"
+      - name: Deploy containers (non-production only)
+        # B2/B3: production must be started by release-production.sh, which is
+        # the authoritative gate. Starting the stack here first is exactly what
+        # made the gate sample the *new* images as "previous" (its PREVIOUS_*
+        # is read at release-production.sh:93-94, before its own `compose up`),
+        # so the failure rollback restored the very image that had just failed.
+        if: inputs.environment != 'production'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans && docker compose ps"
       - name: Run authoritative release gate (production)
         # OPS-02: release-production.sh is the authoritative gate. It pulls the
         # immutable images, starts the stack, then proves container health,
@@ -222,15 +274,16 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           DEPLOY_SITE_ADDRESS: ${{ secrets.DEPLOY_SITE_ADDRESS }}
           DEPLOY_SMOKE_SCHEME: ${{ secrets.DEPLOY_SMOKE_SCHEME }}
-          # secrets.* is not available in step-level if: expressions, so the
-          # "configured" decision is made here and read back inside the script.
-          SMOKE_PASSWORD_CONFIGURED: ${{ secrets.DEPLOY_SMOKE_PASSWORD != '' }}
           DEPLOY_SMOKE_PASSWORD: ${{ secrets.DEPLOY_SMOKE_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ "$SMOKE_PASSWORD_CONFIGURED" != "true" ] || [ -z "$DEPLOY_SMOKE_PASSWORD" ]; then
-            echo "::warning::DEPLOY_SMOKE_PASSWORD is not configured in this GitHub Environment; the release gate was SKIPPED. Configure it to enforce deploy/RELEASE_RUNBOOK.md automatically."
-            exit 0
+          # B3: an empty smoke password is rejected before any deployment action
+          # by the "Verify release gate inputs" step, so reaching this step with
+          # an empty value is a workflow bug, not a configuration choice. Never
+          # exit 0 here: that used to turn a skipped gate into a green deploy.
+          if [ -z "$DEPLOY_SMOKE_PASSWORD" ]; then
+            echo "::error::DEPLOY_SMOKE_PASSWORD reached the release gate empty; the gate cannot be skipped."
+            exit 1
           fi
           case "$DEPLOY_SITE_ADDRESS" in
             *://*) public_base_url="${DEPLOY_SITE_ADDRESS%/}" ;;
@@ -298,17 +351,20 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          # B2: the directory produced by the pre-release snapshot step, not
+          # "the newest release-evidence directory on the host".
+          ROLLBACK_EVIDENCE_DIR: ${{ steps.snapshot.outputs.evidence_dir }}
         run: |
           set -euo pipefail
-          # The failure decision and rollback inputs come from the release
-          # evidence produced on the host (see deploy/RELEASE_RUNBOOK.md).
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
-            "ls -1dt \"$DEPLOY_PATH\"/release-evidence/*/ 2>/dev/null | head -n1" \
-            > /tmp/rollback-evidence-dir.txt || true
-          evidence_dir="$(tr -d '[:space:]' < /tmp/rollback-evidence-dir.txt)"
+          # The failure decision and rollback inputs come from the pre-release
+          # snapshot (see deploy/RELEASE_RUNBOOK.md). release-production.sh also
+          # writes an evidence directory, but it is created after the new images
+          # are already running, so its PREVIOUS_* records the failing image --
+          # rolling back from it is a no-op that reports success.
+          evidence_dir="${ROLLBACK_EVIDENCE_DIR:-}"
           evidence_dir="${evidence_dir%/}"
           if [ -z "$evidence_dir" ]; then
-            echo "::error::No release-evidence directory found on the host; automatic image rollback is unavailable. Follow deploy/RELEASE_RUNBOOK.md."
+            echo "::error::No pre-release rollback snapshot is available (the snapshot step did not run or failed), so automatic image rollback cannot be performed. Roll back manually following deploy/RELEASE_RUNBOOK.md and the last known good image tags."
             exit 1
           fi
           previous_schema_version="$(ssh "$DEPLOY_USER@$DEPLOY_HOST" \
