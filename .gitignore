@@ -94,3 +94,6 @@ coverage/
 # 部署脚本的本地模拟环境（含模拟 release-evidence），仅供本机演练，不入库
 # ============================================
 .tmp_sim/
+
+# vitest 沙箱临时缓存（EPERM 环境下的退化产物，非源码）
+mobile-uniapp/.tmp-vitest/

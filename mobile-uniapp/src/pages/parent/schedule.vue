@@ -43,7 +43,7 @@
           <view class="lesson-divider"></view>
 
           <view class="lesson-row">
-            <text class="lesson-icon">⏰</text>
+            <view class="ic ic-sm ic-clock"></view>
             <text class="lesson-label">时间</text>
             <text class="lesson-value-strong">{{ lesson.startTime }} - {{ lesson.endTime }}</text>
           </view>
@@ -348,13 +348,6 @@ onMounted(fetchSchedule)
   align-items: center;
   padding: 8rpx 0;
   gap: 12rpx;
-}
-
-.lesson-icon {
-  font-size: 26rpx;
-  width: 36rpx;
-  text-align: center;
-  flex-shrink: 0;
 }
 
 .lesson-label {
