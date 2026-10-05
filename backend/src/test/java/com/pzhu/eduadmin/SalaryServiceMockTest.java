@@ -360,4 +360,58 @@ class SalaryServiceMockTest {
         TeacherSalary result = salaryService.voidSalary(1L);
         assertThat(result.getStatus()).isEqualTo(4);
     }
+
+    // ==================== P0 回归：已发放(status=3)为终态 ====================
+    // 背景：calculateSalary / confirmSalary / voidSalary 三处此前均未拦截 status=3，
+    // 形成 3→(重算)→1→(确认)→2→(发放)→3 的同月二次付款路径。以下三条守住终态。
+
+    @Test
+    @DisplayName("已发放薪资不可重新核算（P0 回归：堵住二次付款入口）")
+    void shouldRejectOverwritePaid() {
+        TeacherSalary existing = new TeacherSalary();
+        existing.setId(1L); existing.setStatus(3);
+
+        SalaryRule rule = new SalaryRule();
+        rule.setLessonUnitPrice(new java.math.BigDecimal("100"));
+        rule.setSubstituteRate(new java.math.BigDecimal("0.8"));
+        rule.setCourseId(1L);
+
+        when(lessonMapper.selectList(any())).thenReturn(java.util.List.of());
+        when(ruleMapper.selectList(any())).thenReturn(java.util.List.of(rule));
+        when(salaryMapper.selectOne(any())).thenReturn(existing);
+
+        assertThatThrownBy(() ->
+                salaryService.calculateSalary("2026-07", 1L, BigDecimal.ZERO))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已发放");
+    }
+
+    @Test
+    @DisplayName("已发放薪资不可再次确认（P0 回归：堵住 3→2 回退）")
+    void shouldRejectConfirmPaid() {
+        TeacherSalary salary = new TeacherSalary();
+        salary.setId(1L); salary.setTeacherId(1L); salary.setStatus(3);
+
+        when(salaryMapper.selectById(1L)).thenReturn(salary);
+
+        assertThatThrownBy(() -> salaryService.confirmSalary(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已发放");
+        // 关键：不得产生任何状态写入
+        verify(salaryMapper, never()).update(any(), any(LambdaUpdateWrapper.class));
+    }
+
+    @Test
+    @DisplayName("已发放薪资不可撤销（P0 回归：堵住 3→4→重算→再发放）")
+    void shouldRejectVoidPaid() {
+        TeacherSalary salary = new TeacherSalary();
+        salary.setId(1L); salary.setTeacherId(1L); salary.setStatus(3);
+
+        when(salaryMapper.selectById(1L)).thenReturn(salary);
+
+        assertThatThrownBy(() -> salaryService.voidSalary(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已发放");
+        verify(salaryMapper, never()).update(any(), any(LambdaUpdateWrapper.class));
+    }
 }

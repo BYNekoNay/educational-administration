@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.common.CacheNames;
 import com.pzhu.eduadmin.common.QueryHelper;
+import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.service.AttendanceService;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
 import com.pzhu.eduadmin.modules.course.entity.Course;
@@ -41,6 +42,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -368,6 +370,21 @@ public class ScheduleServiceImpl implements ScheduleService {
         // 可能已产生考勤扣减，直接删除会导致课时账户永久不一致（扣减无法回滚）。
         if (lesson.getStatus() != null && lesson.getStatus() != 1) {
             throw new BusinessException(409, "该课次已非待上课状态，无法删除（如需调整请使用调课/取消功能）");
+        }
+        // 【P0 修复】上面的状态守卫不足以保证没有课时扣减。
+        // 原实现隐含假设"status=1（待上课）的课次尚无考勤"，但考勤允许对待上课课次提交
+        // 并扣减课时（见 AttendanceServiceImpl），因此先考勤再删课会让已扣课时永久丢失：
+        // 课次记录消失后 reverseDeductByLessonId 无从回冲，学员课时账户凭空少账且无流水。
+        // 这里显式检查是否存在已扣课时的考勤，有则拒绝删除并引导走调课/取消流程。
+        List<Attendance> lessonAttendances = attendanceService.getByLessonId(id);
+        if (lessonAttendances != null) {
+            boolean hasDeduction = lessonAttendances.stream()
+                    .anyMatch(a -> a.getDeductLessons() != null
+                            && a.getDeductLessons().compareTo(BigDecimal.ZERO) > 0);
+            if (hasDeduction) {
+                throw new BusinessException(409,
+                        "该课次已产生课时扣减，删除将导致课时无法回冲。请使用调课或取消功能");
+            }
         }
         boolean deleted = scheduleLessonMapper.deleteById(id) > 0;
         if (deleted) {

@@ -325,8 +325,15 @@ public class SalaryServiceImpl implements SalaryService {
                 .eq(TeacherSalary::getSalaryMonth, salaryMonth));
 
         if (existing != null) {
+            // 【P0 修复】已发放(status=3)同样必须拦截。
+            // 此前只拦已确认(status=2)，导致已发放的薪资可被重新核算重置为待确认(1)，
+            // 再经 确认(1→2) → 发放(2→3) 形成同一月份的二次付款路径。
+            // 允许覆盖的仅 待确认(1) 与 已作废(4)。
             if (existing.getStatus() == 2) {
                 throw new BusinessException(409, "该月薪资已确认，不可覆盖。请先作废后再重新核算");
+            }
+            if (existing.getStatus() == 3) {
+                throw new BusinessException(409, "该月薪资已发放，不可重新核算。如需更正请使用薪资调整功能");
             }
         }
         // salary 是 existing 的别名，下方 setStatus(1) 会改写同一对象，
@@ -431,6 +438,8 @@ public class SalaryServiceImpl implements SalaryService {
         TeacherSalary salary = teacherSalaryMapper.selectById(id);
         if (salary == null) throw new BusinessException(404, "薪资记录不存在");
         if (salary.getStatus() == 2) throw new BusinessException(409, "薪资已确认");
+        // 【P0 修复】已发放(status=3)为终态，不得回退为已确认，否则可重新走发放流程造成二次付款。
+        if (salary.getStatus() == 3) throw new BusinessException(409, "薪资已发放，不可再次确认");
         if (salary.getStatus() == 4) throw new BusinessException(409, "已撤销的薪资不可确认，请重新核算");
 
         // CAS 原子更新：防止并发确认
@@ -460,6 +469,9 @@ public class SalaryServiceImpl implements SalaryService {
         TeacherSalary salary = teacherSalaryMapper.selectById(id);
         if (salary == null) throw new BusinessException(404, "薪资记录不存在");
         if (salary.getStatus() == 4) throw new BusinessException(409, "薪资已撤销");
+        // 【P0 修复】已发放(status=3)的薪资不可直接撤销，须走冲销流程，
+        // 否则形成 3→4→重新核算→确认→发放 的重复付款路径。
+        if (salary.getStatus() == 3) throw new BusinessException(409, "薪资已发放，不可撤销。如需更正请使用薪资调整功能");
 
         // CAS 原子更新：防止并发作废
         int updated = teacherSalaryMapper.update(null,

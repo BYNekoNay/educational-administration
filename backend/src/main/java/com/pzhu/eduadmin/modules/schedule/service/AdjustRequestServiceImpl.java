@@ -278,7 +278,16 @@ public class AdjustRequestServiceImpl implements AdjustRequestService {
                     && oldLesson.getTeacherId() != null
                     && !newLesson.getTeacherId().equals(oldLesson.getTeacherId());
             // 分类标记：isSubstitute=true 为代课，false 为调课（当前逻辑固定为调课）
-            newLesson.setSourceLessonId(oldLesson.getId());
+            //
+            // 【P0 修复】仅在代课场景写入 sourceLessonId。
+            // 薪资核算（SalaryServiceImpl）以 sourceLessonId 是否为空作为区分主讲与代课的
+            // 唯一判据（主讲 isNull / 代课 isNotNull），代课金额按 lesson_unit_price ×
+            // substitute_rate（默认 0.80）折算。此前此处无条件写入，导致调课生成的替换课次
+            // 被误判为代课，主讲教师该课次少结算 20%。
+            // 未来若支持指定代课教师，只需在此处设置不同的 teacherId，本分支即自动生效。
+            if (isSubstitute) {
+                newLesson.setSourceLessonId(oldLesson.getId());
+            }
 
             // 调课生成的新课次继承原教室，需复核教室仍存在（原课次创建后教室可能被软删除），
             // 否则替换课次静默引用孤立教室，且冲突检测对未知教室恒通过。

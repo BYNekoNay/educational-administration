@@ -37,8 +37,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+
+import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -230,6 +233,51 @@ class ScheduleServiceMockTest {
 
         assertThat(scheduleService.deleteLesson(1L)).isTrue();
         verify(operationLogService).log(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("删除已产生课时扣减的课次 — 必须拒绝（P0 回归：否则课时永久丢失且无从回冲）")
+    void deleteLesson_RejectWhenDeductionExists() {
+        // 课次状态为待上课(1)，按旧逻辑本可被删除
+        ScheduleLesson lesson = new ScheduleLesson();
+        lesson.setId(1L);
+        lesson.setStatus(1);
+        when(scheduleLessonMapper.selectById(1L)).thenReturn(lesson);
+
+        // 但该课次已存在扣减 1 课时的考勤记录
+        Attendance deducted = new Attendance();
+        deducted.setId(10L);
+        deducted.setLessonId(1L);
+        deducted.setStatus(1);
+        deducted.setDeductLessons(new BigDecimal("1.00"));
+        when(attendanceService.getByLessonId(1L)).thenReturn(List.of(deducted));
+
+        assertThatThrownBy(() -> scheduleService.deleteLesson(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("课时扣减");
+        // 关键断言：绝不能真的删除，否则已扣课时无任何回冲依据
+        verify(scheduleLessonMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    @DisplayName("删除仅有零扣减考勤的课次 — 允许（不误伤请假等不扣课时的记录）")
+    void deleteLesson_AllowWhenNoDeduction() {
+        ScheduleLesson lesson = new ScheduleLesson();
+        lesson.setId(1L);
+        lesson.setStatus(1);
+        when(scheduleLessonMapper.selectById(1L)).thenReturn(lesson);
+        when(scheduleLessonMapper.deleteById(1L)).thenReturn(1);
+
+        // 请假(status=3)不扣课时，不应阻止删除
+        Attendance leave = new Attendance();
+        leave.setId(11L);
+        leave.setLessonId(1L);
+        leave.setStatus(3);
+        leave.setDeductLessons(BigDecimal.ZERO);
+        when(attendanceService.getByLessonId(1L)).thenReturn(List.of(leave));
+
+        assertThat(scheduleService.deleteLesson(1L)).isTrue();
+        verify(scheduleLessonMapper).deleteById(1L);
     }
 
     // ============ 更新课次 ============
@@ -541,7 +589,12 @@ class ScheduleServiceMockTest {
         assertThat(newLesson.getClassId()).isEqualTo(5L);
         assertThat(newLesson.getTeacherId()).isEqualTo(3L);
         assertThat(newLesson.getStatus()).isEqualTo(1);
-        assertThat(newLesson.getSourceLessonId()).isEqualTo(oldLessonId);
+        // 【P0 修复】调课（新旧教师相同）不得写入 sourceLessonId。
+        // 该字段是薪资核算区分主讲课次与代课课次的唯一判据（SalaryServiceImpl 主讲 isNull /
+        // 代课 isNotNull，代课按 substitute_rate 默认 0.80 折算）。调课若写入，主讲课次会被
+        // 误判为代课，教师该课次少结算 20%。
+        // 与快捷调课路径保持一致：ScheduleQuickAdjustTest 同样断言调课不生成 sourceLessonId。
+        assertThat(newLesson.getSourceLessonId()).isNull();
     }
 
     @Test
