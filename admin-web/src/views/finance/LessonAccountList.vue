@@ -46,7 +46,9 @@ const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 async function loadData() {
   loading.value = true
   try {
-    const res = await lessonAccountApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    const res = await lessonAccountApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined,
+      // 后端已支持 keyword（按学员姓名/课程名匹配）；清空时传空串而不是残留上一次的关键字
+      keyword: keyword.value || '' })
     tableData.value = res.data?.records ?? []
     total.value = res.data?.total ?? 0
   } catch (e) { showError(e, '加载课时账户失败') }

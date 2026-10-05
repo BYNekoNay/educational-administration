@@ -11,7 +11,7 @@
 | 层级 | 技术 |
 |------|------|
 | 管理后台前端 | Vue 3 + Vite 5 + Pinia + Element Plus + TypeScript |
-| 移动端 | uni-app (Vue3+Vite) + uView Plus |
+| 移动端 | uni-app (Vue3+Vite)，页面以原生组件与自研样式为主（**未引入第三方 UI 组件库**） |
 | 后端 | Spring Boot 3.2.5 + MyBatis-Plus 3.5.7 |
 | 语言 | JDK 17 |
 | 数据库 | MySQL 8.0 |
@@ -76,6 +76,12 @@ cd mobile-uniapp
 npm install
 npm run build:h5
 ```
+
+> **交付范围说明**：uni-app 具备编译为微信小程序 / App 的能力，但**本次交付与验收仅为 H5 形态**。
+> 小程序端受平台硬约束（强制 HTTPS、需已备案域名并加入服务器域名白名单、禁用 localhost），
+> 且 `manifest.json` 的 `mp-weixin.appid` 未配置，因此**未纳入本次交付与验证**。
+> 相关代码里的请求基址为 `__MP_BASE_URL__` 占位（见 `mobile-uniapp/src/utils/request.js`），
+> 如需正式发布小程序，需注入已备案的 HTTPS 后端地址并配置 appid。
 
 产物在 `dist/build/h5-release/`。H5 发布态需配置反向代理（如 nginx）将 `/api` 转发到后端，或通过 Vite 开发代理运行（`npm run dev:h5`）。
 
@@ -204,7 +210,7 @@ educational-administration/
 - **生产化能力**（v1.1.0 新增）：Flyway 版本化迁移（V6/V7）、加密备份/恢复/演练、发布门禁 + 镜像回退、业务可观测性（actuator/Prometheus/关联 ID/JSON 日志）、H5 报名决策快照（If-Match 一致性）、上传内容校验（Content-Type + 魔数）、CI 测试门禁 + 登录冒烟、生产配置启动校验
 - **v1.2.0 新增**：Flyway V8（流失预警跟进表）、排课可视化拖拽快速调课（原生 DnD + CAS 防并发覆盖）、流失预警五因子引擎 + 学员级待办清单（跟进闭环/Excel 导出）、SSE 长连加固（心跳/nginx 流式）+ 通知外发通道抽象、运营看板按角色隔离
 - **v1.3.0 新增**（移动端补齐）：教师端学员请假审批（本班待审列表 → 通过/驳回+备注，教务兜底不变）、课表主 Tab 真实化（今日+未来 7 天紧凑摘要，家长/教师角色自适应）、教师课表富信息（课程/班级/教室名/时间/状态，按日分组+今日高亮）、消息未读角标（tabBar 红点 + 未读 N 条）、家长学情上下文（考勤行展示"班级 日期 时间"替代裸课次 ID）；后端 `/api/teacher/lessons` 补 classroomName 回填
-- **已知限制**：模拟支付/模拟短信（非真实网关与短信服务），移动端以 H5 形态交付（微信小程序/App 为规划中能力，未纳入本次交付验证），JWT 密钥必须通过 `JWT_SECRET` 环境变量外部注入（`application.yml` 中的开发默认值仅供本地使用，生产由 `ProductionConfigurationValidator` 启动校验拒绝弱配置），登录失败锁定为单机内存实现（多实例部署需迁移至 Redis），生产 DB 密码/JWT/CORS 由 `ProductionConfigurationValidator` 启动校验
+- **已知限制**：模拟支付/模拟短信（非真实网关与短信服务），移动端以 H5 形态交付（微信小程序/App 为规划中能力，未纳入本次交付验证），JWT 密钥必须通过 `JWT_SECRET` 环境变量外部注入（`application.yml` 中的开发默认值仅供本地使用，生产由 `ProductionConfigurationValidator` 启动校验拒绝弱配置），Redis 用于分布式缓存与登录失败计数（Redis 不可用时两者均自动降级，缓存回落真实查询、失败计数回落进程内），生产 DB 密码/JWT/CORS 由 `ProductionConfigurationValidator` 启动校验
 
 ## 许可证
 

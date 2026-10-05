@@ -1,12 +1,19 @@
 // API 基础地址
+//
 // H5 开发：Vite 代理 /api → localhost:8080，BASE_URL 留空
 // H5 发布：需配置反向代理（nginx）将 /api 转发到后端
-// 小程序/App：本次交付未启用；如后续发布，需将下方 BASE_URL 改为后端公网可达地址（HTTPS）
+//
+// 小程序 / App：框架具备编译能力，但**本次交付与验收不包含这两端**。
+// 原因（不是配置遗漏，是平台硬约束）：微信小程序强制 HTTPS、要求已备案域名并加入
+// 服务器域名白名单，且禁止 localhost；因此下方不能也不应写死任何开发环境地址——
+// 硬编码 http://localhost 会让真机请求必然失败且报错隐晦。
+// 若后续要正式发布小程序，请通过 manifest.json 的自定义字段或构建期环境变量注入
+// 已备案的 HTTPS 地址，替换下面的 __MP_BASE_URL__ 占位。
 // #ifdef MP-WEIXIN
-const BASE_URL = 'http://localhost:8080'
+const BASE_URL = '__MP_BASE_URL__'
 // #endif
 // #ifdef APP-PLUS
-const BASE_URL = 'http://localhost:8080'
+const BASE_URL = '__MP_BASE_URL__'
 // #endif
 // #ifdef H5
 const BASE_URL = ''
