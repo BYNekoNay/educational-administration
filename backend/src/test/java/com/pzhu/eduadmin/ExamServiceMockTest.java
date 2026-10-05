@@ -2,6 +2,7 @@ package com.pzhu.eduadmin;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
@@ -11,11 +12,14 @@ import com.pzhu.eduadmin.modules.exam.entity.ExamSignup;
 import com.pzhu.eduadmin.modules.exam.mapper.ExamLevelMapper;
 import com.pzhu.eduadmin.modules.exam.mapper.ExamSignupMapper;
 import com.pzhu.eduadmin.modules.exam.service.ExamServiceImpl;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
@@ -25,6 +29,7 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -291,7 +296,9 @@ class ExamServiceMockTest {
     @Test
     @DisplayName("更新报名信息")
     void updateExamSignup_Success() {
-        when(examSignupMapper.updateById(any(ExamSignup.class))).thenReturn(1);
+        // 更新走的是 CAS 原子更新（update(null, wrapper)），不是 updateById：
+        // 状态机必须带状态前置条件，否则并发下终态会被陈旧快照静默覆盖。
+        when(examSignupMapper.update(any(), any(LambdaUpdateWrapper.class))).thenReturn(1);
         ExamSignup updated = new ExamSignup();
         updated.setId(10L);
         updated.setScore(new BigDecimal("85"));
@@ -324,11 +331,89 @@ class ExamServiceMockTest {
     @Test
     @DisplayName("分页查询考级 — 按指定字段排序")
     void pageExamLevels_WithSort() {
+        // QueryHelper 在 @BeforeEach 中被 mockStatic 屏蔽，默认 no-op 会让排序逻辑根本不执行，
+        // 造成「排序映射写错也恒绿」。这里显式让 applySort 走真实实现，使断言真正承重。
+        queryHelperMock.when(() -> QueryHelper.applySort(
+                        ArgumentMatchers.<LambdaQueryWrapper<ExamLevel>>any(),
+                        ArgumentMatchers.<String>any(),
+                        ArgumentMatchers.<String>any(),
+                        ArgumentMatchers.<Map<String, SFunction<ExamLevel, ?>>>any(),
+                        ArgumentMatchers.<Runnable>any()))
+                .thenCallRealMethod();
+
+        Page<ExamLevel> mp = new Page<>(1, 10);
+        when(examLevelMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mp);
+
+        Page<ExamLevel> result = examService.pageExamLevels(1, 10, null, "name", "asc");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<ExamLevel>> captor =
+                ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
+        verify(examLevelMapper).selectPage(any(Page.class), captor.capture());
+
+        // "name" 必须经 LEVEL_SORT_MAP 映射到 exam_level.name 列，且方向为 ASC。
+        // 映射写错（如错映射到 fee）、方向取反、或未应用排序，本断言都会红。
+        assertThat(captor.getValue().getTargetSql())
+                .contains("ORDER BY")
+                .contains("name")
+                .doesNotContain("DESC");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getRecords()).isEmpty();
+        assertThat(result.getTotal()).isZero();
+    }
+
+    @Test
+    @DisplayName("分页查询考级 — 逆序排序时方向为 DESC")
+    void pageExamLevels_WithSortDesc() {
+        queryHelperMock.when(() -> QueryHelper.applySort(
+                        ArgumentMatchers.<LambdaQueryWrapper<ExamLevel>>any(),
+                        ArgumentMatchers.<String>any(),
+                        ArgumentMatchers.<String>any(),
+                        ArgumentMatchers.<Map<String, SFunction<ExamLevel, ?>>>any(),
+                        ArgumentMatchers.<Runnable>any()))
+                .thenCallRealMethod();
+
         when(examLevelMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
                 .thenReturn(new Page<>(1, 10));
 
-        // No exception means sort mapping is valid
-        examService.pageExamLevels(1, 10, null, "name", "asc");
+        examService.pageExamLevels(1, 10, null, "examDate", "desc");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<ExamLevel>> captor =
+                ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
+        verify(examLevelMapper).selectPage(any(Page.class), captor.capture());
+
+        assertThat(captor.getValue().getTargetSql())
+                .contains("ORDER BY")
+                .contains("exam_date")
+                .contains("DESC");
+    }
+
+    @Test
+    @DisplayName("分页查询考级 — 排序字段不在白名单时回落默认排序（防 SQL 注入）")
+    void pageExamLevels_UnknownSortField_FallsBackToDefault() {
+        queryHelperMock.when(() -> QueryHelper.applySort(
+                        ArgumentMatchers.<LambdaQueryWrapper<ExamLevel>>any(),
+                        ArgumentMatchers.<String>any(),
+                        ArgumentMatchers.<String>any(),
+                        ArgumentMatchers.<Map<String, SFunction<ExamLevel, ?>>>any(),
+                        ArgumentMatchers.<Runnable>any()))
+                .thenCallRealMethod();
+
+        when(examLevelMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                .thenReturn(new Page<>(1, 10));
+
+        examService.pageExamLevels(1, 10, null, "name; DROP TABLE exam_level", null);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<ExamLevel>> captor =
+                ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
+        verify(examLevelMapper).selectPage(any(Page.class), captor.capture());
+
+        // 非法字段不得进入 SQL：回落默认 order by id desc，且原文串不得出现在任何片段里
+        assertThat(captor.getValue().getTargetSql()).doesNotContain("DROP TABLE");
+        assertThat(captor.getValue().getTargetSql()).contains("id");
     }
 
     @Test

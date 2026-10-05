@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.exam.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
@@ -14,7 +15,9 @@ import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +167,7 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public ExamSignup updateExamSignup(ExamSignup signup) {
         // 校验记录存在性及状态变更合法性
         ExamSignup existing = examSignupMapper.selectById(signup.getId());
@@ -184,7 +188,36 @@ public class ExamServiceImpl implements ExamService {
         // 剥离服务端控制的审计字段，防止客户端覆盖报名时间
         signup.setCreateTime(null);
         signup.setUpdateTime(null);
-        examSignupMapper.updateById(signup);
+
+        // CAS 原子更新（对齐 EnrollmentServiceImpl 的审核写法）。
+        // 原实现是 updateById 裸更新（WHERE 只有主键）：两名教务同时审批、或同一人
+        // 用陈旧页面连点时，两次 UPDATE 都会成功，先提交者的终态会被后提交者静默覆盖，
+        // 且 1→2/3 only 的规则在数据库层没有任何强制力（终态可被改回）。
+        // 前置条件用"读到的状态快照"而非固定的 1：这样无论本次是否变更状态，
+        // 只要记录在我读取之后被别人推走，本次写入就会被拒绝。
+        LambdaUpdateWrapper<ExamSignup> wrapper = new LambdaUpdateWrapper<ExamSignup>()
+                .eq(ExamSignup::getId, signup.getId())
+                .eq(ExamSignup::getStatus, existing.getStatus());
+        // 只 set 允许客户端变更的字段，不做整体回写（mass-assignment 防护）
+        if (signup.getStatus() != null) {
+            wrapper.set(ExamSignup::getStatus, signup.getStatus());
+        }
+        if (signup.getScore() != null) {
+            wrapper.set(ExamSignup::getScore, signup.getScore());
+        }
+        if (signup.getCertificateNo() != null) {
+            wrapper.set(ExamSignup::getCertificateNo, signup.getCertificateNo());
+        }
+        if (signup.getCertificateFileUrl() != null) {
+            wrapper.set(ExamSignup::getCertificateFileUrl, signup.getCertificateFileUrl());
+        }
+        // update(null, wrapper) 不触发自动填充，显式刷新 update_time
+        wrapper.set(ExamSignup::getUpdateTime, LocalDateTime.now());
+
+        int updated = examSignupMapper.update(null, wrapper);
+        if (updated == 0) {
+            throw new BusinessException(409, "该考级报名状态已变更，请刷新后重试");
+        }
         return examSignupMapper.selectById(signup.getId());
     }
 
