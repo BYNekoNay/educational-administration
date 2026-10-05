@@ -22,6 +22,14 @@ public interface CourseMapper extends BaseMapper<Course> {
     List<Map<String, Object>> selectNamesByIdsIncludeDeleted(@Param("ids") Collection<Long> ids);
 
     /**
+     * 绕过 @TableLogic 按课程名模糊匹配课程 ID（含已逻辑删除的课程）。
+     * 与 {@link #selectNamesByIdsIncludeDeleted} 保持同口径，避免财务列表出现
+     * "显示得出来、搜索搜不到"的不一致。名称经 #{name} 参数化，无注入风险。
+     */
+    @Select("SELECT id, name FROM course WHERE name LIKE CONCAT('%', #{name}, '%')")
+    List<Map<String, Object>> selectIdsByNameLikeIncludeDeleted(@Param("name") String name);
+
+    /**
      * 绕过 @TableLogic 按 ID 查询完整课程对象（含已软删课程）。
      * 用于退费计算等需要课程价格/总课时等字段的业务场景。
      */

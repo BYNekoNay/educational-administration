@@ -854,7 +854,7 @@ class FinanceServiceMockTest {
 
             when(paymentMapper.selectPage(any(Page.class), any())).thenReturn(expectedPage);
 
-            Page<PaymentRecord> result = financeService.pagePaymentRecords(1, 10, null, null);
+            Page<PaymentRecord> result = financeService.pagePaymentRecords(1, 10, null, null, null);
 
             assertThat(result).isNotNull();
             assertThat(result.getRecords()).isEmpty();
@@ -869,7 +869,7 @@ class FinanceServiceMockTest {
 
             when(refundMapper.selectPage(any(Page.class), any())).thenReturn(expectedPage);
 
-            Page<RefundRecord> result = financeService.pageRefundRecords(1, 10, null, null);
+            Page<RefundRecord> result = financeService.pageRefundRecords(1, 10, null, null, null);
 
             assertThat(result).isNotNull();
             assertThat(result.getRecords()).isEmpty();
@@ -893,7 +893,7 @@ class FinanceServiceMockTest {
             when(courseMapper.selectNamesByIdsIncludeDeleted(any()))
                     .thenReturn(List.of(java.util.Map.of("id", 20L, "name", "钢琴课")));
 
-            Page<PaymentRecord> result = financeService.pagePaymentRecords(1, 10, null, null);
+            Page<PaymentRecord> result = financeService.pagePaymentRecords(1, 10, null, null, null);
 
             assertThat(result.getRecords()).hasSize(1);
             assertThat(result.getRecords().get(0).getStudentName()).isEqualTo("张三");
@@ -920,7 +920,7 @@ class FinanceServiceMockTest {
                     .thenReturn(List.of(java.util.Map.of("id", 10L, "name", "张三")));
             when(userMapper.selectBatchIds(any())).thenReturn(List.of(user));
 
-            Page<RefundRecord> result = financeService.pageRefundRecords(1, 10, null, null);
+            Page<RefundRecord> result = financeService.pageRefundRecords(1, 10, null, null, null);
 
             assertThat(result.getRecords()).hasSize(1);
             assertThat(result.getRecords().get(0).getStudentName()).isEqualTo("张三");

@@ -71,12 +71,62 @@ public class FinanceServiceImpl implements FinanceService {
     );
 
     @Override
-    public Page<PaymentRecord> pagePaymentRecords(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<PaymentRecord> pagePaymentRecords(int pageNum, int pageSize, String sortField, String sortOrder, String keyword) {
         LambdaQueryWrapper<PaymentRecord> wrapper = new LambdaQueryWrapper<>();
+        applyNameKeyword(wrapper, keyword, PaymentRecord::getStudentId, PaymentRecord::getCourseId);
         QueryHelper.applySort(wrapper, sortField, sortOrder, PAYMENT_SORT_MAP, () -> wrapper.orderByDesc(PaymentRecord::getPayTime));
         Page<PaymentRecord> page = paymentRecordMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populatePaymentNames(page.getRecords());
         return page;
+    }
+
+    /**
+     * 财务列表关键词过滤：按学员姓名（以及有课程外键时按课程名）匹配。
+     *
+     * <p>两个容易踩的点，这里都显式处理：</p>
+     * <ol>
+     *   <li><b>软删口径必须一致</b>：列表显示姓名走 {@code *IncludeDeleted} 通道（含已软删学员），
+     *       所以搜索也必须走含软删的查询，否则会出现"列表显示得出来、搜索却搜不到"。
+     *       直接用 {@code like(Student::getName)} 会被 @TableLogic 过滤掉已软删行。</li>
+     *   <li><b>无匹配时必须返回空集</b>：若 keyword 有值但姓名/课程名都无命中，必须显式
+     *       追加恒假条件；不加条件会退化成"返回全量"，比完全不搜索更隐蔽——用户以为
+     *       在搜索，看到的却是全部数据。</li>
+     * </ol>
+     *
+     * @param courseIdColumn 目标实体没有课程外键时传 null（如退费记录、课时流水）
+     */
+    private <T> void applyNameKeyword(LambdaQueryWrapper<T> wrapper, String keyword,
+                                      SFunction<T, Long> studentIdColumn,
+                                      SFunction<T, Long> courseIdColumn) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+        String kw = keyword.trim();
+        List<Long> studentIds = studentMapper.selectIdsByNameLikeIncludeDeleted(kw).stream()
+                .map(row -> ((Number) row.get("id")).longValue())
+                .collect(Collectors.toList());
+        List<Long> courseIds = courseIdColumn == null ? Collections.emptyList()
+                : courseMapper.selectIdsByNameLikeIncludeDeleted(kw).stream()
+                        .map(row -> ((Number) row.get("id")).longValue())
+                        .collect(Collectors.toList());
+
+        if (studentIds.isEmpty() && courseIds.isEmpty()) {
+            wrapper.apply("1 = 0");
+            return;
+        }
+        wrapper.and(w -> {
+            boolean hasPrevious = false;
+            if (!studentIds.isEmpty()) {
+                w.in(studentIdColumn, studentIds);
+                hasPrevious = true;
+            }
+            if (!courseIds.isEmpty()) {
+                if (hasPrevious) {
+                    w.or();
+                }
+                w.in(courseIdColumn, courseIds);
+            }
+        });
     }
 
     private void populatePaymentNames(List<PaymentRecord> list) {
@@ -238,8 +288,10 @@ public class FinanceServiceImpl implements FinanceService {
     }
 
     @Override
-    public Page<RefundRecord> pageRefundRecords(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<RefundRecord> pageRefundRecords(int pageNum, int pageSize, String sortField, String sortOrder, String keyword) {
         LambdaQueryWrapper<RefundRecord> wrapper = new LambdaQueryWrapper<>();
+        // 退费记录没有 course_id，只能按学员姓名匹配
+        applyNameKeyword(wrapper, keyword, RefundRecord::getStudentId, null);
         QueryHelper.applySort(wrapper, sortField, sortOrder, REFUND_SORT_MAP, () -> wrapper.orderByDesc(RefundRecord::getCreateTime));
         Page<RefundRecord> page = refundRecordMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateRefundNames(page.getRecords());
@@ -545,8 +597,9 @@ public class FinanceServiceImpl implements FinanceService {
     // ==================== 课时账户 ====================
 
     @Override
-    public Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder, String keyword) {
         LambdaQueryWrapper<LessonAccount> wrapper = new LambdaQueryWrapper<>();
+        applyNameKeyword(wrapper, keyword, LessonAccount::getStudentId, LessonAccount::getCourseId);
         QueryHelper.applySort(wrapper, sortField, sortOrder, ACCOUNT_SORT_MAP, () -> wrapper.orderByDesc(LessonAccount::getId));
         Page<LessonAccount> page = lessonAccountMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateAccountNames(page.getRecords());
@@ -579,8 +632,10 @@ public class FinanceServiceImpl implements FinanceService {
     }
 
     @Override
-    public Page<LessonFlow> pageLessonFlows(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<LessonFlow> pageLessonFlows(int pageNum, int pageSize, String sortField, String sortOrder, String keyword) {
         LambdaQueryWrapper<LessonFlow> wrapper = new LambdaQueryWrapper<>();
+        // 课时流水没有 course_id，只能按学员姓名匹配
+        applyNameKeyword(wrapper, keyword, LessonFlow::getStudentId, null);
         QueryHelper.applySort(wrapper, sortField, sortOrder, FLOW_SORT_MAP, () -> wrapper.orderByDesc(LessonFlow::getCreateTime));
         Page<LessonFlow> page = lessonFlowMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateFlowNames(page.getRecords());

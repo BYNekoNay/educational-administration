@@ -25,4 +25,17 @@ public interface StudentMapper extends BaseMapper<Student> {
      */
     @Select("<script>SELECT id, name FROM student WHERE id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
     List<Map<String, Object>> selectNamesByIdsIncludeDeleted(@Param("ids") Collection<Long> ids);
+
+    /**
+     * 绕过 @TableLogic 按姓名模糊匹配学员 ID（含已逻辑删除的学员）。
+     *
+     * <p>用途：财务列表的关键词搜索。列表本身用 {@code *IncludeDeleted} 通道显示
+     * 已软删学员的姓名，因此搜索也必须同口径——否则会出现"列表显示得出来、
+     * 搜索却搜不到"的隐蔽不一致（比完全不搜索更难发现）。</p>
+     *
+     * <p>同样以 @Select + Map 返回，让 LogicDeleteInnerInterceptor 解析不到
+     * TableInfo，不会追加 is_deleted=0 条件。名称经 #{name} 参数化，无注入风险。</p>
+     */
+    @Select("SELECT id, name FROM student WHERE name LIKE CONCAT('%', #{name}, '%')")
+    List<Map<String, Object>> selectIdsByNameLikeIncludeDeleted(@Param("name") String name);
 }
