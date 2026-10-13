@@ -36,8 +36,11 @@ html, body, #app {
   background: var(--sidebar-bg) !important;
   border-right: none !important;
 }
-.el-menu-vertical .el-menu,
-.el-menu-vertical .el-menu .el-menu {
+/* 子菜单展开后的内联容器（.el-menu--inline）在 Element Plus 中自带
+   background-color: var(--el-menu-bg-color) 的默认（白底）规则。深色侧边栏下
+   必须把它一并压成深色，否则展开处会露出一条白带。:not(.sidebar-popper) 是为了
+   不误伤折叠态 teleport 到 body 的弹出菜单（那次由 .sidebar-popper 单独接管）。 */
+.el-menu-vertical .el-menu:not(.sidebar-popper) {
   background: var(--sidebar-bg) !important;
 }
 .el-menu-vertical .el-menu-item,
