@@ -144,7 +144,7 @@ const routes: RouteRecordRaw[] = [
         path: 'finance/lesson-accounts',
         name: 'LessonAccounts',
         component: () => import('@/views/finance/LessonAccountList.vue'),
-        meta: { title: '课时账户', permission: 'menu:lesson-flow' }
+        meta: { title: '课时账户', permission: 'menu:lesson-account' }
       },
       {
         path: 'finance/lesson-flows',

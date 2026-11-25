@@ -44,7 +44,11 @@ INSERT INTO `permission` (permission_code, path, type) VALUES
 ('menu:revenue', '/finance/revenue', 1),
 ('menu:permission', '/admin/permissions', 1),
 ('menu:menu', '/admin/menus', 1),
-('menu:teacher', '/edu/teachers', 1);
+('menu:teacher', '/edu/teachers', 1),
+-- V12 拆分出的独立权限码（原先复用 menu:user / menu:student / menu:lesson-flow）
+('menu:system', '/admin/system', 1),
+('menu:edu', '/edu', 1),
+('menu:lesson-account', '/finance/lesson-accounts', 1);
 
 INSERT INTO `role_permission` (role_code, permission_code)
 SELECT 'SUPER_ADMIN', permission_code FROM `permission`;
@@ -69,6 +73,7 @@ INSERT INTO `role_permission` (role_code, permission_code) VALUES
 ('FINANCE', 'menu:payment'),
 ('FINANCE', 'menu:refund'),
 ('FINANCE', 'menu:lesson-flow'),
+('FINANCE', 'menu:lesson-account'),
 ('FINANCE', 'menu:salary'),
 ('FINANCE', 'menu:revenue');
 
@@ -1081,8 +1086,8 @@ INSERT INTO `operation_log` (operator_id, module, operation, ip, create_time) VA
 INSERT INTO `sys_menu` (id, parent_id, menu_name, icon, path, permission_code, sort_order) VALUES
 -- 顶级分组
 (1,  0, '运营看板', 'Monitor',  '/admin/dashboard',     'menu:dashboard',    1),
-(2,  0, '系统管理', 'Setting',  NULL,                   'menu:user',         2),
-(3,  0, '教务管理', 'Document', NULL,                   'menu:student',      3),
+(2,  0, '系统管理', 'Setting',  NULL,                   'menu:system',       2),
+(3,  0, '教务管理', 'Document', NULL,                   'menu:edu',          3),
 (4,  0, '财务管理', 'Money',    NULL,                   'menu:payment',      4),
 -- 系统管理子菜单
 (5,  2, '用户管理',   NULL, '/admin/users',        'menu:user',         1),
@@ -1105,7 +1110,7 @@ INSERT INTO `sys_menu` (id, parent_id, menu_name, icon, path, permission_code, s
 -- 财务管理子菜单
 (20, 4, '收费管理', NULL, '/finance/payments',       'menu:payment',     1),
 (21, 4, '退费管理', NULL, '/finance/refunds',        'menu:refund',      2),
-(22, 4, '课时账户', NULL, '/finance/lesson-accounts', 'menu:lesson-flow', 3),
+(22, 4, '课时账户', NULL, '/finance/lesson-accounts', 'menu:lesson-account', 3),
 (23, 4, '课时流水', NULL, '/finance/lesson-flows',   'menu:lesson-flow', 4),
 (24, 4, '薪资管理', NULL, '/finance/salaries',       'menu:salary',      5),
 (27, 3, '教师管理', 'User', '/edu/teachers',         'menu:teacher',    11);

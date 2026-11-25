@@ -34,6 +34,7 @@ INSERT IGNORE INTO `permission` (permission_code, path, type) VALUES
 ('menu:payment',      '/finance/payments',     1),
 ('menu:refund',       '/finance/refunds',      1),
 ('menu:lesson-flow',  '/finance/lesson-flows', 1),
+('menu:lesson-account', '/finance/lesson-accounts', 1),
 ('menu:salary',       '/finance/salaries',     1),
 ('menu:revenue',      '/finance/revenue',      1);
 
@@ -43,8 +44,8 @@ INSERT IGNORE INTO `permission` (permission_code, path, type) VALUES
 INSERT IGNORE INTO `sys_menu` (id, parent_id, menu_name, icon, path, permission_code, sort_order, visible) VALUES
 -- 顶级分组（无路由 = 纯目录）
 (1,  0, '运营看板', 'Monitor',  '/admin/dashboard',     'menu:dashboard',    1, 1),
-(2,  0, '系统管理', 'Setting',  NULL,                   'menu:user',         2, 1),
-(3,  0, '教务管理', 'Document', NULL,                   'menu:student',      3, 1),
+(2,  0, '系统管理', 'Setting',  NULL,                   'menu:system',       2, 1),
+(3,  0, '教务管理', 'Document', NULL,                   'menu:edu',          3, 1),
 (4,  0, '财务管理', 'Money',    NULL,                   'menu:payment',      4, 1),
 -- 系统管理子菜单
 (5,  2, '用户管理',   NULL, '/admin/users',        'menu:user',         1, 1),
@@ -66,7 +67,7 @@ INSERT IGNORE INTO `sys_menu` (id, parent_id, menu_name, icon, path, permission_
 -- 财务管理子菜单
 (20, 4, '收费管理', NULL, '/finance/payments',       'menu:payment',     1, 1),
 (21, 4, '退费管理', NULL, '/finance/refunds',        'menu:refund',      2, 1),
-(22, 4, '课时账户', NULL, '/finance/lesson-accounts', 'menu:lesson-flow', 3, 1),
+(22, 4, '课时账户', NULL, '/finance/lesson-accounts', 'menu:lesson-account', 3, 1),
 (23, 4, '课时流水', NULL, '/finance/lesson-flows',   'menu:lesson-flow', 4, 1),
 (24, 4, '薪资管理', NULL, '/finance/salaries',       'menu:salary',      5, 1);
 
