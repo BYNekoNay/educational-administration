@@ -132,6 +132,12 @@ async function handleLogin() {
       await loadParentStudents()
     }
 
+    // 密码非本人设置（管理员代设初始密码或重置过）：先强制改密，不进主页
+    if (data.mustChangePassword) {
+      uni.reLaunch({ url: '/pages/auth/change-password' })
+      return
+    }
+
     uni.switchTab({ url: '/pages/home/index' })
   } catch (e) {
     if (!e || !e._handled) {

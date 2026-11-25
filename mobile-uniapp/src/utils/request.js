@@ -63,6 +63,18 @@ export function api(options) {
       err._handled = true
       return Promise.reject(err)
     }
+    // 强制改密：后端在"密码非本人设置"时对所有非白名单接口返回 403 + NEED_CHANGE_PASSWORD。
+    // 这里直接把人送到改密页——否则教师端会表现为"所有功能都打不开"，且没有任何提示。
+    if ((res.statusCode === 403 || data.code === 403) && data.message === 'NEED_CHANGE_PASSWORD') {
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+      const current = pages.length ? (pages[pages.length - 1].route || '') : ''
+      if (!current.includes('change-password')) {
+        uni.reLaunch({ url: '/pages/auth/change-password' })
+      }
+      const err = new Error('请先修改密码')
+      err._handled = true
+      return Promise.reject(err)
+    }
     if (res.statusCode >= 400) {
       // 网关/代理返回的非 JSON 错误（如 502/504 HTML 页面）：按状态码映射提示
       const msg = (typeof data === 'object' && data.message) || getErrorMessage({ statusCode: res.statusCode }, '请求失败')
@@ -158,6 +170,23 @@ export function getMyStudents() {
   } catch {
     return []
   }
+}
+
+/**
+ * 重新拉取家长绑定的学员列表并写入缓存。
+ * 若 currentStudentId 已不在新列表中则清除，交由 getCurrentStudentId() 重新取第一个，
+ * 避免「绑定了新孩子，但各页面仍按旧 id（已解绑/不存在）取数」。
+ * @returns {Promise<Array>} 最新的学员列表
+ */
+export async function refreshMyStudents() {
+  const res = await api({ url: '/api/parent/students' })
+  const list = res.data || []
+  uni.setStorageSync('students', list)
+  const saved = uni.getStorageSync('currentStudentId')
+  if (!saved || !list.some(s => (s.id || s.studentId) === saved)) {
+    uni.removeStorageSync('currentStudentId')
+  }
+  return list
 }
 
 /**

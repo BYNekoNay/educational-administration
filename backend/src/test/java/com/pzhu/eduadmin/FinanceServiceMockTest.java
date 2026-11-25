@@ -14,6 +14,7 @@ import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.finance.entity.*;
+import com.pzhu.eduadmin.modules.finance.dto.LessonAccountAdjustRequest;
 import com.pzhu.eduadmin.modules.finance.mapper.*;
 import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.finance.service.FinanceServiceImpl;
@@ -925,6 +926,166 @@ class FinanceServiceMockTest {
             assertThat(result.getRecords()).hasSize(1);
             assertThat(result.getRecords().get(0).getStudentName()).isEqualTo("张三");
             assertThat(result.getRecords().get(0).getApplicantName()).isEqualTo("李四");
+        }
+    }
+
+    // ==================== 课时人工调整 ====================
+
+    @Nested
+    @DisplayName("课时人工调整")
+    class AdjustLessons {
+
+        private LessonAccount account(String remaining, String total, Integer version) {
+            LessonAccount a = new LessonAccount();
+            a.setId(1L);
+            a.setStudentId(10L);
+            a.setCourseId(20L);
+            a.setRemainingLessons(new BigDecimal(remaining));
+            a.setTotalLessons(new BigDecimal(total));
+            a.setVersion(version);
+            return a;
+        }
+
+        private LessonAccountAdjustRequest request(int direction, String amount) {
+            LessonAccountAdjustRequest r = new LessonAccountAdjustRequest();
+            r.setDirection(direction);
+            r.setAmount(new BigDecimal(amount));
+            r.setRemark("停课补偿");
+            r.setBizNo("biz-001");
+            return r;
+        }
+
+        @Test
+        @DisplayName("增加课时 - 剩余与总课时同步增加，流水记为 sourceType=5 / changeType=4")
+        void shouldIncreaseLessons() {
+            when(flowMapper.selectOne(any())).thenReturn(null);
+            when(accountMapper.selectById(1L)).thenReturn(account("10.00", "20.00", 0));
+            when(accountMapper.update(any(), any())).thenReturn(1);
+            when(nameResolver.getStudentName(10L)).thenReturn("张三");
+
+            LessonFlow flow = financeService.adjustLessons(1L, request(1, "5.00"));
+
+            assertThat(flow.getSourceType()).isEqualTo(5);
+            assertThat(flow.getChangeType()).isEqualTo(4);
+            assertThat(flow.getChangeAmount()).isEqualByComparingTo(new BigDecimal("5.00"));
+            assertThat(flow.getBeforeBalance()).isEqualByComparingTo(new BigDecimal("10.00"));
+            assertThat(flow.getAfterBalance()).isEqualByComparingTo(new BigDecimal("15.00"));
+            assertThat(flow.getBizNo()).isEqualTo("biz-001");
+            assertThat(flow.getRemark()).startsWith("人工调整：");
+            verify(flowMapper).insert(flow);
+            verify(operationLogService).log(eq("财务管理"), anyString(), eq("LESSON_ACCOUNT"), eq(1L));
+        }
+
+        @Test
+        @DisplayName("扣减课时 - 变动额为负，剩余与总课时同步减少")
+        void shouldDecreaseLessons() {
+            when(flowMapper.selectOne(any())).thenReturn(null);
+            when(accountMapper.selectById(1L)).thenReturn(account("10.00", "20.00", 2));
+            when(accountMapper.update(any(), any())).thenReturn(1);
+            when(nameResolver.getStudentName(10L)).thenReturn("张三");
+
+            LessonFlow flow = financeService.adjustLessons(1L, request(2, "4.00"));
+
+            assertThat(flow.getChangeAmount()).isEqualByComparingTo(new BigDecimal("-4.00"));
+            assertThat(flow.getAfterBalance()).isEqualByComparingTo(new BigDecimal("6.00"));
+        }
+
+        @Test
+        @DisplayName("扣减超过剩余课时 - 抛 409，不写账户也不写流水")
+        void shouldRejectOverDeduct() {
+            when(flowMapper.selectOne(any())).thenReturn(null);
+            when(accountMapper.selectById(1L)).thenReturn(account("3.00", "20.00", 0));
+
+            assertThatThrownBy(() -> financeService.adjustLessons(1L, request(2, "5.00")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("超过剩余课时");
+
+            verify(accountMapper, never()).update(any(), any());
+            verify(flowMapper, never()).insert(any(LessonFlow.class));
+        }
+
+        @Test
+        @DisplayName("课时账户不存在 - 抛 404")
+        void shouldRejectMissingAccount() {
+            when(flowMapper.selectOne(any())).thenReturn(null);
+            when(accountMapper.selectById(1L)).thenReturn(null);
+
+            assertThatThrownBy(() -> financeService.adjustLessons(1L, request(1, "5.00")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("课时账户不存在");
+        }
+
+        @Test
+        @DisplayName("CAS 冲突（update 返回 0）- 抛 409 且不写流水")
+        void shouldRejectOnCasConflict() {
+            when(flowMapper.selectOne(any())).thenReturn(null);
+            when(accountMapper.selectById(1L)).thenReturn(account("10.00", "20.00", 3));
+            when(accountMapper.update(any(), any())).thenReturn(0);
+
+            assertThatThrownBy(() -> financeService.adjustLessons(1L, request(1, "5.00")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("已被其他操作修改");
+
+            verify(flowMapper, never()).insert(any(LessonFlow.class));
+        }
+
+        @Test
+        @DisplayName("同一 bizNo 重复提交 - 直接返回原流水，不再改账")
+        void shouldReturnExistingOnSameBizNo() {
+            LessonFlow existing = new LessonFlow();
+            existing.setId(99L);
+            existing.setAccountId(1L);
+            existing.setChangeAmount(new BigDecimal("5.00"));
+            when(flowMapper.selectOne(any())).thenReturn(existing);
+
+            LessonFlow flow = financeService.adjustLessons(1L, request(1, "5.00"));
+
+            assertThat(flow.getId()).isEqualTo(99L);
+            verify(accountMapper, never()).selectById(anyLong());
+            verify(accountMapper, never()).update(any(), any());
+            verify(flowMapper, never()).insert(any(LessonFlow.class));
+        }
+
+        @Test
+        @DisplayName("同一 bizNo 但金额不同 - 抛 409，不能静默返回")
+        void shouldRejectBizNoReuseWithDifferentAmount() {
+            LessonFlow existing = new LessonFlow();
+            existing.setAccountId(1L);
+            existing.setChangeAmount(new BigDecimal("3.00"));
+            when(flowMapper.selectOne(any())).thenReturn(existing);
+
+            assertThatThrownBy(() -> financeService.adjustLessons(1L, request(1, "5.00")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("请求流水号已被其他调整使用");
+        }
+
+        @Test
+        @DisplayName("唯一键冲突（并发写同一 bizNo）- 转 409")
+        void shouldConvertDuplicateKey() {
+            when(flowMapper.selectOne(any())).thenReturn(null);
+            when(accountMapper.selectById(1L)).thenReturn(account("10.00", "20.00", 0));
+            when(accountMapper.update(any(), any())).thenReturn(1);
+            when(flowMapper.insert(any(LessonFlow.class)))
+                    .thenThrow(new DuplicateKeyException("uk_lesson_flow_biz_no"));
+
+            assertThatThrownBy(() -> financeService.adjustLessons(1L, request(1, "5.00")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("请勿重复提交");
+        }
+
+        @Test
+        @DisplayName("操作日志写入失败 - 不影响课时调整返回")
+        void shouldIgnoreOperationLogFailure() {
+            when(flowMapper.selectOne(any())).thenReturn(null);
+            when(accountMapper.selectById(1L)).thenReturn(account("10.00", "20.00", 0));
+            when(accountMapper.update(any(), any())).thenReturn(1);
+            when(nameResolver.getStudentName(10L)).thenReturn("张三");
+            doThrow(new RuntimeException("log db down"))
+                    .when(operationLogService).log(anyString(), anyString(), anyString(), any());
+
+            LessonFlow flow = financeService.adjustLessons(1L, request(1, "5.00"));
+
+            assertThat(flow.getAfterBalance()).isEqualByComparingTo(new BigDecimal("15.00"));
         }
     }
 }

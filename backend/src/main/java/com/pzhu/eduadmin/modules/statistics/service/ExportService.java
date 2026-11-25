@@ -87,14 +87,14 @@ public class ExportService {
             CellStyle hs = headerStyle(wb);
             for (int i = 0; i < headers.length; i++) { Cell c = headerRow.createCell(i); c.setCellValue(headers[i]); c.setCellStyle(hs); }
 
-            String[] sourceTypes = {"", "充值", "消费", "回冲", "退费"};
+            String[] sourceTypes = {"", "充值", "消费", "回冲", "退费", "人工调整"};
             for (int i = 0; i < records.size(); i++) {
                 LessonFlow r = records.get(i);
                 Row row = sheet.createRow(i + 1);
                 row.createCell(0).setCellValue(r.getId());
                 row.createCell(1).setCellValue(r.getStudentId());
                 int st = r.getSourceType() != null ? r.getSourceType() : 0;
-                row.createCell(2).setCellValue(st >= 1 && st <= 4 ? sourceTypes[st] : "其他");
+                row.createCell(2).setCellValue(st >= 1 && st <= 5 ? sourceTypes[st] : "其他");
                 row.createCell(3).setCellValue(r.getChangeAmount() != null ? r.getChangeAmount().doubleValue() : 0);
                 row.createCell(4).setCellValue(r.getBeforeBalance() != null ? r.getBeforeBalance().doubleValue() : 0);
                 row.createCell(5).setCellValue(r.getAfterBalance() != null ? r.getAfterBalance().doubleValue() : 0);

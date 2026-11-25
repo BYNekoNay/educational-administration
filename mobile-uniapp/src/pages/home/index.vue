@@ -17,6 +17,11 @@
     <view v-if="isParent" class="switcher-section">
       <text class="section-header">我的孩子</text>
       <StudentSwitcher :key="switcherKey" @change="onStudentChange" />
+      <view v-if="studentsCount === 0" class="bind-guide" @click="goBind">
+        <text class="bind-guide-title">还没有绑定孩子</text>
+        <text class="bind-guide-desc">绑定后可查看课时账户、课表、缴费与学情记录</text>
+        <text class="bind-guide-action">立即绑定 ›</text>
+      </view>
     </view>
 
     <!-- Menu list -->
@@ -63,13 +68,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import StudentSwitcher from '@/components/StudentSwitcher.vue'
-import { api, getMyStudents } from '@/utils/request'
+import { api, getMyStudents, refreshMyStudents } from '@/utils/request'
 import { formatBadge, shouldShowBadge } from '@/utils/unread-count'
 
 const userInfo = ref(null)
 const isParent = ref(true)
 // 学员列表刷新后递增至 key，强制 StudentSwitcher 重新读取
 const switcherKey = ref(0)
+// 绑定状态：为 0 时展示"去绑定孩子"引导卡
+const studentsCount = ref(getMyStudents().length)
 
 const parentMenus = [
   { path: '/pages/parent/enrollment',         icon: 'ic-clipboard', label: '课程报名', desc: '浏览课程并报名', bg: '#E0F7FA' },
@@ -80,6 +87,7 @@ const parentMenus = [
   { path: '/pages/parent/leave-request',       icon: 'ic-hand', label: '请假申请', desc: '提交请假并查看记录', bg: '#F3E5F5' },
   { path: '/pages/parent/refund',               icon: 'ic-receipt', label: '退费申请', desc: '申请退费并查看记录', bg: '#FFEBEE' },
   { path: '/pages/parent/notices',             icon: 'ic-bell', label: '消息中心', desc: '调课与公告提醒', bg: '#FFF3E0' },
+  { path: '/pages/parent/bind-student',         icon: 'ic-hand', label: '绑定学员', desc: '姓名+电话验证后关联孩子', bg: '#E0F2FE' },
 ]
 
 const teacherMenus = [
@@ -88,6 +96,7 @@ const teacherMenus = [
   { path: '/pages/teacher/learning',      icon: 'ic-edit', label: '学情管理', desc: '作业与成长点评', bg: '#FFF3E0' },
   { path: '/pages/teacher/adjust-request',icon: 'ic-refresh', label: '调课申请', desc: '申请调课与查看进度', bg: '#E0F7FA' },
   { path: '/pages/teacher/statistics',    icon: 'ic-chart', label: '课时统计', desc: '本月授课数据', bg: '#F3E5F5' },
+  { path: '/pages/teacher/salary',        icon: 'ic-receipt', label: '我的课酬', desc: '按月查看课酬明细', bg: '#FFF8E1' },
   { path: '/pages/teacher/leave-audit',   icon: 'ic-hand', label: '请假审批', desc: '本班学员请假处理', bg: '#F3E5F5' },
 ]
 
@@ -155,15 +164,19 @@ onShow(() => {
     if (typeof storedUser === 'string') storedUser = JSON.parse(storedUser)
   } catch (e) {}
   if ((storedUser?.roleCode || '') !== 'PARENT') return
+  studentsCount.value = getMyStudents().length
   if (getMyStudents().length > 0) return
-  api({ url: '/api/parent/students' }).then(res => {
-    const list = res.data || []
-    uni.setStorageSync('students', list)
+  refreshMyStudents().then(list => {
+    studentsCount.value = list.length
     if (list.length) switcherKey.value++
   }).catch(() => {
     // 静默重试，不打扰用户
   })
 })
+
+function goBind() {
+  uni.navigateTo({ url: '/pages/parent/bind-student' })
+}
 
 // 刷新"消息"Tab 红点（全角色通用端点）。异常时保留上次角标值，不阻断页面。
 async function refreshUnreadBadge() {
@@ -184,6 +197,32 @@ async function refreshUnreadBadge() {
 
 <style scoped>
 @import '@/styles/content.css';
+
+.bind-guide {
+  margin-top: 16rpx;
+  padding: 24rpx;
+  background: #FFFFFF;
+  border: 2rpx dashed #0E7490;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+}
+.bind-guide-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #0E7490;
+}
+.bind-guide-desc {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #8C7E74;
+}
+.bind-guide-action {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #0E7490;
+}
 
 .header-gradient {
   background: linear-gradient(135deg, #0E7490, #06B6D4);

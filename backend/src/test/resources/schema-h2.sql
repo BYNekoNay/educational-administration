@@ -18,7 +18,10 @@ CREATE TABLE user (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
-  version INT NOT NULL DEFAULT 0
+  version INT NOT NULL DEFAULT 0,
+  must_change_password TINYINT NOT NULL DEFAULT 0,
+  hire_date DATE,
+  leave_date DATE
 );
 
 DROP TABLE IF EXISTS student;
@@ -81,6 +84,7 @@ CREATE TABLE class_student (
   student_id BIGINT NOT NULL,
   join_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   status TINYINT NOT NULL DEFAULT 1,
+  leave_time DATETIME,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
@@ -176,9 +180,11 @@ CREATE TABLE lesson_flow (
   before_balance DECIMAL(6,2) NOT NULL,
   after_balance DECIMAL(6,2) NOT NULL,
   remark VARCHAR(255),
+  biz_no VARCHAR(64),
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  is_deleted TINYINT NOT NULL DEFAULT 0
+  is_deleted TINYINT NOT NULL DEFAULT 0,
+  CONSTRAINT uk_lesson_flow_biz_no UNIQUE (biz_no)
 );
 
 DROP TABLE IF EXISTS payment_record;
@@ -259,6 +265,9 @@ CREATE TABLE operation_log (
   module VARCHAR(50) NOT NULL,
   operation VARCHAR(100) NOT NULL,
   ip VARCHAR(50),
+  target_type VARCHAR(30),
+  target_id BIGINT,
+  hit_count INT NOT NULL DEFAULT 1,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

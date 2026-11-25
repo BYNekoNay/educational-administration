@@ -43,7 +43,8 @@ INSERT INTO `permission` (permission_code, path, type) VALUES
 ('menu:salary', '/finance/salaries', 1),
 ('menu:revenue', '/finance/revenue', 1),
 ('menu:permission', '/admin/permissions', 1),
-('menu:menu', '/admin/menus', 1);
+('menu:menu', '/admin/menus', 1),
+('menu:teacher', '/edu/teachers', 1);
 
 INSERT INTO `role_permission` (role_code, permission_code)
 SELECT 'SUPER_ADMIN', permission_code FROM `permission`;
@@ -60,7 +61,8 @@ INSERT INTO `role_permission` (role_code, permission_code) VALUES
 ('EDU_ADMIN', 'menu:student'),
 ('EDU_ADMIN', 'menu:exam'),
 ('EDU_ADMIN', 'menu:attendance'),
-('EDU_ADMIN', 'menu:notice');
+('EDU_ADMIN', 'menu:notice'),
+('EDU_ADMIN', 'menu:teacher');
 
 INSERT INTO `role_permission` (role_code, permission_code) VALUES
 ('FINANCE', 'menu:dashboard'),
@@ -1105,7 +1107,8 @@ INSERT INTO `sys_menu` (id, parent_id, menu_name, icon, path, permission_code, s
 (21, 4, '退费管理', NULL, '/finance/refunds',        'menu:refund',      2),
 (22, 4, '课时账户', NULL, '/finance/lesson-accounts', 'menu:lesson-flow', 3),
 (23, 4, '课时流水', NULL, '/finance/lesson-flows',   'menu:lesson-flow', 4),
-(24, 4, '薪资管理', NULL, '/finance/salaries',       'menu:salary',      5);
+(24, 4, '薪资管理', NULL, '/finance/salaries',       'menu:salary',      5),
+(27, 3, '教师管理', 'User', '/edu/teachers',         'menu:teacher',    11);
 
 
 -- ============================================================

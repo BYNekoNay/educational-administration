@@ -16,6 +16,7 @@ import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
 import com.pzhu.eduadmin.modules.enrollment.mapper.EnrollmentMapper;
 import com.pzhu.eduadmin.modules.finance.entity.*;
+import com.pzhu.eduadmin.modules.finance.dto.LessonAccountAdjustRequest;
 import com.pzhu.eduadmin.modules.finance.mapper.*;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
@@ -253,6 +254,8 @@ public class FinanceServiceImpl implements FinanceService {
                         .eq(ClassStudent::getStatus, 3));
                 if (refundedRecord != null) {
                     refundedRecord.setStatus(1);
+                    // 恢复在班：清空离班时间，避免 leaveTime < joinTime 的脏区间
+                    refundedRecord.setLeaveTime(null);
                     classStudentMapper.updateById(refundedRecord);
                 } else {
                     ClassStudent cs = new ClassStudent();
@@ -589,7 +592,11 @@ public class FinanceServiceImpl implements FinanceService {
                                 .eq(ClassStudent::getStudentId, record.getStudentId())
                                 .in(ClassStudent::getClassId, courseClassIds)
                                 .eq(ClassStudent::getStatus, 1) // 仅影响活跃状态的报名记录
-                                .set(ClassStudent::getStatus, 3));
+                                .set(ClassStudent::getStatus, 3)
+                                .set(ClassStudent::getLeaveTime, java.time.LocalDateTime.now())
+                                // update_time 必须同刷：流失统计按 update_time 计月，
+                                // 此前该路径只改 status 不写 update_time，导致全额退费退班永久漏计
+                                .set(ClassStudent::getUpdateTime, java.time.LocalDateTime.now()));
             }
         }
     }
@@ -629,6 +636,97 @@ public class FinanceServiceImpl implements FinanceService {
                 new LambdaQueryWrapper<LessonAccount>().eq(LessonAccount::getStudentId, studentId));
         populateAccountNames(list);
         return list;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
+    public LessonFlow adjustLessons(Long accountId, LessonAccountAdjustRequest req) {
+        if (accountId == null) {
+            throw new BusinessException(400, "课时账户ID不能为空");
+        }
+
+        BigDecimal delta = req.getDirection() == 1 ? req.getAmount() : req.getAmount().negate();
+
+        // 1. 幂等前置：同一 bizNo 已处理则返回原流水（覆盖"请求超时后人工重试"这类串行重放）。
+        //    若 bizNo 被复用到别的账户或别的金额，不能静默返回，否则等于吞掉一次真实调整。
+        LessonFlow existed = lessonFlowMapper.selectOne(
+                new LambdaQueryWrapper<LessonFlow>().eq(LessonFlow::getBizNo, req.getBizNo()));
+        if (existed != null) {
+            boolean sameAccount = Objects.equals(existed.getAccountId(), accountId);
+            boolean sameAmount = existed.getChangeAmount() != null
+                    && existed.getChangeAmount().compareTo(delta) == 0;
+            if (!sameAccount || !sameAmount) {
+                throw new BusinessException(409, "请求流水号已被其他调整使用，请刷新页面后重试");
+            }
+            return existed;
+        }
+
+        LessonAccount account = lessonAccountMapper.selectById(accountId);
+        if (account == null) {
+            throw new BusinessException(404, "课时账户不存在");
+        }
+
+        BigDecimal before = account.getRemainingLessons();
+        BigDecimal after = before.add(delta);
+        // 人工调账必须把"输错数"当场暴露，不能像考勤那样截断到 0（考勤是课已上完的既成事实）
+        if (after.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException(409,
+                    String.format("扣减课时超过剩余课时（当前剩余 %s），请调整后重试", before.toPlainString()));
+        }
+        BigDecimal beforeTotal = account.getTotalLessons() == null ? BigDecimal.ZERO : account.getTotalLessons();
+        BigDecimal afterTotal = beforeTotal.add(delta);
+        // 维持 total >= remaining，否则移动端"已消耗 = total - remaining"会出现负值
+        if (afterTotal.compareTo(after) < 0) {
+            throw new BusinessException(409, "总课时不足以抵扣本次调整，请核对账户数据");
+        }
+
+        // 2. 显式 CAS：remaining + version 双条件，与考勤扣减/退费/充值共用同一 version 序列
+        int currentVersion = account.getVersion() == null ? 0 : account.getVersion();
+        int rows = lessonAccountMapper.update(null,
+                new LambdaUpdateWrapper<LessonAccount>()
+                        .eq(LessonAccount::getId, account.getId())
+                        .eq(LessonAccount::getRemainingLessons, before)
+                        .eq(LessonAccount::getVersion, currentVersion)
+                        .set(LessonAccount::getRemainingLessons, after)
+                        .set(LessonAccount::getTotalLessons, afterTotal)
+                        .set(LessonAccount::getVersion, currentVersion + 1));
+        if (rows == 0) {
+            throw new BusinessException(409, "课时账户已被其他操作修改，请刷新后重试");
+        }
+
+        // 3. 流水：source_type=5 人工调整 / change_type=4 / 金额带符号
+        LessonFlow flow = new LessonFlow();
+        flow.setAccountId(account.getId());
+        flow.setStudentId(account.getStudentId());
+        flow.setSourceType(5);
+        flow.setBizNo(req.getBizNo());
+        flow.setChangeAmount(delta);
+        flow.setChangeType(4);
+        flow.setBeforeBalance(before);
+        flow.setAfterBalance(after);
+        flow.setRemark("人工调整：" + req.getRemark());
+        try {
+            lessonFlowMapper.insert(flow);
+        } catch (DuplicateKeyException e) {
+            // 并发双击时另一请求已写入同一 bizNo → 409，让事务回滚本次账户变更
+            throw new BusinessException(409, "该调整请求正在处理，请勿重复提交");
+        }
+
+        // 4. 操作日志（失败不回滚业务事务），操作人由 OperationLogService 从当前登录态取
+        try {
+            operationLogService.log("财务管理",
+                    "人工调整课时（学员=" + nameResolver.getStudentName(account.getStudentId())
+                            + "，课程ID=" + account.getCourseId()
+                            + "，" + (delta.signum() > 0 ? "+" : "") + delta.toPlainString()
+                            + "，调整后=" + after.toPlainString()
+                            + "，原因=" + req.getRemark() + "）",
+                    "LESSON_ACCOUNT", account.getId());
+        } catch (Exception e) {
+            log.warn("操作日志写入失败，不影响课时调整", e);
+        }
+
+        return flow;
     }
 
     @Override

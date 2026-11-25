@@ -1,0 +1,65 @@
+// 艺培通 · 核心实体关系图（DBML / dbdiagram.io）
+// 仅保留 7 个核心实体：招生 → 排课 → 考勤 → 课时
+// 字段名取自 sql/schema.sql 实际列
+
+Table 学员 {
+  id BIGINT [pk, increment]
+  姓名 VARCHAR(50) [not null]
+  联系电话 VARCHAR(20)
+  状态 TINYINT [default: 1]
+}
+
+Table 课程 {
+  id BIGINT [pk, increment]
+  课程名称 VARCHAR(100) [not null]
+  总课时 INT [not null]
+  单价 DECIMAL(10,2) [not null]
+}
+
+Table 班级 {
+  id BIGINT [pk, increment]
+  课程id BIGINT [not null]
+  班级名称 VARCHAR(100) [not null]
+  教师id BIGINT [not null]
+  最大人数 INT [not null]
+}
+
+Table 报名申请 {
+  id BIGINT [pk, increment]
+  学员id BIGINT [not null]
+  课程id BIGINT [not null]
+  状态 TINYINT [note: '1待审核 2待缴费 3已完成 4已拒绝 5已失效']
+}
+
+Table 课次 {
+  id BIGINT [pk, increment]
+  班级id BIGINT [not null]
+  上课日期 DATE [not null]
+  开始时间 TIME [not null]
+  状态 TINYINT [note: '1待上课 2已完成 3已取消 4已调课']
+}
+
+Table 考勤 {
+  id BIGINT [pk, increment]
+  课次id BIGINT [not null]
+  学员id BIGINT [not null]
+  考勤状态 TINYINT [note: '1到课 2迟到 3请假 4缺勤']
+  扣减课时 DECIMAL(6,2) [default: 0]
+}
+
+Table 课时账户 {
+  id BIGINT [pk, increment]
+  学员id BIGINT [not null]
+  课程id BIGINT [not null]
+  剩余课时 DECIMAL(6,2) [not null, default: 0]
+  到期日期 DATE
+}
+
+Ref 开班课程: 班级.课程id > 课程.id
+Ref 报名学员: 报名申请.学员id > 学员.id
+Ref 报名课程: 报名申请.课程id > 课程.id
+Ref 课次班级: 课次.班级id > 班级.id
+Ref 考勤课次: 考勤.课次id > 课次.id
+Ref 考勤学员: 考勤.学员id > 学员.id
+Ref 账户学员: 课时账户.学员id > 学员.id
+Ref 账户课程: 课时账户.课程id > 课程.id

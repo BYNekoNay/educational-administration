@@ -69,7 +69,7 @@ public class JwtInterceptor implements HandlerInterceptor {
         // Token 吊销检查：比对 User.version
         User currentUser = userMapper.selectOne(
                 new LambdaQueryWrapper<User>()
-                        .select(User::getVersion, User::getStatus, User::getRoleCode)
+                        .select(User::getVersion, User::getStatus, User::getRoleCode, User::getMustChangePassword)
                         .eq(User::getId, userId));
         if (currentUser == null) {
             writeUnauthorized(response, "用户不存在，请重新登录");
@@ -97,6 +97,27 @@ public class JwtInterceptor implements HandlerInterceptor {
         if (requireRole != null && (dbRoleCode == null || Arrays.stream(requireRole.value()).noneMatch(dbRoleCode::equals))) {
             writeForbidden(response, "无权访问该接口");
             return false;
+        }
+
+        // 强制改密拦截：密码非本人设置（管理员代设初始密码、或管理员重置过）时，
+        // 只放行改密与鉴权自检这 4 个接口。
+        //
+        // 【位置约束】必须在下方 CurrentUserHolder.set() 之前 return。
+        //   preHandle 返回 false 时 Spring 不会调用 afterCompletion，
+        //   若在 set 之后 return，LoginUser 会泄漏到线程池工作线程。
+        // 【白名单约束】命中白名单时**不能**在这里 return，必须继续走到 set()，
+        //   否则 /api/auth/password 里 CurrentUserHolder.get() 直接 NPE，
+        //   而且只会在"未改密用户点改密"这一条路径复现。
+        if (Integer.valueOf(1).equals(currentUser.getMustChangePassword())) {
+            String uri = request.getRequestURI();
+            boolean whitelisted = "/api/auth/password".equals(uri)
+                    || "/api/auth/logout".equals(uri)
+                    || "/api/auth/profile".equals(uri)
+                    || "/api/auth/menus".equals(uri);
+            if (!whitelisted) {
+                writeForbidden(response, "NEED_CHANGE_PASSWORD");
+                return false;
+            }
         }
 
         // 仅在鉴权完全通过后再设置 ThreadLocal。若在角色校验前设置，校验失败 return false 时

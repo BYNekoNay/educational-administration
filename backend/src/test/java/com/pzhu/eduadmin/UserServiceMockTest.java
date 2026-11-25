@@ -274,7 +274,8 @@ class UserServiceMockTest {
 
         // 密码和 version 通过原子 SQL 更新，不再修改 Java 对象
         verify(userMapper).update(any(), any());
-        verify(operationLogService).log(anyString(), anyString());
+        // 重置密码现在写入结构化审计（含目标用户 id），走 4 参重载
+        verify(operationLogService).log(anyString(), anyString(), anyString(), any());
     }
 
     // ========== 8. resetPassword() — 密码为空应拒绝 ==========

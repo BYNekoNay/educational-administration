@@ -173,6 +173,20 @@ public class SalaryServiceImpl implements SalaryService {
         return page;
     }
 
+    @Override
+    public Page<TeacherSalary> pageMySalaries(Long teacherId, int pageNum, int pageSize, String month) {
+        LambdaQueryWrapper<TeacherSalary> wrapper = new LambdaQueryWrapper<>();
+        // 强制按本人过滤：这是行级数据隔离的唯一保证点
+        wrapper.eq(TeacherSalary::getTeacherId, teacherId);
+        if (month != null && !month.isBlank()) {
+            wrapper.eq(TeacherSalary::getSalaryMonth, month);
+        }
+        wrapper.orderByDesc(TeacherSalary::getSalaryMonth);
+        Page<TeacherSalary> page = teacherSalaryMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        populateTeacherSalaryNames(page.getRecords());
+        return page;
+    }
+
     /**
      * 按教师姓名模糊匹配用户表，返回匹配的教师 userId 集合。
      * 返回 null 表示未传 keyword（不加过滤）；返回空集合则不应有匹配记录。

@@ -445,6 +445,7 @@ class CourseServiceMockTest {
         assertThat(result).isTrue();
         // 改为置 status=3 并 updateById（保留记录用于流失统计）
         assertThat(cs.getStatus()).isEqualTo(3);
+        assertThat(cs.getLeaveTime()).isNotNull(); // V10：移除时记录离班时点
         verify(classStudentMapper).updateById(cs);
         verify(operationLogService).log(anyString(), anyString());
     }

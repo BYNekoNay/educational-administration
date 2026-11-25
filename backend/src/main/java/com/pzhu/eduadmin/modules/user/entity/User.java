@@ -44,6 +44,16 @@ public class User {
     @JsonIgnore
     private Integer version;
 
+    /** 1-需强制修改密码（密码非本人设置，如管理员代设的初始密码） */
+    @JsonIgnore
+    private Integer mustChangePassword;
+
+    /** 入职日期（仅 TEACHER 使用） */
+    private java.time.LocalDate hireDate;
+
+    /** 离职生效日；NULL=在职，<=今天 视为已离职（仅 TEACHER 使用） */
+    private java.time.LocalDate leaveDate;
+
     // ---- 关联数据（不持久化） ----
 
     /** 教学特长课程ID列表（仅 TEACHER 角色使用） */

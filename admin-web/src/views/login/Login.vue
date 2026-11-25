@@ -96,12 +96,23 @@ async function handleLogin() {
     const res = await authApi.login(form)
     const { token, userId, username, realName, roleCode, permissions = [] } = res.data
 
+    const mustChangePassword = (res.data as unknown as { mustChangePassword?: boolean })?.mustChangePassword
+
     if (!ADMIN_ROLES.has(roleCode)) {
       ElMessage.warning('该账号为教师或家长角色，请使用移动端（艺培通）登录')
       return
     }
 
     authStore.setLogin(token, { userId, username, realName, roleCode }, permissions)
+
+    // 密码非本人设置（管理员代设初始密码或重置过）：先强制改密，不进入业务页。
+    // 后端拦截器同样会拦，这里只是避免"刚登进去就满屏报错"的体验。
+    if (mustChangePassword) {
+      ElMessage.warning('请先修改密码后再使用系统')
+      router.replace('/change-password')
+      return
+    }
+
     ElMessage.success('登录成功')
     // 路由守卫对未登录深链接会携带 ?redirect= 原路径；仅接受站内路径，
     // 拒绝 '//host' 这类协议相对地址，避免开放重定向

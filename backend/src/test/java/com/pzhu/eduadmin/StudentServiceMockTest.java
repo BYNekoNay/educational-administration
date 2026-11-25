@@ -1,6 +1,8 @@
 package com.pzhu.eduadmin;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.modules.course.entity.ClassGroup;
@@ -16,6 +18,7 @@ import com.pzhu.eduadmin.modules.finance.mapper.PaymentRecordMapper;
 import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
+import com.pzhu.eduadmin.modules.student.dto.ParentSelfBindRequest;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
@@ -25,7 +28,9 @@ import com.pzhu.eduadmin.modules.user.entity.User;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -88,6 +93,14 @@ class StudentServiceMockTest {
 
     @InjectMocks
     private StudentServiceImpl studentService;
+
+    @BeforeAll
+    static void initLambdaCache() {
+        MybatisConfiguration configuration = new MybatisConfiguration();
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+        TableInfoHelper.initTableInfo(assistant, Student.class);
+        TableInfoHelper.initTableInfo(assistant, ParentStudent.class);
+    }
 
     @BeforeEach
     void setUp() {
@@ -744,5 +757,132 @@ class StudentServiceMockTest {
                 .hasMessageContaining("没有在班记录");
 
         verify(refundRecordMapper, never()).insert(any(RefundRecord.class));
+    }
+
+    // ========== bindParentSelf（家长自助绑定学员） ==========
+
+    private ParentSelfBindRequest selfBindRequest(String name, String phone, String relation) {
+        ParentSelfBindRequest r = new ParentSelfBindRequest();
+        r.setStudentName(name);
+        r.setPhone(phone);
+        r.setRelation(relation);
+        return r;
+    }
+
+    private User parentUser(long id, int status) {
+        User u = new User();
+        u.setId(id);
+        u.setRoleCode("PARENT");
+        u.setStatus(status);
+        return u;
+    }
+
+    @Test
+    void bindParentSelf_UniqueMatch_Success() {
+        Student student = new Student();
+        student.setId(20L);
+        student.setName("张三");
+        student.setContactPhone("13800138000");
+
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student));
+        when(userMapper.selectById(10L)).thenReturn(parentUser(10L, 1));
+        when(studentMapper.selectById(20L)).thenReturn(student);
+        when(parentStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(parentStudentMapper.countIncludingDeleted(20L, 10L)).thenReturn(0);
+        when(parentStudentMapper.insert(any(ParentStudent.class))).thenReturn(1);
+        when(nameResolver.getStudentName(anyLong())).thenReturn("张三");
+        when(nameResolver.getUserDisplayName(anyLong())).thenReturn("家长");
+
+        Student result = studentService.bindParentSelf(10L, selfBindRequest("张三", "13800138000", "母亲"));
+
+        assertThat(result.getId()).isEqualTo(20L);
+        ArgumentCaptor<ParentStudent> captor = ArgumentCaptor.forClass(ParentStudent.class);
+        verify(parentStudentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getParentUserId()).isEqualTo(10L);
+        assertThat(captor.getValue().getStudentId()).isEqualTo(20L);
+        assertThat(captor.getValue().getRelation()).isEqualTo("母亲");
+    }
+
+    @Test
+    void bindParentSelf_NoMatch_Throws404() {
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+
+        assertThatThrownBy(() -> studentService.bindParentSelf(10L, selfBindRequest("张三", "13800138000", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("未找到匹配的学员")
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(404);
+
+        verify(parentStudentMapper, never()).insert(any(ParentStudent.class));
+    }
+
+    @Test
+    void bindParentSelf_MultipleMatches_Throws409() {
+        Student a = new Student();
+        a.setId(20L);
+        Student b = new Student();
+        b.setId(21L);
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(a, b));
+
+        assertThatThrownBy(() -> studentService.bindParentSelf(10L, selfBindRequest("张三", "13800138000", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("匹配到多名学员")
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(409);
+
+        verify(parentStudentMapper, never()).insert(any(ParentStudent.class));
+    }
+
+    @Test
+    void bindParentSelf_AlreadyBound_Throws409() {
+        Student student = new Student();
+        student.setId(20L);
+
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student));
+        when(userMapper.selectById(10L)).thenReturn(parentUser(10L, 1));
+        when(studentMapper.selectById(20L)).thenReturn(student);
+        when(parentStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+
+        assertThatThrownBy(() -> studentService.bindParentSelf(10L, selfBindRequest("张三", "13800138000", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请勿重复绑定");
+
+        verify(parentStudentMapper, never()).insert(any(ParentStudent.class));
+    }
+
+    @Test
+    void bindParentSelf_ParentDisabled_Throws400() {
+        Student student = new Student();
+        student.setId(20L);
+
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student));
+        when(userMapper.selectById(10L)).thenReturn(parentUser(10L, 2));
+
+        assertThatThrownBy(() -> studentService.bindParentSelf(10L, selfBindRequest("张三", "13800138000", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已被禁用")
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(400);
+    }
+
+    @Test
+    void bindParentSelf_TrimsNameAndDefaultsRelation() {
+        Student student = new Student();
+        student.setId(20L);
+
+        when(studentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student));
+        when(userMapper.selectById(10L)).thenReturn(parentUser(10L, 1));
+        when(studentMapper.selectById(20L)).thenReturn(student);
+        when(parentStudentMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(parentStudentMapper.countIncludingDeleted(20L, 10L)).thenReturn(0);
+        when(parentStudentMapper.insert(any(ParentStudent.class))).thenReturn(1);
+        when(nameResolver.getStudentName(anyLong())).thenReturn("张三");
+        when(nameResolver.getUserDisplayName(anyLong())).thenReturn("家长");
+
+        studentService.bindParentSelf(10L, selfBindRequest("  张三  ", " 13800138000 ", "   "));
+
+        ArgumentCaptor<ParentStudent> captor = ArgumentCaptor.forClass(ParentStudent.class);
+        verify(parentStudentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getRelation()).isEqualTo("家长");
     }
 }

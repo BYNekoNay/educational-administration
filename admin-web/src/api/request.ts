@@ -27,6 +27,14 @@ instance.interceptors.response.use(
       window.location.href = '/login'
       return Promise.reject(new Error(data.message))
     }
+    // 强制改密：拦截器在"密码非本人设置"时对所有非白名单接口返回 403 + NEED_CHANGE_PASSWORD。
+    // 必须单独处理——否则会被下面的通用 403 分支当成"权限不足"提示，用户永远不知道该去改密。
+    if (data.code === 403 && data.message === 'NEED_CHANGE_PASSWORD') {
+      if (!window.location.pathname.includes('/change-password')) {
+        window.location.href = '/change-password'
+      }
+      return Promise.reject(new Error('请先修改密码'))
+    }
     // 403 权限不足：提示后不跳转（用户可能在看板等公开页面）
     if (data.code === 403) {
       ElMessage.error(data.message || '权限不足')

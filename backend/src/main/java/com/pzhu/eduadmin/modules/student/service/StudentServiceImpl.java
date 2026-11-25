@@ -20,6 +20,7 @@ import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.common.EntityNameResolver;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.student.dto.ParentBindingVO;
+import com.pzhu.eduadmin.modules.student.dto.ParentSelfBindRequest;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
@@ -320,6 +321,40 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Student bindParentSelf(Long parentUserId, ParentSelfBindRequest req) {
+        String name = req.getStudentName().trim();
+        String phone = req.getPhone().trim();
+
+        // eq 精确匹配（不用 like，否则双校验会退化成"单条件 + 运气"）；
+        // @TableLogic 自动追加 is_deleted = 0，天然排除已软删学员。
+        List<Student> matches = studentMapper.selectList(
+                new LambdaQueryWrapper<Student>()
+                        .eq(Student::getName, name)
+                        .eq(Student::getContactPhone, phone)
+                        .orderByAsc(Student::getId));
+
+        if (matches.isEmpty()) {
+            throw new BusinessException(404, "未找到匹配的学员，请核对学员姓名与报名时登记的联系电话");
+        }
+        if (matches.size() > 1) {
+            // 不暴露任何一条的具体信息，避免 PII 泄露
+            throw new BusinessException(409, "匹配到多名学员，请联系教务人工绑定");
+        }
+
+        Student student = matches.get(0);
+        ParentStudent ps = new ParentStudent();
+        ps.setParentUserId(parentUserId);
+        ps.setStudentId(student.getId());
+        ps.setRelation(StringUtils.hasText(req.getRelation()) ? req.getRelation().trim() : "家长");
+
+        // 复用管理端全部校验：家长角色/禁用状态、学员存在、防重复、
+        // 物理清除历史软删行（唯一键对软删行仍生效）、DuplicateKey 兜底、操作日志
+        bindParent(ps);
+        return student;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public Map<String, Object> transferStudent(Long studentId, Long targetClassId, Long fromClassId) {
         // 1. 校验学员存在
@@ -387,6 +422,7 @@ public class StudentServiceImpl implements StudentService {
 
         // 7. 事务操作：源班级记录标记为已转出
         sourceRecord.setStatus(2); // 已转出
+        sourceRecord.setLeaveTime(java.time.LocalDateTime.now()); // 离班时点，供「当时是否在班」回溯
         classStudentMapper.updateById(sourceRecord);
 
         // class_student 唯一键 uk_class_student(class_id, student_id) 不含 status，
@@ -467,6 +503,7 @@ public class StudentServiceImpl implements StudentService {
         // 3. 所有在班记录置为已退出
         for (ClassStudent cs : currentRecords) {
             cs.setStatus(3); // 已退出
+            cs.setLeaveTime(java.time.LocalDateTime.now()); // 离班时点
             classStudentMapper.updateById(cs);
         }
 

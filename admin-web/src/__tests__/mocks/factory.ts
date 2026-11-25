@@ -177,6 +177,8 @@ export function createFinanceApiMocks() {
     },
     lessonAccountApi: {
       list: makeResolve(emptyPage),
+      get: makeResolve({}),
+      adjust: makeResolve({}),
     },
     lessonFlowApi: {
       list: makeResolve(emptyPage),

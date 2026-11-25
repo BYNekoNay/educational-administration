@@ -21,6 +21,9 @@ public class ClassStudent {
 
     private Integer status;
 
+    /** 转出/退出时间：还原"某课次当时是否在班" */
+    private LocalDateTime leaveTime;
+
     /** 学员姓名（不持久化） */
     @TableField(exist = false)
     private String studentName;

@@ -32,7 +32,10 @@ CREATE TABLE `user` (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
-  version INT NOT NULL DEFAULT 0 COMMENT 'Token 版本号，禁用/角色变更时递增'
+  version INT NOT NULL DEFAULT 0 COMMENT 'Token 版本号，禁用/角色变更时递增',
+  must_change_password TINYINT NOT NULL DEFAULT 0 COMMENT '1-需强制修改密码（密码非本人设置）',
+  hire_date DATE NULL COMMENT '入职日期（展示字段）',
+  leave_date DATE NULL COMMENT '离职生效日，NULL=在职；<=今天 视为已离职'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户账号';
 
 DROP TABLE IF EXISTS `role`;
@@ -149,6 +152,7 @@ CREATE TABLE `class_student` (
   student_id BIGINT NOT NULL,
   join_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   status TINYINT NOT NULL DEFAULT 1 COMMENT '1-在班，2-已转出，3-已退出',
+  leave_time DATETIME NULL COMMENT '转出/退出时间，用于还原历史在班状态',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
@@ -349,19 +353,21 @@ CREATE TABLE `lesson_flow` (
   account_id BIGINT NOT NULL,
   student_id BIGINT NOT NULL,
   lesson_id BIGINT,
-  source_type TINYINT NOT NULL COMMENT '1-payment_record，2-refund_record，3-attendance，4-人工调整',
+  source_type TINYINT NOT NULL COMMENT '1-充值，2-考勤消费，3-回冲，4-退费，5-人工调整',
   source_id BIGINT,
   change_amount DECIMAL(6,2) NOT NULL,
-  change_type TINYINT NOT NULL COMMENT '1-增加，2-消耗，3-退费，4-调整',
+  change_type TINYINT NOT NULL COMMENT '1-增加，2-减少，4-人工调整',
   before_balance DECIMAL(6,2) NOT NULL,
   after_balance DECIMAL(6,2) NOT NULL,
   remark VARCHAR(255),
+  biz_no VARCHAR(64) COMMENT '人工调整幂等键（客户端生成），其余来源为 NULL',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
   INDEX idx_student_time (student_id, create_time),
   INDEX idx_source (source_type, source_id),
-  INDEX idx_account_time (account_id, create_time)
+  INDEX idx_account_time (account_id, create_time),
+  UNIQUE KEY uk_lesson_flow_biz_no (biz_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课时流水';
 
 -- ------------------------------------------------------------
@@ -539,8 +545,12 @@ CREATE TABLE `operation_log` (
   module VARCHAR(50) NOT NULL,
   operation VARCHAR(100) NOT NULL,
   ip VARCHAR(50),
+  target_type VARCHAR(30) NULL COMMENT '操作对象类型，如 STUDENT/USER',
+  target_id BIGINT NULL COMMENT '操作对象ID，用于按对象反查谁看过',
+  hit_count INT NOT NULL DEFAULT 1 COMMENT '同人同对象同日聚合次数',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_operator_time (operator_id, create_time)
+  INDEX idx_operator_time (operator_id, create_time),
+  INDEX idx_operation_target (target_type, target_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志';
 
 -- ------------------------------------------------------------

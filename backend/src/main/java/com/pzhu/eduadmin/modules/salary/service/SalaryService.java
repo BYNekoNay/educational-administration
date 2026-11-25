@@ -22,6 +22,13 @@ public interface SalaryService {
     // 薪资核算与管理
     Page<TeacherSalary> pageTeacherSalaries(int pageNum, int pageSize, String keyword, Integer status, String month, String sortField, String sortOrder);
 
+    /**
+     * 教师自助查询本人课酬。
+     * <p>teacherId 必须由服务端从 CurrentUserHolder 取得，不接受前端传入，
+     * 否则等于开放"查他人工资"的接口。
+     */
+    Page<TeacherSalary> pageMySalaries(Long teacherId, int pageNum, int pageSize, String month);
+
     TeacherSalary calculateSalary(String salaryMonth, Long teacherId, BigDecimal bonusAmount);
 
     /**

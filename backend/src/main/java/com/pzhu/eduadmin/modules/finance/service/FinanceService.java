@@ -1,6 +1,7 @@
 package com.pzhu.eduadmin.modules.finance.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.pzhu.eduadmin.modules.finance.dto.LessonAccountAdjustRequest;
 import com.pzhu.eduadmin.modules.finance.entity.*;
 
 import java.math.BigDecimal;
@@ -29,6 +30,18 @@ public interface FinanceService {
     LessonAccount getLessonAccountById(Long id);
 
     List<LessonAccount> getByStudentId(Long studentId);
+
+    /**
+     * 人工调整课时（补课/扣课）。
+     *
+     * <p>区别于考勤扣减：扣减超过剩余课时时直接拒绝（不做截断到 0），
+     * 避免把输入错误静默变成真实账目变化。</p>
+     *
+     * @param accountId lesson_account 主键
+     * @param request   方向、数量、原因、幂等键
+     * @return 新写入的课时流水
+     */
+    LessonFlow adjustLessons(Long accountId, LessonAccountAdjustRequest request);
 
     // 课时流水
     Page<LessonFlow> pageLessonFlows(int pageNum, int pageSize, String sortField, String sortOrder, String keyword);

@@ -125,7 +125,7 @@ mvn test
 ```
 
 - Framework: JUnit 5 + Mockito + AssertJ
-- Test count: 480, 0 failures (including 12 real-database integration tests on H2 in MySQL-compatible mode: enrollment-payment flow, attendance lesson deduction, refund reversal and unique constraints, auto-scheduling; plus 4 bean-validation constraint tests)
+- Test count: 507 (495 unit + 12 integration), 0 failures (including 12 real-database integration tests on H2 in MySQL-compatible mode: enrollment-payment flow, attendance lesson deduction, refund reversal and unique constraints, auto-scheduling; plus 4 bean-validation constraint tests). The delta comes from existing test classes; the teacher-management change added no new automated tests
 - Service layer coverage: 100% (20/20 core business services have dedicated tests)
 
 ### Frontend tests (admin console)
@@ -194,9 +194,9 @@ educational-administration/
 ## Delivery Version
 
 - **Version**: v1.3.0
-- **Build date**: 2026-09-08
+- **Build date**: 2026-11-20
 - **Environment**: JDK 17 | MySQL 8.0 | Node.js 22 | Maven 3.9
-- **Test statistics**: backend 480 passed (incl. 12 integration tests) | admin console 118 passed | mobile 25 passed
+- **Test statistics**: backend 507 passed (495 unit + 12 integration) | admin console 118 passed | mobile 25 passed
 - **Production capabilities** (added in v1.1.0): Flyway versioned migrations (V6/V7/V8), encrypted backup/restore/drill, release gate + image rollback, business observability (actuator/Prometheus/correlation ID/JSON logs), H5 enrollment decision snapshot (If-Match consistency), upload content validation (Content-Type + magic number), CI test gate + login smoke test, production configuration startup validation
 - **Added in v1.2.0**: visual drag-and-drop quick schedule adjustment (native DnD + CAS to prevent concurrent overwrite), five-factor student churn-warning engine + student-level to-do list (follow-up closed loop / Excel export), SSE long-connection hardening (heartbeat / nginx streaming) + outbound notification channel abstraction, dashboard isolation by role
 - **Added in v1.3.0** (mobile completion): teacher-side student leave approval (class-pending list → approve/reject + remark, academic-admin fallback unchanged), main schedule tab made real (compact summary of today + the next 7 days, adaptive to parent/teacher roles), rich teacher schedule info (course / class / classroom name / time / status, grouped by day with today highlighted), message unread badge (tabBar red dot + "N unread"), parent learning context (attendance rows show "class date time" instead of a bare lesson ID); backend `/api/teacher/lessons` now backfills classroomName

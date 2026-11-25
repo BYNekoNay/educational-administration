@@ -49,11 +49,11 @@ const tableData = ref<LessonFlow[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 
 function sourceTypeLabel(v: number) {
-  const map: Record<number, string> = { 1: '充值', 2: '消费', 3: '回冲', 4: '退费' }
+  const map: Record<number, string> = { 1: '充值', 2: '消费', 3: '回冲', 4: '退费', 5: '人工调整' }
   return map[v] || '其他'
 }
 function sourceTypeTag(v: number) {
-  const map: Record<number, string> = { 1: 'primary', 2: 'warning', 3: 'info', 4: 'danger' }
+  const map: Record<number, string> = { 1: 'primary', 2: 'warning', 3: 'info', 4: 'danger', 5: 'success' }
   return map[v] || 'info'
 }
 

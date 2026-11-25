@@ -22,7 +22,9 @@ import type {
   ScheduleLesson,
   ScheduleQueryParams,
   Student,
+  TeacherDetail,
   TeacherInfo,
+  TeacherListItem,
   UserInfo,
 } from '@/types'
 
@@ -97,9 +99,24 @@ export const periodApi = {
   delete: (id: number) => request.delete<void>(`/edu/periods/${id}`),
 }
 
-/** 教师下拉列表 */
+/** 教师下拉列表（零参，供排课/薪资等下拉使用，勿改签名） */
 export const teacherApi = {
   list: () => request.get<TeacherInfo[]>('/edu/teachers'),
+
+  /** 教师管理分页（教务可见）。注意路径是 /page：/edu/teachers 已被下拉占用 */
+  page: (params?: PageParams & { status?: number }) =>
+    request.get<PageData<TeacherListItem>>('/edu/teachers/page', { params }),
+
+  /** 教师详情：档案 + 当前任教 + 历史任教 */
+  getDetail: (id: number) => request.get<TeacherDetail>(`/edu/teachers/${id}`),
+
+  /** 办理离职：写离职日 + 停用账号 + 递增 token 版本号 */
+  resign: (id: number, leaveDate: string) =>
+    request.put<void>(`/edu/teachers/${id}/resign`, { leaveDate }),
+
+  /** 换任课教师：只改班级与未来课次，返回被改派的课次数 */
+  transferTeacher: (classId: number, teacherId: number) =>
+    request.put<number>(`/edu/classes/${classId}/teacher`, { teacherId }),
 }
 
 /** 考勤管理 */

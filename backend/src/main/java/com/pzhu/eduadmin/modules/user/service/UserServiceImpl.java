@@ -8,6 +8,7 @@ import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
 import com.pzhu.eduadmin.common.EntityNameResolver;
+import com.pzhu.eduadmin.modules.notification.service.NotificationService;
 import com.pzhu.eduadmin.modules.statistics.service.OperationLogService;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.UpdateUserRequest;
@@ -18,6 +19,7 @@ import com.pzhu.eduadmin.modules.user.mapper.RoleMapper;
 import com.pzhu.eduadmin.modules.user.mapper.TeacherCourseMapper;
 import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
@@ -37,6 +40,7 @@ public class UserServiceImpl implements UserService {
     private final EntityNameResolver nameResolver;
     private final TeacherCourseMapper teacherCourseMapper;
     private final CourseMapper courseMapper;
+    private final NotificationService notificationService;
 
     private static final Map<String, SFunction<User, ?>> USER_SORT_MAP = Map.of(
             "id", User::getId,
@@ -224,12 +228,31 @@ public class UserServiceImpl implements UserService {
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        // 原子 SQL 递增 version，防止并发操作丢失递增
+        // 原子 SQL 递增 version，防止并发操作丢失递增。
+        // must_change_password = 1 标记"密码不是本人设置的"：教师下次登录后会被
+        // JwtInterceptor 强制跳改密，同时登录失败提示里会多一句"如密码刚被管理员重置"。
         userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>()
                 .eq(User::getId, id)
                 .set(User::getPassword, new BCryptPasswordEncoder().encode(newPassword))
+                .set(User::getMustChangePassword, 1)
                 .setSql("version = version + 1"));
-        operationLogService.log("用户管理", "重置密码（用户=" + user.getUsername() + "）");
+        // 审计到人 + 目标对象，便于事后回答"谁在什么时候重置了谁的密码"
+        operationLogService.log("用户管理", "重置密码（用户=" + user.getUsername() + "）", "USER", id);
+
+        // 通知本人。被重置的用户此刻已被踢下线，站内信只在"他还有别的设备在线"时看得到；
+        // 真正必然被看到的是登录失败时的统一提示。
+        try {
+            com.pzhu.eduadmin.modules.notification.entity.Notification notice =
+                    new com.pzhu.eduadmin.modules.notification.entity.Notification();
+            notice.setUserId(id);
+            notice.setType("ACCOUNT");
+            notice.setTitle("登录密码已被重置");
+            notice.setContent("您的登录密码已被管理员重置，如非本人申请请联系机构教务。");
+            notificationService.send(id, notice);
+        } catch (Exception e) {
+            // 通知失败不影响改密本身（密码已经生效）
+            log.warn("重置密码通知发送失败: userId={}", id, e);
+        }
     }
 
     // ---- 教师教学特长管理 ----

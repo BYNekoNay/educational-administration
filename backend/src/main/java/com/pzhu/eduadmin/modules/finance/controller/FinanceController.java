@@ -6,6 +6,7 @@ import com.pzhu.eduadmin.common.PageQuery;
 import com.pzhu.eduadmin.common.PageResult;
 import com.pzhu.eduadmin.common.Result;
 import com.pzhu.eduadmin.modules.finance.entity.*;
+import com.pzhu.eduadmin.modules.finance.dto.LessonAccountAdjustRequest;
 import com.pzhu.eduadmin.modules.finance.service.FinanceService;
 import com.pzhu.eduadmin.modules.salary.entity.SalaryRule;
 import com.pzhu.eduadmin.modules.salary.service.SalaryService;
@@ -121,6 +122,19 @@ public class FinanceController {
             throw new BusinessException(404, "课时账户不存在");
         }
         return Result.success(account);
+    }
+
+    /**
+     * 课时人工调整（补课/扣课）。
+     *
+     * <p>以 {@code accountId} 定位账户：studentId/courseId 由服务端从账户行读取，
+     * 前端无法伪造造成错扣；与 {@code GET /lesson-accounts/{id}} 路径风格一致。</p>
+     */
+    @PostMapping("/lesson-accounts/{id}/adjust")
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    public Result<LessonFlow> adjustLessonAccount(@PathVariable Long id,
+                                                  @Valid @RequestBody LessonAccountAdjustRequest request) {
+        return Result.success(financeService.adjustLessons(id, request));
     }
 
     @GetMapping("/lesson-flows")

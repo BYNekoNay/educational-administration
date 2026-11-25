@@ -1,0 +1,84 @@
+graph TB
+用户((用户))
+学员家长((学员家长))
+授课教师((授课教师))
+教务管理员((教务管理员))
+财务管理员((财务管理员))
+超级管理员((超级管理员))
+
+subgraph 艺术培训机构教务管理平台
+P[[家长端功能模块]]
+T[[教师端功能模块]]
+E[[教务端功能模块]]
+F[[财务端功能模块]]
+A[[管理端功能模块]]
+UC0[登录与身份认证]
+UC1[在线报名]
+UC2[缴费与续费]
+UC3[查看课表与学情]
+UC4[查询课时余额]
+UC5[查看授课课表]
+UC6[课堂考勤]
+UC7[请假审批]
+UC8[作业发布与学情点评]
+UC9[课程班级管理]
+UC10[智能排课]
+UC11[调课审批]
+UC12[学员管理与报名审核]
+UC13[考级管理]
+UC14[收费与续费登记]
+UC15[退费审核]
+UC16[教师薪资结算]
+UC17[营收与课时统计]
+UC18[报表导出]
+UC19[用户与角色权限管理]
+UC20[机构配置与公告管理]
+UC21[全局运营看板]
+UC22[排课冲突检测]
+UC23[课时自动扣减]
+UC24[退费课时回冲]
+end
+
+学员家长 --|> 用户
+授课教师 --|> 用户
+教务管理员 --|> 用户
+财务管理员 --|> 用户
+超级管理员 --|> 用户
+
+用户 --> UC0
+
+学员家长 --> P
+P -.include.-> UC1
+P -.include.-> UC2
+P -.include.-> UC3
+P -.include.-> UC4
+
+授课教师 --> T
+T -.include.-> UC5
+T -.include.-> UC6
+T -.include.-> UC7
+T -.include.-> UC8
+
+教务管理员 --> E
+E -.include.-> UC9
+E -.include.-> UC10
+E -.include.-> UC11
+E -.include.-> UC12
+E -.include.-> UC13
+
+财务管理员 --> F
+F -.include.-> UC14
+F -.include.-> UC15
+F -.include.-> UC16
+F -.include.-> UC17
+F -.include.-> UC18
+
+超级管理员 --> A
+A -.include.-> UC19
+A -.include.-> UC20
+A -.include.-> UC21
+
+UC1 -.include.-> UC2
+UC10 -.include.-> UC22
+UC6 -.include.-> UC23
+UC15 -.include.-> UC24

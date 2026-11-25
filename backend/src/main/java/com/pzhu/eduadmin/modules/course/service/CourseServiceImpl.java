@@ -145,10 +145,79 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    public Page<ClassGroup> pageClassGroups(int pageNum, int pageSize) {
-        Page<ClassGroup> page = classGroupMapper.selectPage(new Page<>(pageNum, pageSize), new LambdaQueryWrapper<>());
+    public Page<ClassGroup> pageClassGroups(int pageNum, int pageSize, String keyword, Long teacherId) {
+        LambdaQueryWrapper<ClassGroup> wrapper = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            wrapper.like(ClassGroup::getClassName, keyword.trim());
+        }
+        if (teacherId != null) {
+            wrapper.eq(ClassGroup::getTeacherId, teacherId);
+        }
+        wrapper.orderByDesc(ClassGroup::getId);
+
+        Page<ClassGroup> page = classGroupMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         enrichClassGroupNames(page.getRecords());
         return page;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int transferTeacher(Long classId, Long teacherId) {
+        ClassGroup group = classGroupMapper.selectById(classId);
+        if (group == null) {
+            throw new BusinessException(404, "班级不存在");
+        }
+        if (!Integer.valueOf(1).equals(group.getStatus())) {
+            throw new BusinessException(409, "该班级未开放，无法变更任课教师");
+        }
+
+        com.pzhu.eduadmin.modules.user.entity.User teacher = userMapper.selectById(teacherId);
+        if (teacher == null) {
+            throw new BusinessException(404, "教师不存在");
+        }
+        if (!"TEACHER".equals(teacher.getRoleCode())) {
+            throw new BusinessException(400, "目标用户不是教师");
+        }
+        if (!Integer.valueOf(1).equals(teacher.getStatus())) {
+            throw new BusinessException(400, "该教师已离职或已停用，无法接任");
+        }
+
+        if (teacherId.equals(group.getTeacherId())) {
+            return 0;
+        }
+
+        // 只更新 teacher_id，避免 updateById 全量覆盖其他字段
+        ClassGroup patch = new ClassGroup();
+        patch.setId(classId);
+        patch.setTeacherId(teacherId);
+        classGroupMapper.updateById(patch);
+
+        // 只改「未完成且未来」的课次。status=2（已完成）绝不能动：
+        // 薪资按 teacher_id + status=2 聚合，改了会静默重写历史账目。
+        List<ScheduleLesson> futureLessons = scheduleLessonMapper.selectList(
+                new LambdaQueryWrapper<ScheduleLesson>()
+                        .select(ScheduleLesson::getId)
+                        .eq(ScheduleLesson::getClassId, classId)
+                        .eq(ScheduleLesson::getStatus, 1)
+                        .ge(ScheduleLesson::getLessonDate, LocalDate.now()));
+
+        int updated = 0;
+        if (!futureLessons.isEmpty()) {
+            List<Long> lessonIds = futureLessons.stream()
+                    .map(ScheduleLesson::getId)
+                    .collect(Collectors.toList());
+            ScheduleLesson lessonPatch = new ScheduleLesson();
+            lessonPatch.setTeacherId(teacherId);
+            updated = scheduleLessonMapper.update(lessonPatch,
+                    new LambdaQueryWrapper<ScheduleLesson>()
+                            .in(ScheduleLesson::getId, lessonIds)
+                            .eq(ScheduleLesson::getStatus, 1));
+        }
+
+        operationLogService.log("班级管理",
+                "变更任课教师（班级=" + group.getClassName() + "，新教师=" + teacher.getRealName()
+                        + "，改派课次=" + updated + "）");
+        return updated;
     }
 
     private void enrichClassGroupNames(List<ClassGroup> records) {
@@ -350,6 +419,8 @@ public class CourseServiceImpl implements CourseService {
         if (existingRow != null) {
             existingRow.setStatus(1);
             existingRow.setJoinTime(LocalDateTime.now());
+            // 重新入班必须清空离班时间，否则会留下 leaveTime < joinTime 的脏区间
+            existingRow.setLeaveTime(null);
             inserted = classStudentMapper.updateById(existingRow) > 0;
         } else {
             classStudent.setStatus(1);
@@ -387,6 +458,8 @@ public class CourseServiceImpl implements CourseService {
         // 原实现用 deleteById（逻辑删除）会隐藏记录，导致流失统计（统计 status=3）永远为 0。
         // 改为置 status=3（已退出），保留记录用于统计。
         record.setStatus(3);
+        // 记录离班时点：用于还原「该课次发生时此人是否在班」，也便于追溯转出/退出的时间线
+        record.setLeaveTime(LocalDateTime.now());
         boolean updated = classStudentMapper.updateById(record) > 0;
         if (updated) {
             operationLogService.log("班级学员管理", "移除班级学员（班级=" + nameResolver.getClassName(classId)

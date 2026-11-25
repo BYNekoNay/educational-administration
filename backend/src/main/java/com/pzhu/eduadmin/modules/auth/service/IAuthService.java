@@ -1,5 +1,6 @@
 package com.pzhu.eduadmin.modules.auth.service;
 
+import com.pzhu.eduadmin.modules.auth.dto.ChangePasswordRequest;
 import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
 import com.pzhu.eduadmin.modules.user.dto.LoginRequest;
 import com.pzhu.eduadmin.modules.user.dto.LoginResponse;
@@ -14,6 +15,14 @@ import java.util.List;
 public interface IAuthService {
 
     LoginResponse login(LoginRequest request);
+
+    /**
+     * 本人修改密码：校验原密码 → 更新密码并清除强制改密标记 → 递增 version →
+     * 同事务重查 version 与 roleCode 后签发新 token（仅本次设备保留登录态）。
+     *
+     * @param userId 一律取自 CurrentUserHolder，不接受前端传入
+     */
+    LoginResponse changePassword(Long userId, ChangePasswordRequest request);
 
     /**
      * 移动端家长自助注册：创建 PARENT 角色用户并直接签发 token（自动登录）。

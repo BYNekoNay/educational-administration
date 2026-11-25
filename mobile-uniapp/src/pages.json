@@ -19,12 +19,17 @@
     {
       "path": "pages/messages/index",
       "style": { "navigationBarTitleText": "消息中心" }
+    },
+    {
+      "path": "pages/auth/change-password",
+      "style": { "navigationBarTitleText": "修改密码" }
     }
   ],
   "subPackages": [
     {
       "root": "pages/parent",
       "pages": [
+        { "path": "bind-student", "style": { "navigationBarTitleText": "绑定学员" } },
         { "path": "enrollment", "style": { "navigationBarTitleText": "课程报名" } },
         { "path": "enrollment-history", "style": { "navigationBarTitleText": "报名记录" } },
         { "path": "payments", "style": { "navigationBarTitleText": "缴费记录" } },
@@ -44,6 +49,7 @@
         { "path": "attendance-records", "style": { "navigationBarTitleText": "考勤记录" } },
         { "path": "learning", "style": { "navigationBarTitleText": "学情管理" } },
         { "path": "statistics", "style": { "navigationBarTitleText": "课时统计" } },
+        { "path": "salary", "style": { "navigationBarTitleText": "我的课酬" } },
         { "path": "adjust-request", "style": { "navigationBarTitleText": "调课申请" } },
         { "path": "leave-audit", "style": { "navigationBarTitleText": "请假审批" } }
       ]

@@ -16,11 +16,19 @@ public class OperationLogServiceImpl implements OperationLogService {
 
     @Override
     public void log(String module, String operation) {
+        log(module, operation, null, null);
+    }
+
+    @Override
+    public void log(String module, String operation, String targetType, Long targetId) {
         OperationLog record = new OperationLog();
         LoginUser operator = CurrentUserHolder.get();
         record.setOperatorId(operator != null ? operator.getUserId() : 0L);
         record.setModule(module);
         record.setOperation(operation);
+        record.setTargetType(targetType);
+        record.setTargetId(targetId);
+        record.setHitCount(1);
         record.setIp(IpUtil.getCurrentIp());
         operationLogMapper.insert(record);
     }

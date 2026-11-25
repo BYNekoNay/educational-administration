@@ -164,13 +164,20 @@ async function handleRegister() {
     uni.setStorageSync('userInfo', data)
 
     // 家长注册后加载学员列表（与管理端登录逻辑一致）
+    let students = []
     if (roleCode === 'PARENT') {
-      await loadParentStudents()
+      students = await loadParentStudents()
     }
 
     uni.showToast({ title: '注册成功', icon: 'success' })
     setTimeout(() => {
-      uni.switchTab({ url: '/pages/home/index' })
+      if (roleCode === 'PARENT' && students.length === 0) {
+        // 新注册家长通常还没有绑定关系：引导去绑定页。
+        // 用 redirectTo 替换当前页，避免返回键回到注册表单重复注册。
+        uni.redirectTo({ url: '/pages/parent/bind-student?from=register' })
+      } else {
+        uni.switchTab({ url: '/pages/home/index' })
+      }
     }, 600)
   } catch (e) {
     if (!e || !e._handled) uni.showToast({ title: getErrorMessage(e, '注册失败'), icon: 'none' })
@@ -182,10 +189,13 @@ async function handleRegister() {
 async function loadParentStudents() {
   try {
     const res = await api({ url: '/api/parent/students' })
-    uni.setStorageSync('students', res.data || [])
+    const list = res.data || []
+    uni.setStorageSync('students', list)
+    return list
   } catch (e) {
     console.warn('学员列表加载失败', e)
     uni.setStorageSync('students', [])
+    return []
   }
 }
 </script>

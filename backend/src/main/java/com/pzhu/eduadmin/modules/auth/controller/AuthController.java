@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.auth.controller;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.Result;
+import com.pzhu.eduadmin.modules.auth.dto.ChangePasswordRequest;
 import com.pzhu.eduadmin.modules.auth.service.IAuthService;
 import com.pzhu.eduadmin.modules.user.dto.*;
 import com.pzhu.eduadmin.modules.user.entity.User;
@@ -12,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -46,8 +48,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public Result<Void> logout() {
-        // 登出时原子递增 version，使该用户所有现有 Token 立即失效
+    public Result<Void> logout() {        // 登出时原子递增 version，使该用户所有现有 Token 立即失效
         LoginUser loginUser = CurrentUserHolder.get();
         if (loginUser != null) {
             userMapper.update(null, new LambdaUpdateWrapper<User>()
@@ -55,6 +56,17 @@ public class AuthController {
                     .setSql("version = version + 1"));
         }
         return Result.success();
+    }
+
+    /**
+     * 本人修改密码。
+     * <p>userId 一律取自 CurrentUserHolder，不接受前端传入——防止"改他人密码"。
+     * 成功后返回新 token：本机继续使用，其他设备的旧 token 因 version 变更立即失效。
+     */
+    @PutMapping("/password")
+    public Result<LoginResponse> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        LoginUser loginUser = CurrentUserHolder.get();
+        return Result.success(authService.changePassword(loginUser.getUserId(), request));
     }
 
     /** 获取当前用户可见菜单树（按权限过滤），前端侧栏动态渲染使用 */

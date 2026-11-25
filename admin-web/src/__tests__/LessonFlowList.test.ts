@@ -15,4 +15,15 @@ describe('LessonFlowList.vue', () => {
 
   it('renders title', () => { expect(m().html()).toContain('课时流水') })
   it('calls list API', () => { m(); expect(vi.mocked(lessonFlowApi.list)).toHaveBeenCalled() })
+
+  it('sourceType=5 渲染为「人工调整」', () => {
+    const vm = m().vm as any
+    expect(vm.sourceTypeLabel(5)).toBe('人工调整')
+    expect(vm.sourceTypeTag(5)).toBe('success')
+  })
+
+  it('未知 sourceType 回退为「其他」', () => {
+    const vm = m().vm as any
+    expect(vm.sourceTypeLabel(99)).toBe('其他')
+  })
 })

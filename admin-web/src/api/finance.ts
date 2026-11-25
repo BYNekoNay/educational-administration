@@ -1,6 +1,7 @@
 import request from './request'
 import type {
   LessonAccount,
+  LessonAdjustPayload,
   LessonFlow,
   PageData,
   PageParams,
@@ -29,6 +30,10 @@ export const refundApi = {
 /** 课时账户 */
 export const lessonAccountApi = {
   list: (params?: PageParams) => request.get<PageData<LessonAccount>>('/finance/lesson-accounts', { params }),
+  get: (id: number) => request.get<LessonAccount>(`/finance/lesson-accounts/${id}`),
+  /** 人工调整课时（补课/扣课），返回新写入的课时流水 */
+  adjust: (id: number, data: LessonAdjustPayload) =>
+    request.post<LessonFlow>(`/finance/lesson-accounts/${id}/adjust`, data),
 }
 
 /** 课时流水 */

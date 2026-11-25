@@ -278,7 +278,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                     .set(ClassStudent::getStatus, 3)
                     // update(null, wrapper) 不触发 MetaObjectHandler 自动填充，需显式刷新 update_time，
                     // 否则流失统计按 status=3 AND update_time 区间计数时会漏计本次退班。
-                    .set(ClassStudent::getUpdateTime, LocalDateTime.now()));
+                    .set(ClassStudent::getUpdateTime, LocalDateTime.now())
+                    .set(ClassStudent::getLeaveTime, LocalDateTime.now()));
         }
         if (deleted) {
             try {

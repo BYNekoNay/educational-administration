@@ -116,6 +116,19 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '考级管理', permission: 'menu:exam' }
       },
       {
+        path: 'edu/teachers',
+        name: 'Teachers',
+        component: () => import('@/views/edu/TeacherList.vue'),
+        meta: { title: '教师管理', permission: 'menu:teacher' }
+      },
+      {
+        // 强制改密落地页：不设 permission，任何登录用户都可达
+        path: 'change-password',
+        name: 'ChangePassword',
+        component: () => import('@/views/auth/ChangePassword.vue'),
+        meta: { title: '修改密码' }
+      },
+      {
         path: 'finance/payments',
         name: 'Payments',
         component: () => import('@/views/finance/PaymentList.vue'),

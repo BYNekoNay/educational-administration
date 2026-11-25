@@ -84,7 +84,7 @@ const notificationStore = useNotificationStore()
 
 /** 图标名 → Vue 组件映射，上线有新图标时维护此表即可 */
 const iconMap: Record<string, Component> = {
-  Monitor, Setting, Document, Money, DataAnalysis, Reading,
+  Monitor, Setting, Document, Money, DataAnalysis, Reading, User,
 }
 
 /* ─── 侧边栏折叠（记忆到 localStorage）─── */

@@ -17,13 +17,16 @@ import com.pzhu.eduadmin.modules.finance.entity.PaymentRecord;
 import com.pzhu.eduadmin.modules.finance.service.FinanceService;
 import com.pzhu.eduadmin.modules.notice.entity.Notice;
 import com.pzhu.eduadmin.modules.notice.mapper.NoticeMapper;
+import com.pzhu.eduadmin.modules.student.dto.ParentSelfBindRequest;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
+import com.pzhu.eduadmin.modules.student.service.StudentService;
 import com.pzhu.eduadmin.common.BusinessException;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
+import com.pzhu.eduadmin.security.RateLimitService;
 import com.pzhu.eduadmin.security.RequireRole;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +49,8 @@ public class ParentController {
     private final StudentMapper studentMapper;
     private final NoticeMapper noticeMapper;
     private final FinanceService financeService;
+    private final StudentService studentService;
+    private final RateLimitService rateLimitService;
 
     @GetMapping("/courses")
     public Result<List<Course>> listCourses() {
@@ -252,6 +257,24 @@ public class ParentController {
         Set<Long> studentIds = bindings.stream()
                 .map(ParentStudent::getStudentId).collect(Collectors.toSet());
         return Result.success(studentMapper.selectBatchIds(studentIds));
+    }
+
+    /**
+     * 家长自助绑定学员。
+     *
+     * <p>按「学员姓名 + 报名联系电话」精确双校验，唯一命中才允许绑定；
+     * 0 条 → 404、多条 → 409，均要求联系教务人工处理。</p>
+     *
+     * <p>限流理由：0 条/多条 的差异响应等于「该学员是否存在」的探针，
+     * 需把枚举成本抬高。注意限流不是安全边界，真正的边界是双要素匹配。</p>
+     */
+    @PostMapping("/bind-student")
+    public Result<Student> bindStudent(@Valid @RequestBody ParentSelfBindRequest body) {
+        Long parentUserId = CurrentUserHolder.get().getUserId();
+        if (!rateLimitService.tryAcquire("parent-bind:" + parentUserId, 10)) {
+            throw new BusinessException(429, "操作过于频繁，请稍后再试");
+        }
+        return Result.success(studentService.bindParentSelf(parentUserId, body));
     }
 
     @GetMapping("/notices")

@@ -2,6 +2,7 @@ package com.pzhu.eduadmin.modules.student.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.modules.student.dto.ParentBindingVO;
+import com.pzhu.eduadmin.modules.student.dto.ParentSelfBindRequest;
 import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
 import com.pzhu.eduadmin.modules.user.entity.User;
@@ -27,6 +28,18 @@ public interface StudentService {
     boolean deleteStudent(Long id);
 
     boolean bindParent(ParentStudent parentStudent);
+
+    /**
+     * 家长自助绑定学员：按「学员姓名 + 报名联系电话」精确匹配，唯一命中才建立绑定。
+     *
+     * <p>复用 {@link #bindParent(ParentStudent)} 的全部校验（家长角色/禁用状态、
+     * 学员存在、防重复、历史软删行清理、唯一键兜底），管理端绑定语义不受影响。</p>
+     *
+     * @param parentUserId 从登录态取得的家长用户 ID，不接受前端传参
+     * @param request      学员姓名、联系电话、关系
+     * @return 绑定成功的学员
+     */
+    Student bindParentSelf(Long parentUserId, ParentSelfBindRequest request);
 
     /**
      * 查询指定学员已绑定的家长列表（含家长姓名、用户名、关系），用于绑定弹窗展示与解绑。

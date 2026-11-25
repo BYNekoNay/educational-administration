@@ -3,6 +3,7 @@ package com.pzhu.eduadmin.modules.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.modules.auth.dto.ChangePasswordRequest;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
 import com.pzhu.eduadmin.modules.user.dto.LoginRequest;
@@ -21,9 +22,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,6 +46,16 @@ public class AuthService implements IAuthService {
     private final com.pzhu.eduadmin.modules.user.service.RoleService roleService;
     private final MenuMapper menuMapper;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    /**
+     * 登录失败统一文案。
+     * <p><b>三处必须完全一致</b>：不区分"用户不存在 / 已禁用 / 密码错误"，
+     * 避免登录接口沦为账号存在性探针。任何"按账号状态返回不同提示"的改动
+     * 都会破坏这一点——包括想提示"密码已被管理员重置"的场景，
+     * 正确做法是把这句话固定追加在统一文案里，而不是分支返回。
+     */
+    private static final String LOGIN_FAIL_MESSAGE =
+            "用户名或密码错误；如密码刚被管理员重置，请向教务索取新密码";
 
     /**
      * 登录失败计数（SEC-03）。原先在本类用进程内 ConcurrentHashMap 按用户名计数，
@@ -68,15 +81,15 @@ public class AuthService implements IAuthService {
 
         if (user == null) {
             loginAttemptService.recordFailure(username, clientIp);
-            throw new BusinessException("用户名或密码错误");
+            throw new BusinessException(LOGIN_FAIL_MESSAGE);
         }
         // 先检查账号状态再验证密码，防止攻击者确认禁用账号的密码
         if (user.getStatus() == null || user.getStatus() != 1) {
-            throw new BusinessException("用户名或密码错误");
+            throw new BusinessException(LOGIN_FAIL_MESSAGE);
         }
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             loginAttemptService.recordFailure(username, clientIp);
-            throw new BusinessException("用户名或密码错误");
+            throw new BusinessException(LOGIN_FAIL_MESSAGE);
         }
 
         // 登录成功，清除失败计数
@@ -91,7 +104,53 @@ public class AuthService implements IAuthService {
                 user.getVersion() != null ? user.getVersion() : 0);
         List<String> permissions = loadPermissions(user.getRoleCode());
         return new LoginResponse(token, user.getId(), user.getUsername(), user.getRealName(),
-                user.getRoleCode(), permissions);
+                user.getRoleCode(), permissions,
+                Integer.valueOf(1).equals(user.getMustChangePassword()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public LoginResponse changePassword(Long userId, ChangePasswordRequest request) {
+        String newPassword = request.getNewPassword();
+
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new BusinessException(400, "新密码不能为空");
+        }
+        if (newPassword.length() < 6) {
+            throw new BusinessException(400, "新密码长度不能少于6位");
+        }
+        // BCrypt 对超过 72 字节的密码是【静默截断】，不是抛异常：
+        // 前 72 字节相同的两个不同密码会产生相同哈希、可互相登录。
+        // 必须在入口前置拒绝；把理由写成"防止底层报错"会导致后人误以为可以删。
+        if (newPassword.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new BusinessException(400, "新密码过长（超出72字节限制）");
+        }
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(401, "登录状态无效，请重新登录");
+        }
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            throw new BusinessException(400, "原密码不正确");
+        }
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new BusinessException(400, "新密码不能与原密码相同");
+        }
+
+        userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .set(User::getPassword, passwordEncoder.encode(newPassword))
+                .set(User::getMustChangePassword, 0)
+                .setSql("version = version + 1"));
+
+        // 同事务重查：新 token 的 version 与 roleCode 必须取库里的真实值。
+        // 不能用「旧值 + 1」猜测——并发下（如同时被禁用或改角色）签出的 token 会立刻失效。
+        User refreshed = userMapper.selectById(userId);
+        String token = jwtUtil.generateToken(refreshed.getId(), refreshed.getUsername(),
+                refreshed.getRoleCode(), refreshed.getVersion() != null ? refreshed.getVersion() : 0);
+        List<String> permissions = loadPermissions(refreshed.getRoleCode());
+        return new LoginResponse(token, refreshed.getId(), refreshed.getUsername(),
+                refreshed.getRealName(), refreshed.getRoleCode(), permissions, Boolean.FALSE);
     }
 
     @Override

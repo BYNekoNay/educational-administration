@@ -3,14 +3,18 @@ package com.pzhu.eduadmin;
 import com.pzhu.eduadmin.modules.attendance.entity.Attendance;
 import com.pzhu.eduadmin.modules.attendance.entity.LeaveRequest;
 import com.pzhu.eduadmin.modules.enrollment.entity.Enrollment;
+import com.pzhu.eduadmin.modules.finance.dto.LessonAccountAdjustRequest;
 import com.pzhu.eduadmin.modules.learning.entity.Homework;
 import com.pzhu.eduadmin.modules.learning.entity.LearningRecord;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleAdjustRequest;
 import com.pzhu.eduadmin.modules.statistics.entity.Organization;
+import com.pzhu.eduadmin.modules.student.dto.ParentSelfBindRequest;
 import com.pzhu.eduadmin.modules.user.entity.Menu;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
 
 import static jakarta.validation.Validation.buildDefaultValidatorFactory;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,5 +90,46 @@ class ValidationConstraintsTest {
         leave.setReason("请假".repeat(200));
         leave.setAuditRemark("备注".repeat(200));
         assertThat(VALIDATOR.validate(leave)).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("课时调整：方向仅 1/2，课时数须为正且 ≤2 位小数，原因与流水号必填")
+    void lessonAdjustRequestConstraints() {
+        LessonAccountAdjustRequest req = new LessonAccountAdjustRequest();
+        assertThat(VALIDATOR.validate(req)).hasSize(4);
+
+        req.setDirection(1);
+        req.setAmount(BigDecimal.ZERO);
+        req.setRemark("   ");
+        req.setBizNo("biz-1");
+        assertThat(VALIDATOR.validate(req)).hasSize(2);
+
+        req.setDirection(3);
+        req.setAmount(new BigDecimal("1.00"));
+        req.setRemark("停课补偿");
+        assertThat(VALIDATOR.validate(req)).hasSize(1);
+
+        req.setDirection(2);
+        assertThat(VALIDATOR.validate(req)).isEmpty();
+
+        req.setAmount(new BigDecimal("1.234"));
+        assertThat(VALIDATOR.validate(req)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("家长自助绑定：姓名与电话必填，电话须为 11 位手机号，关系 ≤20 字")
+    void parentSelfBindRequestConstraints() {
+        ParentSelfBindRequest req = new ParentSelfBindRequest();
+        assertThat(VALIDATOR.validate(req)).hasSize(2);
+
+        req.setStudentName("张三");
+        req.setPhone("12345");
+        assertThat(VALIDATOR.validate(req)).hasSize(1);
+
+        req.setPhone("13800138000");
+        assertThat(VALIDATOR.validate(req)).isEmpty();
+
+        req.setRelation("x".repeat(21));
+        assertThat(VALIDATOR.validate(req)).hasSize(1);
     }
 }

@@ -151,18 +151,31 @@ export interface LessonFlow {
   accountId?: number
   studentId?: number
   lessonId?: number | null
-  /** 1-缴费，2-考勤消费，3-回冲，4-退费 */
+  /** 1-充值，2-考勤消费，3-回冲，4-退费，5-人工调整 */
   sourceType?: number
   sourceId?: number | null
   changeAmount?: number
-  /** 1-增加，2-减少，3-退费，4-调整 */
+  /** 1-增加，2-减少，4-人工调整 */
   changeType?: number
   beforeBalance?: number
   afterBalance?: number
   remark?: string | null
+  /** 人工调整幂等键，仅 sourceType=5 时有值 */
+  bizNo?: string | null
   studentName?: string
   courseName?: string
   createTime?: string
+}
+
+/** 课时人工调整请求体 */
+export interface LessonAdjustPayload {
+  /** 1-增加课时，2-扣减课时 */
+  direction: 1 | 2
+  /** 恒为正数，方向由 direction 决定 */
+  amount: number
+  remark: string
+  /** 幂等键：每次打开弹窗生成一次，失败重试复用同一值 */
+  bizNo: string
 }
 
 export interface SalaryRule {
@@ -303,6 +316,43 @@ export interface RoleInfo {
 
 /** 教师下拉项（GET /edu/teachers，User 实体回填 specialties） */
 export type TeacherInfo = UserInfo
+
+/** 教师管理列表行（GET /edu/teachers/page） */
+export interface TeacherListItem {
+  id: number
+  username: string
+  realName?: string
+  phone?: string | null
+  hireDate?: string | null
+  leaveDate?: string | null
+  status?: number
+  mustChangePassword?: number | null
+  /** 在职 / 将于 X 离职 / 已过离职日未停用 / 已离职 */
+  statusLabel?: string
+  /** success / warning / danger / info */
+  statusType?: string
+  specialtyCourseIds?: number[]
+  specialties?: Course[]
+}
+
+/** 教师详情中的任教班级行 */
+export interface TeachingClassVO {
+  classId: number
+  className?: string
+  courseName?: string
+  /** 当前任教：在班学员数 */
+  studentCount?: number
+  /** 历史任教：该班已完成课次数 */
+  lessonCount?: number
+  /** 历史任教：最后一节课日期 */
+  lastLessonDate?: string | null
+}
+
+/** 教师详情（GET /edu/teachers/{id}） */
+export interface TeacherDetail extends TeacherListItem {
+  currentClasses?: TeachingClassVO[]
+  historyClasses?: TeachingClassVO[]
+}
 
 /** 学员已绑定家长展示对象（后端 ParentBindingVO） */
 export interface ParentBinding {

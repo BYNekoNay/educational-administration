@@ -22,8 +22,13 @@ import com.pzhu.eduadmin.modules.finance.mapper.RefundRecordMapper;
 import com.pzhu.eduadmin.modules.finance.service.FinanceService;
 import com.pzhu.eduadmin.modules.schedule.entity.ScheduleLesson;
 import com.pzhu.eduadmin.modules.schedule.mapper.ScheduleLessonMapper;
+import com.pzhu.eduadmin.modules.student.entity.ParentStudent;
 import com.pzhu.eduadmin.modules.student.entity.Student;
+import com.pzhu.eduadmin.modules.student.mapper.ParentStudentMapper;
 import com.pzhu.eduadmin.modules.student.mapper.StudentMapper;
+import com.pzhu.eduadmin.modules.student.service.StudentService;
+import com.pzhu.eduadmin.modules.user.entity.User;
+import com.pzhu.eduadmin.modules.user.mapper.UserMapper;
 import com.pzhu.eduadmin.security.CurrentUserHolder;
 import com.pzhu.eduadmin.security.LoginUser;
 import org.junit.jupiter.api.AfterEach;
@@ -60,6 +65,8 @@ abstract class IntegrationTestSupport {
     protected FinanceService financeService;
     @Autowired
     protected AttendanceService attendanceService;
+    @Autowired
+    protected StudentService studentService;
 
     @Autowired
     protected EnrollmentMapper enrollmentMapper;
@@ -83,6 +90,10 @@ abstract class IntegrationTestSupport {
     protected PaymentRecordMapper paymentRecordMapper;
     @Autowired
     protected RefundRecordMapper refundRecordMapper;
+    @Autowired
+    protected ParentStudentMapper parentStudentMapper;
+    @Autowired
+    protected UserMapper userMapper;
 
     @Autowired
     protected JdbcTemplate jdbcTemplate;
@@ -117,6 +128,28 @@ abstract class IntegrationTestSupport {
         student.setStatus(1);
         studentMapper.insert(student);
         return student.getId();
+    }
+
+    /** 带联系电话的学员夹具（家长自助绑定用例需要「姓名 + 电话」双要素） */
+    protected Long givenStudent(String name, String phone) {
+        Student student = new Student();
+        student.setName(name);
+        student.setContactPhone(phone);
+        student.setStatus(1);
+        studentMapper.insert(student);
+        return student.getId();
+    }
+
+    /** 家长账号夹具：user 表必填列为 username / password / real_name / role_code */
+    protected Long givenParentUser(String username) {
+        User user = new User();
+        user.setUsername(username);
+        user.setPassword("integration-test-placeholder");
+        user.setRealName("集成测试家长");
+        user.setRoleCode("PARENT");
+        user.setStatus(1);
+        userMapper.insert(user);
+        return user.getId();
     }
 
     protected Course givenCourse(String name, int totalLessons, String price) {
@@ -235,5 +268,11 @@ abstract class IntegrationTestSupport {
         return attendanceMapper.selectCount(new LambdaQueryWrapper<com.pzhu.eduadmin.modules.attendance.entity.Attendance>()
                 .eq(com.pzhu.eduadmin.modules.attendance.entity.Attendance::getLessonId, lessonId)
                 .eq(com.pzhu.eduadmin.modules.attendance.entity.Attendance::getStudentId, studentId));
+    }
+
+    protected List<ParentStudent> bindingsOf(Long studentId) {
+        return parentStudentMapper.selectList(new LambdaQueryWrapper<ParentStudent>()
+                .eq(ParentStudent::getStudentId, studentId)
+                .orderByAsc(ParentStudent::getId));
     }
 }

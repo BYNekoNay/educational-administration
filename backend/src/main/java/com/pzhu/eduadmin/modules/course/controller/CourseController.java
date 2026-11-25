@@ -62,8 +62,11 @@ public class CourseController {
     // ========== 班级 ==========
 
     @GetMapping("/classes")
-    public Result<PageResult<ClassGroup>> listClassGroups(PageQuery query) {
-        return Result.success(PageResult.of(courseService.pageClassGroups((int) query.getPageNum(), (int) query.getPageSize())));
+    public Result<PageResult<ClassGroup>> listClassGroups(
+            PageQuery query,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long teacherId) {
+        return Result.success(PageResult.of(courseService.pageClassGroups(
+                (int) query.getPageNum(), (int) query.getPageSize(), query.getKeyword(), teacherId)));
     }
 
     @GetMapping("/classes/{id}")
@@ -94,6 +97,21 @@ public class CourseController {
     public Result<Void> deleteClassGroup(@PathVariable Long id) {
         courseService.deleteClassGroup(id);
         return Result.success();
+    }
+
+    /**
+     * 换任课教师：只改班级与「未完成且未来」的课次，已完成课次与薪资历史不动。
+     *
+     * @return 被改派的未来课次数
+     */
+    @PutMapping("/classes/{id}/teacher")
+    public Result<Integer> transferTeacher(@PathVariable Long id,
+                                           @RequestBody java.util.Map<String, Long> body) {
+        Long teacherId = body == null ? null : body.get("teacherId");
+        if (teacherId == null) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, "teacherId 不能为空");
+        }
+        return Result.success(courseService.transferTeacher(id, teacherId));
     }
 
     // ========== 班级学员 ==========
