@@ -39,6 +39,16 @@
       <artifactId>spring-boot-starter-data-redis</artifactId>
     </dependency>
 
+    <!--
+      缓存抽象：缺它时 spring.cache.type=redis 不会生效（CacheAutoConfiguration 不装配
+      RedisCacheManager），@Cacheable 只会落到 JVM 内存缓存，表现为「配置了 Redis 但
+      Redis 里没有任何缓存 key」。测试环境用 spring.cache.type=simple 不受影响。
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-cache</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>com.baomidou</groupId>
       <artifactId>mybatis-plus-boot-starter</artifactId>
