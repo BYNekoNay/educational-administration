@@ -56,8 +56,8 @@
 
     <!-- 新增/编辑学员弹窗 -->
     <el-dialog :title="isEdit ? '编辑学员' : '新增学员'" v-model="dialogVisible" width="500px">
-      <el-form :model="form" label-width="80px">
-        <el-form-item label="姓名"><el-input v-model="form.name" /></el-form-item>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+        <el-form-item label="姓名" prop="name"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="性别">
           <el-select v-model="form.gender"><el-option :value="1" label="男" /><el-option :value="2" label="女" /></el-select>
         </el-form-item>
@@ -65,7 +65,7 @@
           <el-date-picker v-model="form.birthday" type="date" placeholder="选择出生日期" value-format="YYYY-MM-DD" style="width:100%" />
         </el-form-item>
         <el-form-item label="学校"><el-input v-model="form.school" /></el-form-item>
-        <el-form-item label="联系电话"><el-input v-model="form.contactPhone" /></el-form-item>
+        <el-form-item label="联系电话" prop="contactPhone"><el-input v-model="form.contactPhone" /></el-form-item>
         <!-- 状态由服务端控制（新增置默认、退班流程置 4），后端 create/update 均忽略客户端 status，故不提供编辑 -->
       </el-form>
       <template #footer>
@@ -157,6 +157,12 @@ const transferVisible = ref(false)
 const isEdit = ref(false)
 const currentStudent = ref<Student | null>(null)
 const form = reactive<Partial<Student>>({ name: '', gender: 1, birthday: '', school: '', contactPhone: '' })
+const formRef = ref()
+const rules = {
+  name: [{ required: true, message: '请输入学员姓名', trigger: 'blur' }],
+  // 空值放行，填了就必须是合法手机号
+  contactPhone: [{ pattern: /^$|^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }],
+}
 const bindForm = reactive({ parentUserId: null as number | null, relation: '父亲' })
 const transferTargetClassId = ref<number | null>(null)
 const transferClassList = ref<ClassGroup[]>([])
@@ -198,6 +204,8 @@ function openDialog(row: Student | null) {
 }
 
 async function handleSave() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) { ElMessage.warning('请填写学员姓名并检查手机号格式'); return }
   saving.value = true
   try {
     const payload: Partial<Student> = { ...form }

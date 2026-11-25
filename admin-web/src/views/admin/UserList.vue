@@ -379,7 +379,7 @@ function openEditDialog(row: UserInfo) {
 
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
+  if (!valid) { ElMessage.warning('请完善必填项'); return }
 
   submitting.value = true
   try {

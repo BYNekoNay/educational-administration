@@ -34,9 +34,9 @@ const props = defineProps<{
 const lessonsByDay = computed(() => {
   const map: Record<number, ScheduleLesson[]> = {}
   for (const l of props.lessons) {
-    const d = new Date(l.lessonDate + 'T00:00:00')
-    let dow = d.getDay() - 1
-    if (dow < 0) dow = 6
+    // 用父组件传入的周日期字符串直接定位列，避免 new Date 解析异常时课次落进 NaN 键导致整列空白
+    const dow = props.weekDays.indexOf(l.lessonDate)
+    if (dow < 0) continue
     if (!map[dow]) map[dow] = []
     map[dow].push(l)
   }

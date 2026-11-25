@@ -199,6 +199,14 @@ function fmtLessonTime(lesson: ScheduleLesson): string {
 // 切换月/周视图时退出编辑模式并按新视图刷新
 function onViewModeChange() {
   editMode.value = false
+  // 月视图翻页会把锚点钉在「当月 1 日」，直接切周视图会落在上月末那一周导致页面空白；
+  // 切到 week 时若锚点仍是 1 日，归一为今天（2026-11-26 修复）
+  if (viewMode.value === 'week' && currentDate.value.getDate() === 1) {
+    const t = new Date()
+    if (year.value === t.getFullYear() && month.value === t.getMonth() + 1) {
+      currentDate.value = t
+    }
+  }
   loadLessons()
 }
 
@@ -242,13 +250,15 @@ async function confirmQuickAdjust() {
 }
 
 function prev() {
-  if (viewMode.value === 'month') currentDate.value = new Date(year.value, month.value - 2, 1)
+  // 月视图翻页保留当前「日」（并夹到 28 以内避免 2 月越界），
+  // 否则锚点被钉在 1 日会让随后切周视图落在上月末（2026-11-26 修复）
+  if (viewMode.value === 'month') currentDate.value = new Date(year.value, month.value - 2, Math.min(currentDate.value.getDate(), 28))
   else currentDate.value = new Date(currentDate.value.getTime() - 7 * 86400000)
   loadLessons()
 }
 
 function next() {
-  if (viewMode.value === 'month') currentDate.value = new Date(year.value, month.value, 1)
+  if (viewMode.value === 'month') currentDate.value = new Date(year.value, month.value, Math.min(currentDate.value.getDate(), 28))
   else currentDate.value = new Date(currentDate.value.getTime() + 7 * 86400000)
   loadLessons()
 }

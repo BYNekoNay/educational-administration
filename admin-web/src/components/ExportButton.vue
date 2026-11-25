@@ -80,7 +80,9 @@ async function handleExport() {
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
+    // 必须延时释放：a.click() 之后同步 revokeObjectURL 会让 Chrome 在 blob 尚未落盘前
+    // 丢掉引用，表现为下载停在 .crdownload 且永不结束（2026-11-26 实测定位）
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000)
   } catch (e: any) {
     // HTTP 401：与主实例 request.ts 保持一致——清除登录态并跳登录页，
     // 而不是弹一句 "Request failed with status code 401" 后留着失效会话

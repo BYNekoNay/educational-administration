@@ -51,13 +51,13 @@
 
     <!-- 新增/编辑课次弹窗 -->
     <el-dialog :title="isEdit?'编辑课次':'新增课次'" v-model="dialogVisible" width="500px">
-      <el-form :model="form" label-width="80px">
-        <el-form-item label="班级">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+        <el-form-item label="班级" prop="classId">
           <el-select v-model="form.classId" placeholder="请选择班级" filterable style="width:100%">
             <el-option v-for="c in classList" :key="c.id" :label="c.className" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="教师">
+        <el-form-item label="教师" prop="teacherId">
           <el-select v-model="form.teacherId" placeholder="请选择教师" filterable style="width:100%">
             <el-option v-for="t in teacherList" :key="t.id" :label="t.realName || t.username" :value="t.id">
               <span>{{ t.realName || t.username }}</span>
@@ -68,18 +68,18 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="教室">
+        <el-form-item label="教室" prop="classroomId">
           <el-select v-model="form.classroomId" placeholder="请选择教室" filterable style="width:100%">
             <el-option v-for="r in roomList" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="日期">
+        <el-form-item label="日期" prop="lessonDate">
           <el-date-picker v-model="form.lessonDate" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" style="width:100%" />
         </el-form-item>
-        <el-form-item label="开始时间">
+        <el-form-item label="开始时间" prop="startTime">
           <el-time-picker v-model="form.startTime" placeholder="开始时间" value-format="HH:mm:ss" style="width:100%" />
         </el-form-item>
-        <el-form-item label="结束时间">
+        <el-form-item label="结束时间" prop="endTime">
           <el-time-picker v-model="form.endTime" placeholder="结束时间" value-format="HH:mm:ss" style="width:100%" />
         </el-form-item>
         <el-form-item v-if="isEdit" label="状态">
@@ -173,6 +173,15 @@ const classList = ref<ClassGroup[]>([])
 const teacherList = ref<TeacherInfo[]>([])
 const roomList = ref<Classroom[]>([])
 const form = reactive<Partial<ScheduleLesson>>({ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '' })
+const formRef = ref()
+const rules = {
+  classId: [{ required: true, message: '请选择班级', trigger: 'change' }],
+  teacherId: [{ required: true, message: '请选择教师', trigger: 'change' }],
+  classroomId: [{ required: true, message: '请选择教室', trigger: 'change' }],
+  lessonDate: [{ required: true, message: '请选择日期', trigger: 'change' }],
+  startTime: [{ required: true, message: '请选择开始时间', trigger: 'change' }],
+  endTime: [{ required: true, message: '请选择结束时间', trigger: 'change' }],
+}
 const batchItems = ref<Array<Partial<ScheduleLesson>>>([{ classId: null, teacherId: null, classroomId: null, lessonDate: '', startTime: '', endTime: '', status: 1 }])
 const autoDateRange = ref<string[]>([])
 const autoForm = reactive({
@@ -251,16 +260,18 @@ function openDialog(row: ScheduleLesson | null) {
 }
 
 async function handleSave() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) { ElMessage.warning('请完整填写班级、教师、教室与时间'); return }
   saving.value = true
   try {
     // 后端新增强制 status=1、更新明确不接受客户端 status（状态变更走调课/取消流程），故不传 status
     const payload = {
-      classId: form.classId,
-      teacherId: form.teacherId,
-      classroomId: form.classroomId,
-      lessonDate: form.lessonDate,
-      startTime: form.startTime,
-      endTime: form.endTime,
+      classId: form.classId ?? undefined,
+      teacherId: form.teacherId ?? undefined,
+      classroomId: form.classroomId ?? undefined,
+      lessonDate: form.lessonDate || undefined,
+      startTime: form.startTime || undefined,
+      endTime: form.endTime || undefined,
     }
     if (isEdit.value) {
       // 编辑态必然有 id

@@ -125,7 +125,7 @@ async function submitAdjust() {
   const formEl = formRef.value
   if (!formEl) return
   const valid = await formEl.validate().catch(() => false)
-  if (!valid) return
+  if (!valid) { ElMessage.warning('请填写调整原因并确认课时数'); return }
   if (form.direction === 2 && previewAfter.value < 0) {
     ElMessage.error(`扣减超过剩余课时（当前剩余 ${current.value?.remainingLessons ?? 0}）`)
     return

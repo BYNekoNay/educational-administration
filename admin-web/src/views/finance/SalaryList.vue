@@ -184,12 +184,7 @@
                     empty-text="暂无符合条件的薪资记录"
                     @sort-change="handleSortChange($event, 'salaries')">
             <el-table-column prop="id" label="ID" width="60" sortable="custom" />
-            <el-table-column prop="teacherName" label="教师" min-width="100">
-              <template #default="{ row }">
-                <el-avatar :size="22" style="vertical-align: middle; margin-right: 6px">{{ row.teacherName?.charAt(0) }}</el-avatar>
-                <span>{{ row.teacherName }}</span>
-              </template>
-            </el-table-column>
+            <el-table-column prop="teacherName" label="教师" min-width="100" />
             <el-table-column prop="salaryMonth" label="月份" width="100" sortable="custom">
               <template #default="{ row }">
                 <el-tag effect="plain" round>{{ row.salaryMonth }}</el-tag>
