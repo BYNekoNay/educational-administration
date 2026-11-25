@@ -34,7 +34,8 @@
                 <el-icon class="label-help"><QuestionFilled /></el-icon>
               </el-tooltip>
             </div>
-            <div class="card-value" :style="{ color: Number(cards.monthlyRevenue) < 0 ? 'var(--accent-rose)' : 'var(--accent-amber)' }">¥{{ formatMoney(cards.monthlyRevenue) }}</div>
+            <div v-if="canExport" class="card-value" :style="{ color: Number(cards.monthlyRevenue) < 0 ? 'var(--accent-rose)' : 'var(--accent-amber)' }">¥{{ formatMoney(cards.monthlyRevenue) }}</div>
+            <div v-else class="card-value" style="font-size:14px;color:var(--text-tertiary)">仅财务可见</div>
           </div>
           <div class="card-accent" style="background: var(--accent-amber)"></div>
         </el-card>
@@ -246,23 +247,33 @@ function formatMoney(value: unknown): string {
 
 async function loadAnalytics() {
   // 五个统计接口相互独立：用 allSettled 隔离失败，避免单个接口异常拖空全部表格
-  const results = await Promise.allSettled([
-    statisticsApi.teacherWorkload(),
-    statisticsApi.studentLoss(),
-    statisticsApi.classActivity(),
-    statisticsApi.courseProfit(),
-    statisticsApi.paymentRate()
-  ])
+  // 仅教务（EDU_ADMIN）跳过经营数据请求——后端已收紧 teacherWorkload/courseProfit/paymentRate，
+  // 不跳过会必然 403。用「显式等于 EDU_ADMIN」而不是「非超管财务」，避免 roleCode 尚未
+  // 解析出来时误跳过（首次加载/测试环境）
+  const isEduOnly = authStore.roleCode === 'EDU_ADMIN'
+  const allowed = isEduOnly
+    ? [false, true, true, false, false]
+    : [true, true, true, true, true]
+  const calls = [
+    () => statisticsApi.teacherWorkload(),
+    () => statisticsApi.studentLoss(),
+    () => statisticsApi.classActivity(),
+    () => statisticsApi.courseProfit(),
+    () => statisticsApi.paymentRate()
+  ]
+  const results = await Promise.allSettled(
+    calls.map((fn, i) => (allowed[i] ? fn() : Promise.resolve({ data: [] })))
+  )
   const assign = (idx: number, target: { value: Array<Record<string, unknown>> }) => {
     const r = results[idx]
-    if (r.status === 'fulfilled') target.value = r.value.data || []
+    if (r.status === 'fulfilled') target.value = (r.value as any)?.data || []
   }
   assign(0, teacherWorkload)
   assign(1, studentLoss)
   assign(2, classActivity)
   assign(3, courseProfit)
   assign(4, paymentRate)
-  if (results.some(r => r.status === 'rejected')) {
+  if (!isEduOnly && results.some(r => r.status === 'rejected')) {
     ElMessage.warning('部分运营统计加载失败')
   }
 }

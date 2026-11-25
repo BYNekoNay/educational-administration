@@ -7,11 +7,14 @@ import com.pzhu.eduadmin.modules.statistics.entity.OperationLog;
 import com.pzhu.eduadmin.modules.statistics.entity.Organization;
 import com.pzhu.eduadmin.modules.statistics.entity.StatisticsSnapshot;
 import com.pzhu.eduadmin.modules.statistics.service.StatisticsService;
+import com.pzhu.eduadmin.security.CurrentUserHolder;
+import com.pzhu.eduadmin.security.LoginUser;
 import com.pzhu.eduadmin.security.RequireRole;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -58,8 +61,29 @@ public class StatisticsController {
 
     @GetMapping("/dashboard")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @SuppressWarnings("unchecked")
     public Result<Map<String, Object>> dashboard() {
-        return Result.success(statisticsService.getDashboard());
+        Map<String, Object> data = statisticsService.getDashboard();
+        // 教务可以进看板，但不该看到营收类指标：在 Controller 层浅拷贝后裁剪，
+        // 避免直接改 getDashboard() 返回的对象污染 @Cacheable 缓存
+        LoginUser current = CurrentUserHolder.get();
+        if (current != null && "EDU_ADMIN".equals(current.getRoleCode())) {
+            Map<String, Object> copy = new HashMap<>(data);
+            Object cardsRaw = copy.get("cards");
+            if (cardsRaw instanceof Map) {
+                Map<String, Object> cards = new HashMap<>((Map<String, Object>) cardsRaw);
+                cards.remove("monthlyRevenue");
+                copy.put("cards", cards);
+            }
+            Object chartsRaw = copy.get("charts");
+            if (chartsRaw instanceof Map) {
+                Map<String, Object> charts = new HashMap<>((Map<String, Object>) chartsRaw);
+                charts.remove("revenueTrend");
+                copy.put("charts", charts);
+            }
+            return Result.success(copy);
+        }
+        return Result.success(data);
     }
 
     @GetMapping("/statistics/enrollments")
@@ -93,7 +117,7 @@ public class StatisticsController {
     }
 
     @GetMapping("/statistics/revenue")
-    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<Map<String, Object>> revenueStats() {
         Map<String, Object> dashboard = statisticsService.getDashboard();
         Map<String, Object> charts = (Map<String, Object>) dashboard.get("charts");
@@ -103,7 +127,7 @@ public class StatisticsController {
     }
 
     @GetMapping("/statistics/teacher-workload")
-    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<Object> teacherWorkload(@RequestParam(defaultValue = "") String month) {
         return Result.success(statisticsService.getTeacherWorkload(month));
     }
@@ -121,13 +145,13 @@ public class StatisticsController {
     }
 
     @GetMapping("/statistics/course-profit")
-    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<java.util.List<java.util.Map<String, Object>>> courseProfit() {
         return Result.success(statisticsService.getCourseProfit());
     }
 
     @GetMapping("/statistics/payment-rate")
-    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN", "FINANCE"})
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<java.util.List<java.util.Map<String, Object>>> paymentRate() {
         return Result.success(statisticsService.getPaymentRate());
     }
