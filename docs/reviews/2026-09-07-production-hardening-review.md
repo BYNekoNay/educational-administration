@@ -80,6 +80,6 @@
 4. 🟡 本地 maven 离线仓库无 flyway/actuator 依赖时需先联网拉取一次
 
 ## 参考
-- 8/4 ideation：`docs/ideation/2026-08-04-educational-administration-optimization-ideation.html`
+- 8/4 ideation：`docs/archive/2026-08-04-educational-administration-optimization-ideation.html`（2026-11-25 归档）
 - 已合入最小安全集：dev/iteration-next `fb80769`（wip-prod-hardening 3855cb3 内容）
 - CI 测试门禁：dev/iteration-next `898eba2`
