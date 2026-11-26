@@ -220,6 +220,11 @@ public class AttendanceServiceImpl implements AttendanceService {
         if (!Integer.valueOf(1).equals(lesson.getStatus()) && !Integer.valueOf(2).equals(lesson.getStatus())) {
             throw new BusinessException(409, "该课次状态不允许考勤（非待上课/已完成）");
         }
+        // 禁止对未来课次提交考勤。lessonDate 可能为 null（部分历史课次/测试构造），
+        // 必须判空——否则 isAfter 直接 NPE，AttendanceServiceTest 有 10+ 例未设日期
+        if (lesson.getLessonDate() != null && lesson.getLessonDate().isAfter(java.time.LocalDate.now())) {
+            throw new BusinessException(409, "不能对未来课次提交考勤");
+        }
 
         // 1.1 教师角色校验课次归属（行级数据隔离）
         checkTeacherLessonOwnership(lesson);

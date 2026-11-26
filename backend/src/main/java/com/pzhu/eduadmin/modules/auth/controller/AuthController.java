@@ -30,10 +30,24 @@ public class AuthController {
 
     private final IAuthService authService;
     private final UserMapper userMapper;
+    private final com.pzhu.eduadmin.security.StreamTicketService streamTicketService;
 
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return Result.success(authService.login(request));
+    }
+
+    /**
+     * 为 SSE 换取一次性票据（60 秒、单次使用）。
+     *
+     * <p>EventSource 不支持自定义 Header，凭证只能进 URL。用它替代把长有效期 JWT
+     * 直接拼到查询串——后者会落进 nginx 日志/浏览器历史/Referer。</p>
+     */
+    @PostMapping("/stream-ticket")
+    public Result<java.util.Map<String, Object>> streamTicket() {
+        LoginUser user = CurrentUserHolder.get();
+        String ticket = streamTicketService.issue(user.getUserId());
+        return Result.success(java.util.Map.of("ticket", ticket, "expiresIn", 60));
     }
 
     @PostMapping("/register")

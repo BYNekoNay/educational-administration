@@ -39,13 +39,8 @@ public class JwtInterceptor implements HandlerInterceptor {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7);
         }
-        // SSE EventSource 不支持自定义 Header，仅 /api/notifications/stream 兼容 query param 传 token
-        if (token == null || token.isEmpty()) {
-            String uri = request.getRequestURI();
-            if (uri != null && uri.startsWith("/api/notifications/stream")) {
-                token = request.getParameter("token");
-            }
-        }
+        // 注意：/api/notifications/stream 已在 WebMvcConfig 里 exclude，不再在这里读 query token。
+        // 原先的 ?token=<JWT> 后门会泄漏长有效期凭证（进 nginx 日志/浏览器历史/Referer）
         if (token == null || token.isEmpty()) {
             writeUnauthorized(response, "未登录或登录已过期");
             return false;

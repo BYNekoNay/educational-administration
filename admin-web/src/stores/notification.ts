@@ -19,11 +19,29 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
-  function connect() {
+  /** 退避重连：2s→4s→…→封顶 5min，实际延迟取 [base/2, base] 的随机值，错开多标签重连峰值 */
+  function scheduleReconnect() {
+    retryAttempts++
+    const base = Math.min(1000 * Math.pow(2, retryAttempts), 5 * 60 * 1000)
+    const delay = base / 2 + Math.random() * (base / 2)
+    reconnectTimer = setTimeout(connect, delay)
+  }
+
+  async function connect() {
     disconnect()
     // 未登录（无 token）时不建立 SSE：避免登出/token 失效后仍周期性发起无效连接
     if (!localStorage.getItem('token')) return
-    const url = notificationApi.streamUrl()
+    // 先用正常 Bearer 鉴权换一次性票据（60s、单次使用），避免把 JWT 拼进 URL
+    let ticket = ''
+    try {
+      const res = await notificationApi.streamTicket()
+      ticket = res.data?.ticket || ''
+    } catch {
+      scheduleReconnect()
+      return
+    }
+    if (!ticket) { scheduleReconnect(); return }
+    const url = notificationApi.streamUrl(ticket)
     const es = new EventSource(url)
     eventSource = es
 
@@ -49,12 +67,8 @@ export const useNotificationStore = defineStore('notification', () => {
     es.onerror = () => {
       disconnect()
       // 后端每个用户仅保留一个 SseEmitter（新订阅会踢掉旧连接），多标签页固定间隔
-      // 重连会互相踢成死循环；改为指数退避 + 随机抖动 + 上限，错开各标签重连峰值。
-      // 2s → 4s → 8s → … → 封顶 5min（实际延迟取 [base/2, base] 的随机值）
-      retryAttempts++
-      const base = Math.min(1000 * Math.pow(2, retryAttempts), 5 * 60 * 1000)
-      const delay = base / 2 + Math.random() * (base / 2)
-      reconnectTimer = setTimeout(connect, delay)
+      // 重连会互相踢成死循环；改为指数退避 + 随机抖动 + 上限
+      scheduleReconnect()
     }
   }
 

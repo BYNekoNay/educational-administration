@@ -21,7 +21,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(jwtInterceptor)
                 .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/auth/login", "/api/auth/register");
+                // notifications/stream 走一次性票据（StreamTicketService），EventSource 无法带
+                // Authorization 头，因此必须放行拦截器，由 Controller 自己校验 ticket
+                .excludePathPatterns("/api/auth/login", "/api/auth/register", "/api/notifications/stream");
     }
 
     @Override

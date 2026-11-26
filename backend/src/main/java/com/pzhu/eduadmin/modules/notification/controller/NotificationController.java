@@ -18,20 +18,18 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class NotificationController {
 
     private final NotificationService notificationService;
-    private final JwtUtil jwtUtil;
+    private final com.pzhu.eduadmin.security.StreamTicketService streamTicketService;
 
     @GetMapping("/notifications/stream")
-    public SseEmitter stream(@RequestParam String token, HttpServletResponse response) {
+    public SseEmitter stream(@RequestParam String ticket, HttpServletResponse response) {
         // SSE 双保险：即使 nginx 未配置 proxy_buffering off，此响应头也会要求
         // nginx/反代层关闭对 text/event-stream 的缓冲，保证心跳/通知能即时透传。
         response.setHeader("X-Accel-Buffering", "no");
-        Claims claims;
-        try {
-            claims = jwtUtil.parseToken(token);
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid token");
+        // 一次性票据校验（60s、取出即删）；不再解析 URL 里的 JWT
+        Long userId = streamTicketService.consume(ticket);
+        if (userId == null) {
+            throw new com.pzhu.eduadmin.common.BusinessException(401, "票据无效或已过期，请重新连接");
         }
-        Long userId = Long.valueOf(claims.getSubject());
         return notificationService.subscribe(userId);
     }
 

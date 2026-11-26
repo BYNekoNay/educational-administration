@@ -1,4 +1,3 @@
-import { useAuthStore } from '@/stores/auth'
 import request from './request'
 import type { NotificationItem, PageData } from '@/types'
 
@@ -15,9 +14,12 @@ export const notificationApi = {
     request.get<PageData<NotificationItem>>('/notifications', { params: { pageNum, pageSize } }),
   /** 标记已读 */
   markRead: (id: number) => request.put<void>(`/notifications/${id}/read`),
-  /** SSE 流地址 */
-  streamUrl: () => {
-    const authStore = useAuthStore()
-    return `${SSE_BASE}/notifications/stream?token=${authStore.token}`
-  },
+  /**
+   * 换取 SSE 一次性票据（60 秒、单次使用）。
+   * EventSource 不能带 Authorization 头，但把长有效期 JWT 拼进 URL 会泄漏到
+   * nginx 日志/浏览器历史/Referer，改成先用正常鉴权换短期票据。
+   */
+  streamTicket: () => request.post<{ ticket: string; expiresIn: number }>('/auth/stream-ticket'),
+  /** SSE 流地址（用票据，不再带 token） */
+  streamUrl: (ticket: string) => `${SSE_BASE}/notifications/stream?ticket=${encodeURIComponent(ticket)}`,
 }

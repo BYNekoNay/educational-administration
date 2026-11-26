@@ -181,7 +181,9 @@ abstract class IntegrationTestSupport {
         lesson.setClassId(classId);
         lesson.setTeacherId(TEACHER_ID);
         lesson.setClassroomId(1L);
-        lesson.setLessonDate(LocalDate.now().plusDays(1));
+        // 必须是过去日期：AttendanceServiceImpl 已禁止对未来课次提交考勤，
+        // 原先的 plusDays(1) 会让所有考勤集成测试被 409 拦住
+        lesson.setLessonDate(LocalDate.now().minusDays(1));
         lesson.setStartTime(LocalTime.of(10, 0));
         lesson.setEndTime(LocalTime.of(11, 0));
         lesson.setStatus(1);

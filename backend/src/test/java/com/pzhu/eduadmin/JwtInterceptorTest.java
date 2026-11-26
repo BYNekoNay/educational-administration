@@ -243,35 +243,9 @@ class JwtInterceptorTest {
         assertThat(json).contains("\"message\":\"无权访问该接口\"");
     }
 
-    @Test
-    @DisplayName("SSE 通知流接受 query param token")
-    void sseStreamAcceptsQueryToken() throws Exception {
-        when(request.getHeader("Authorization")).thenReturn(null);
-        when(request.getRequestURI()).thenReturn("/api/notifications/stream");
-        when(request.getParameter("token")).thenReturn("valid.token");
-        mockClaims("1", "admin", "SUPER_ADMIN", 0);
-        User u = new User();
-        u.setVersion(0);
-        u.setStatus(1);
-        when(userMapper.selectOne(any())).thenReturn(u);
-        when(handlerMethod.getBeanType()).thenReturn((Class) Object.class);
-
-        boolean result = jwtInterceptor.preHandle(request, response, handlerMethod);
-        assertThat(result).isTrue();
-    }
-
-    @Test
-    @DisplayName("普通接口拒绝 query param token（仅 SSE 可用）")
-    void normalPathRejectsQueryToken() throws Exception {
-        when(request.getHeader("Authorization")).thenReturn(null);
-        when(request.getRequestURI()).thenReturn("/api/edu/students");
-
-        boolean result = jwtInterceptor.preHandle(request, response, handlerMethod);
-        assertThat(result).isFalse();
-        verify(response).setStatus(401);
-        // 非 SSE 路径，不得尝试读取 query param
-        verify(request, never()).getParameter("token");
-    }
+    // 注：原先的 sseStreamAcceptsQueryToken 用例已删除。
+    // /api/notifications/stream 现在在 WebMvcConfig 里 exclude，JwtInterceptor 根本不处理
+    // 该请求（由 Controller 校验 60s 一次性票据），在拦截器层断言"是否接受 query token"已无意义。
 
     @Test
     @DisplayName("Authorization Header 优先于 query param token")
