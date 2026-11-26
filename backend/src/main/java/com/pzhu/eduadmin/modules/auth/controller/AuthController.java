@@ -31,6 +31,12 @@ public class AuthController {
     private final IAuthService authService;
     private final UserMapper userMapper;
     private final com.pzhu.eduadmin.security.StreamTicketService streamTicketService;
+    private final com.pzhu.eduadmin.security.DownloadTicketService downloadTicketService;
+
+    /** 导出直链可用端点白名单：票据不可签发到鉴权路径之外 */
+    private static final java.util.Set<String> DOWNLOAD_ENDPOINTS = java.util.Set.of(
+            "/api/export/payments", "/api/export/lesson-flows",
+            "/api/export/salaries", "/api/export/risk-students");
 
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -47,6 +53,25 @@ public class AuthController {
     public Result<java.util.Map<String, Object>> streamTicket() {
         LoginUser user = CurrentUserHolder.get();
         String ticket = streamTicketService.issue(user.getUserId());
+        return Result.success(java.util.Map.of("ticket", ticket, "expiresIn", 60));
+    }
+
+    /**
+     * 为导出直链换一次性下载票据（60 秒、单次使用、绑定端点）。
+     *
+     * <p>&lt;a href&gt; 原生下载无法带 Authorization 头，先用正常 Bearer 鉴权换票据，
+     * 再把票据拼到导出 URL 的 query（downloadTicket=）走浏览器原生下载通道，
+     * 绕开 blob 触发的浏览器 Office 下载扫描（.crdownload 卡住）。
+     * JwtInterceptor 对 /api/export/** 识别票据并注入用户，@RequireRole 照常生效。</p>
+     */
+    @PostMapping("/download-ticket")
+    public Result<java.util.Map<String, Object>> downloadTicket(@RequestBody java.util.Map<String, String> body) {
+        String endpoint = body.get("endpoint");
+        if (endpoint == null || !DOWNLOAD_ENDPOINTS.contains(endpoint)) {
+            throw new com.pzhu.eduadmin.common.BusinessException(400, "不支持的导出端点");
+        }
+        LoginUser user = CurrentUserHolder.get();
+        String ticket = downloadTicketService.issue(user.getUserId(), endpoint);
         return Result.success(java.util.Map.of("ticket", ticket, "expiresIn", 60));
     }
 

@@ -8,18 +8,24 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
+import request from '@/api/request'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/utils/error'
 
-// 单独实例：仅注入鉴权头，不挂载响应拦截器，
-// 避免 blob 响应（无 code 字段）被统一拦截器误判为失败。
+// POST 导出无法走 <a href> 直链（仅 GET），保留独立 axios 实例做 blob 回退：
+// 仅注入鉴权头，不挂响应拦截器，避免 blob 响应（无 code 字段）被统一拦截器误判。
 const exportAxios = axios.create({ baseURL: '/api', timeout: 120000 })
 exportAxios.interceptors.request.use((config) => {
   const token = localStorage.getItem('token') || ''
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
+
+// 第六轮改造：blob 下载在本机 Chrome 会触发 Office 文件安全扫描，下载停在
+// .crdownload 永不结束（120 字节假 xlsx 同样复现，txt/csv 正常——非站点缺陷）。
+// 改直链下载：先用 Bearer 鉴权换 60s 一次性下载票据（绑定端点、取出即删），
+// 再 <a href> 走浏览器原生下载通道（Content-Disposition 命名，由后端已设置）。
 
 const props = withDefaults(
   defineProps<{
@@ -59,52 +65,66 @@ function parseFilename(disposition?: string, fallback = 'export.xlsx'): string {
 async function handleExport() {
   loading.value = true
   try {
-    const cfg = { responseType: 'blob' as const }
-    const res = props.method === 'post'
-      ? await exportAxios.post(props.url, props.params, cfg)
-      : await exportAxios.get(props.url, { params: props.params, ...cfg })
-
-    const blob = res.data as Blob
-    if (blob && blob.type.includes('application/json')) {
-      const text = await blob.text()
-      const json = JSON.parse(text)
-      ElMessage.error(json.message || '导出失败')
+    if (props.method === 'post') {
+      // POST 无法直链（<a href> 仅 GET），走 blob 回退（当前无调用方使用）
+      await downloadViaBlob()
       return
     }
-    const disposition = (res.headers as any)?.['content-disposition'] as string | undefined
-    const name = parseFilename(disposition)
-    const url = window.URL.createObjectURL(blob)
+    // 直链下载：先换一次性票据（绑定端点、60s、取出即删），再 <a href> 走
+    // 浏览器原生下载通道——不经 blob，绕开 Office 下载扫描卡 .crdownload
+    const endpoint = `/api${props.url}`
+    const res = await request.post('/auth/download-ticket', { endpoint })
+    const ticket = (res.data as any)?.ticket || ''
+    if (!ticket) {
+      ElMessage.error('获取下载票据失败')
+      return
+    }
+    const qs = new URLSearchParams({ downloadTicket: ticket })
+    for (const [k, v] of Object.entries(props.params || {})) {
+      if (v !== undefined && v !== null && v !== '') qs.append(k, String(v))
+    }
     const a = document.createElement('a')
-    a.href = url
-    a.download = name
+    a.href = `${endpoint}?${qs.toString()}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    // 必须延时释放：a.click() 之后同步 revokeObjectURL 会让 Chrome 在 blob 尚未落盘前
-    // 丢掉引用，表现为下载停在 .crdownload 且永不结束。对齐 utils/protectedFile.ts 的 60s 量级
-    setTimeout(() => window.URL.revokeObjectURL(url), 30000)
+    // 原生下载由浏览器接管（文件名来自后端 Content-Disposition），无需 revoke
   } catch (e: any) {
-    // HTTP 401：与主实例 request.ts 保持一致——清除登录态并跳登录页，
-    // 而不是弹一句 "Request failed with status code 401" 后留着失效会话
+    // HTTP 401：与主实例 request.ts 保持一致——清除登录态并跳登录页
     if (e?.response?.status === 401) {
       const authStore = useAuthStore()
       authStore.logout()
       window.location.href = '/login'
       return
     }
-    // 导出失败时后端返回 JSON Blob（内含业务 message），但 responseType:'blob'
-    // 下 error.response.data 是 Blob，需解析文本才能拿到可读消息
-    let msg = getErrorMessage(e, '导出失败')
-    try {
-      const blob = e?.response?.data
-      if (blob instanceof Blob && blob.type.includes('application/json')) {
-        const json = JSON.parse(await blob.text())
-        if (json?.message) msg = json.message
-      }
-    } catch { /* 解析失败沿用状态码映射的默认消息 */ }
-    ElMessage.error(msg)
+    ElMessage.error(getErrorMessage(e, '导出失败'))
   } finally {
     loading.value = false
   }
+}
+
+/** POST 导出的 blob 回退通道（保留组件能力；blob 在部分浏览器会触发 Office 下载扫描） */
+async function downloadViaBlob() {
+  const cfg = { responseType: 'blob' as const }
+  const res = await exportAxios.post(props.url, props.params, cfg)
+  const blob = res.data as Blob
+  if (blob && blob.type.includes('application/json')) {
+    const text = await blob.text()
+    const json = JSON.parse(text)
+    ElMessage.error(json.message || '导出失败')
+    return
+  }
+  const disposition = (res.headers as any)?.['content-disposition'] as string | undefined
+  const name = parseFilename(disposition)
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // 必须延时释放：同步 revoke 会让 Chrome 在 blob 尚未落盘前丢掉引用，
+  // 表现为下载停在 .crdownload 且永不结束
+  setTimeout(() => window.URL.revokeObjectURL(url), 30000)
 }
 </script>

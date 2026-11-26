@@ -45,13 +45,13 @@
         <el-radio-button value="month">月</el-radio-button>
         <el-radio-button value="week">周</el-radio-button>
       </el-radio-group>
-      <el-switch
-        v-if="viewMode === 'week' && canEdit"
-        v-model="editMode"
-        active-text="编辑模式"
-        inline-prompt
-        style="margin-left: 12px"
-      />
+      <!-- 编辑模式开关：原 inline-prompt 关闭态无文字，复测员漏看——改为常显标签 -->
+      <div v-if="viewMode === 'week' && canEdit" style="display:flex;align-items:center;gap:6px;margin-left:12px">
+        <el-switch v-model="editMode" />
+        <span style="font-size:13px;color:var(--el-text-color-secondary)">
+          编辑模式{{ editMode ? '（拖拽课程卡到目标时段即可调整）' : '' }}
+        </span>
+      </div>
     </div>
 
     <!-- 视图 -->
