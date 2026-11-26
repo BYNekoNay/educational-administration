@@ -41,6 +41,7 @@ public class UserServiceImpl implements UserService {
     private final TeacherCourseMapper teacherCourseMapper;
     private final CourseMapper courseMapper;
     private final NotificationService notificationService;
+    private final com.pzhu.eduadmin.security.LoginAttemptService loginAttemptService;
 
     private static final Map<String, SFunction<User, ?>> USER_SORT_MAP = Map.of(
             "id", User::getId,
@@ -89,6 +90,10 @@ public class UserServiceImpl implements UserService {
         user.setPhone(request.getPhone());
         user.setRoleCode(request.getRoleCode());
         user.setStatus(1);
+        // 教师入职日（展示字段）；其他角色传入忽略
+        if ("TEACHER".equals(request.getRoleCode()) && request.getHireDate() != null) {
+            user.setHireDate(request.getHireDate());
+        }
 
         // 捕获唯一键冲突，防止并发注册 TOCTOU 竞态
         try {
@@ -127,6 +132,10 @@ public class UserServiceImpl implements UserService {
         }
         if (request.getRealName() != null) user.setRealName(request.getRealName());
         if (request.getPhone() != null) user.setPhone(request.getPhone());
+        // 入职日仅对教师角色生效；if != null 范式下只能改不能清空（可接受）
+        if (request.getHireDate() != null && "TEACHER".equals(request.getRoleCode() != null ? request.getRoleCode() : user.getRoleCode())) {
+            user.setHireDate(request.getHireDate());
+        }
         if (request.getRoleCode() != null && !request.getRoleCode().equals(user.getRoleCode())) {
             // 校验角色编码是否存在
             if (roleMapper.selectCount(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, request.getRoleCode())) == 0) {
@@ -162,6 +171,7 @@ public class UserServiceImpl implements UserService {
         if (usernameChanged) update.setUsername(user.getUsername());
         if (request.getRealName() != null) update.setRealName(user.getRealName());
         if (request.getPhone() != null) update.setPhone(user.getPhone());
+        if (request.getHireDate() != null) update.setHireDate(user.getHireDate());
         if (roleChanged) update.setRoleCode(user.getRoleCode());
         userMapper.updateById(update);
 
@@ -207,6 +217,18 @@ public class UserServiceImpl implements UserService {
                 .setSql("version = version + 1"));
 
         operationLogService.log("用户管理", (status == 1 ? "启用用户" : "禁用用户") + "（用户=" + nameResolver.getUserDisplayName(id) + "）");
+    }
+
+    @Override
+    public boolean unlockLoginLock(Long id) {
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        boolean wasLocked = loginAttemptService.unlockUser(user.getUsername());
+        operationLogService.log("用户管理", "解锁登录锁定（用户=" + user.getUsername()
+                + "，此前" + (wasLocked ? "处于锁定态" : "未锁定") + "）");
+        return wasLocked;
     }
 
     @Override

@@ -85,6 +85,9 @@
                 </el-button>
               </template>
             </el-popconfirm>
+            <el-button v-if="canManageUser" size="small" type="info" plain @click="handleUnlock(row)">
+              解锁
+            </el-button>
           </div>
         </template>
       </el-table-column>
@@ -164,6 +167,10 @@
               :value="role.code"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.roleCode === 'TEACHER'" label="入职日期">
+          <el-date-picker v-model="form.hireDate" type="date" value-format="YYYY-MM-DD"
+            placeholder="选择入职日期" style="width: 100%" />
         </el-form-item>
         <el-form-item v-if="form.roleCode === 'TEACHER'" label="可授课程">
           <el-select
@@ -309,6 +316,18 @@ async function toggleStatus(row: UserInfo) {
   }
 }
 
+// ====== 解锁登录锁定 ======
+// 锁定态存 Redis（15 分钟自愈），user 表无字段，按钮恒可用、点击为幂等清除。
+// 返回值告知此前是否真的锁着，避免"没锁也提示已解锁"的困惑。
+async function handleUnlock(row: UserInfo) {
+  try {
+    const res = await userApi.unlock(row.id!)
+    ElMessage.success(res.data ? '已解除登录锁定' : '该账号当前未锁定（已顺手清零失败计数）')
+  } catch (e) {
+    showError(e, '解锁失败')
+  }
+}
+
 // ====== 新增/编辑对话框 ======
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
@@ -323,6 +342,7 @@ const form = reactive({
   phone: '',
   roleCode: '',
   specialtyCourseIds: [] as number[],
+  hireDate: '' as string | undefined,
 })
 
 // 课程选项（角色为教师时使用）
@@ -353,6 +373,7 @@ function resetForm() {
   form.phone = ''
   form.roleCode = ''
   form.specialtyCourseIds = []
+  form.hireDate = undefined
   editUserId.value = null
   formRef.value?.clearValidate()
 }
@@ -373,6 +394,7 @@ function openEditDialog(row: UserInfo) {
   form.phone = row.phone || ''
   form.roleCode = row.roleCode
   form.specialtyCourseIds = row.specialtyCourseIds || []
+  form.hireDate = row.hireDate || undefined
   loadCourseOptions()
   dialogVisible.value = true
 }
@@ -391,6 +413,7 @@ async function handleSubmit() {
         phone: form.phone || undefined,
         roleCode: form.roleCode,
         specialtyCourseIds: form.roleCode === 'TEACHER' ? form.specialtyCourseIds : undefined,
+        hireDate: form.roleCode === 'TEACHER' && form.hireDate ? form.hireDate : undefined,
       })
       ElMessage.success('新增成功')
     } else {
@@ -400,6 +423,7 @@ async function handleSubmit() {
         phone: form.phone || undefined,
         roleCode: form.roleCode,
         specialtyCourseIds: form.roleCode === 'TEACHER' ? form.specialtyCourseIds : undefined,
+        hireDate: form.roleCode === 'TEACHER' && form.hireDate ? form.hireDate : undefined,
       })
       ElMessage.success('修改成功')
     }

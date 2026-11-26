@@ -40,6 +40,15 @@ public class UserController {
         return Result.success();
     }
 
+    /**
+     * 解除登录失败锁定（清 Redis 用户维度计数，超管专用）。
+     * 类级 @RequireRole 已限定 SUPER_ADMIN。
+     */
+    @PutMapping("/{id}/unlock")
+    public Result<Boolean> unlock(@PathVariable Long id) {
+        return Result.success(userService.unlockLoginLock(id));
+    }
+
     @PostMapping
     public Result<User> create(@Valid @RequestBody CreateUserRequest request) {
         return Result.success(userService.createUser(request));

@@ -19,6 +19,12 @@ public interface UserService {
 
     void updateUserStatus(Long id, Integer status);
 
+    /**
+     * 解除账号的登录失败锁定（清 Redis 用户维度计数）。
+     * @return 该账号此前是否处于锁定态
+     */
+    boolean unlockLoginLock(Long id);
+
     void resetPassword(Long id, String newPassword);
 
     /** 查询某教师的教学特长课程ID列表 */

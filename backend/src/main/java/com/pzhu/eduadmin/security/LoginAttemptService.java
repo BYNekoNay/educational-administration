@@ -137,6 +137,21 @@ public class LoginAttemptService {
         fallback.remove(key);
     }
 
+    /**
+     * 管理端解锁：清除指定账号的用户维度失败计数。
+     *
+     * <p>只清 {@code auth:login-fail:user:*}；IP 维度 {@code auth:login-fail:ip:*:ip}
+     * 15 分钟自愈，刻意不提供解绑入口——否则攻击者可借管理端探测/清洗 IP 限流态。</p>
+     *
+     * @return 该账号此前是否处于锁定态（供前端提示语义）
+     */
+    public boolean unlockUser(String username) {
+        String key = userDimension(username);
+        boolean locked = isLocked(key);
+        clear(key);
+        return locked;
+    }
+
     private int thresholdOf(String key) {
         return key.endsWith(":ip") ? MAX_FAILED_PER_IP : MAX_FAILED_PER_USER;
     }

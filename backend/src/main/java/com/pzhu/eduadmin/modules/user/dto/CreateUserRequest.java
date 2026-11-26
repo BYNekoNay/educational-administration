@@ -32,4 +32,7 @@ public class CreateUserRequest {
 
     /** 教学特长课程ID列表（仅当 roleCode=TEACHER 时有效） */
     private List<Long> specialtyCourseIds;
+
+    /** 入职日期（仅 roleCode=TEACHER 时生效，展示字段） */
+    private java.time.LocalDate hireDate;
 }

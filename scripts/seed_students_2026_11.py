@@ -240,6 +240,19 @@ def main():
         print("  %-22s %5d" % (k, v))
     print("  %-22s %5d" % ("合计", sum(est.values())))
 
+    # 重跑防护：本脚本为纯 INSERT、无防重保护，重复执行必然重复插入。
+    # 以充值流水 biz_no（SEED26:RC:{sid}，内部幂等键，前端不可见）为存在性锚点
+    existing_seed = mysql("SELECT COUNT(*) FROM lesson_flow WHERE biz_no LIKE 'SEED26:RC:%' AND is_deleted=0")
+    existing_count = int(existing_seed[0][0]) if existing_seed else 0
+    if existing_count > 0:
+        if mode == "apply":
+            raise SystemExit(
+                "[拒绝执行] 检测到 %d 条种子充值流水（biz_no LIKE 'SEED26:RC:%%'）。"
+                "本脚本不幂等，重复执行会重复插入 79 名学员及全部关联数据。"
+                "如确需重跑，请先清理：attendance/lesson_flow/lesson_account/refund_record/"
+                "payment_record/class_student/enrollment/parent_student/student/user（按此顺序）" % existing_count)
+        print("[警告] 检测到 %d 条已有种子数据，dry-run 结果可能与首次运行不一致" % existing_count)
+
     if mode != "apply":
         print("\n[DRY-RUN] 未写入。确认后加 --apply。")
         return
@@ -293,7 +306,7 @@ def main():
             "SELECT e.id, %d, %d, %d, %.2f, 2, %s, 3, 'FINANCE', %s, %s, %s "
             "FROM enrollment e WHERE e.student_id=%d AND e.is_deleted=0 LIMIT 1;"
             % (p["student_id"], p["class"]["course_id"], pack, amount,
-               q(p["pay_date"] + " 10:30:00"), q("SEED26:入学缴费"), q(p["pay_date"]), q(p["pay_date"]), p["student_id"]))
+               q(p["pay_date"] + " 10:30:00"), q("入学缴费"), q(p["pay_date"]), q(p["pay_date"]), p["student_id"]))
         stmts.append(
             "INSERT INTO lesson_account (student_id, course_id, total_lessons, remaining_lessons, expire_date, version) "
             "VALUES (%d, %d, %d, %d, '2027-07-31', 0);"
@@ -348,8 +361,10 @@ def main():
         "UPDATE lesson_account a JOIN (SELECT account_id, SUM(change_amount) s FROM lesson_flow "
         "WHERE is_deleted=0 GROUP BY account_id) f ON f.account_id=a.id "
         "SET a.remaining_lessons=f.s, a.version=a.version+1 "
-        "WHERE a.student_id IN (SELECT student_id FROM payment_record "
-        "WHERE remark='SEED26:入学缴费' AND is_deleted=0) AND f.s>=0;"
+        # 圈定改靠充值流水 biz_no（SEED26:RC:{sid}，稳定唯一锚点）——
+        # payment_record.remark 已改中文「入学缴费」，若再按 remark 匹配会误圈运行时同名义缴费
+        "WHERE a.student_id IN (SELECT student_id FROM lesson_flow "
+        "WHERE biz_no LIKE 'SEED26:RC:%' AND is_deleted=0) AND f.s>=0;"
     ])
 
     print("[执行] 请假 / 学情 / 作业 / 风险跟进 ...")

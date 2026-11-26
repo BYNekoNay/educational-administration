@@ -22,4 +22,7 @@ public class UpdateUserRequest {
 
     /** 教学特长课程ID列表（仅当 roleCode 为 TEACHER 时有效） */
     private List<Long> specialtyCourseIds;
+
+    /** 入职日期（仅教师角色生效，展示字段；传空不覆盖已有值） */
+    private java.time.LocalDate hireDate;
 }

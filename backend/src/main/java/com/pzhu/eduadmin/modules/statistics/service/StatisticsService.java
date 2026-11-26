@@ -16,7 +16,7 @@ public interface StatisticsService {
 
     Organization updateOrganization(Organization organization);
 
-    Page<OperationLog> pageOperationLogs(int pageNum, int pageSize, String keyword, String sortField, String sortOrder);
+    Page<OperationLog> pageOperationLogs(int pageNum, int pageSize, String keyword, String sortField, String sortOrder, Long operatorId);
 
     Map<String, Object> getDashboard();
 

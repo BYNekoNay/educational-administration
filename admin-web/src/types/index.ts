@@ -306,6 +306,8 @@ export interface UserInfo {
   specialtyCourseIds?: number[]
   /** 教师可授课程明细（/edu/teachers 回填） */
   specialties?: Course[]
+  /** 入职日期（仅教师角色，yyyy-MM-dd） */
+  hireDate?: string
 }
 
 export interface RoleInfo {
@@ -474,6 +476,8 @@ export interface CreateUserPayload {
   phone?: string
   roleCode: string
   specialtyCourseIds?: number[]
+  /** 入职日期（仅 TEACHER 生效） */
+  hireDate?: string
 }
 
 /** 更新用户（后端 UpdateUserRequest，字段均可选） */
@@ -483,6 +487,8 @@ export interface UpdateUserPayload {
   phone?: string
   roleCode?: string
   specialtyCourseIds?: number[]
+  /** 入职日期（仅教师生效；传空不覆盖已有值） */
+  hireDate?: string
 }
 
 /** 角色权限查询结果 */

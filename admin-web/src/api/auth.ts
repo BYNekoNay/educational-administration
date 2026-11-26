@@ -34,6 +34,8 @@ export const userApi = {
   update: (id: number, data: UpdateUserPayload) => request.put<UserInfo>(`/admin/users/${id}`, data),
   updateStatus: (id: number, status: number) =>
     request.put<void>(`/admin/users/${id}/status`, null, { params: { status } }),
+  /** 解除登录失败锁定（清 Redis 用户维度计数），返回此前是否处于锁定态 */
+  unlock: (id: number) => request.put<boolean>(`/admin/users/${id}/unlock`),
   resetPassword: (id: number, newPassword: string) =>
     request.put<void>(`/admin/users/${id}/password`, { newPassword }),
 }

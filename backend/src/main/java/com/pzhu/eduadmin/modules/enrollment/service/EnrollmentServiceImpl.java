@@ -339,9 +339,12 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                 .eq(Enrollment::getStatus, 1)
                 .set(Enrollment::getStatus, status)
                 .set(Enrollment::getAuditorId, auditorId)
-                .set(Enrollment::getAuditRemark, remark)
                 // update(null,wrapper) 不触发自动填充，显式刷新 update_time
                 .set(Enrollment::getUpdateTime, LocalDateTime.now());
+        // blank 备注不落库：防止调用方传空串把已有审核备注抹掉（前端通过路径原先硬传 ''）
+        if (remark != null && !remark.isBlank()) {
+            updateWrapper.set(Enrollment::getAuditRemark, remark);
+        }
         if (status == 2) {
             updateWrapper.set(Enrollment::getHoldExpireTime, LocalDateTime.now().plusHours(24));
         }
@@ -351,7 +354,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         }
         enrollment.setStatus(status);
         enrollment.setAuditorId(auditorId);
-        enrollment.setAuditRemark(remark);
+        if (remark != null && !remark.isBlank()) {
+            enrollment.setAuditRemark(remark);
+        }
         if (status == 2) {
             enrollment.setHoldExpireTime(LocalDateTime.now().plusHours(24));
         }

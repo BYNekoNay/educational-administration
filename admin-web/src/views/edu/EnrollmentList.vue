@@ -40,7 +40,7 @@
         <template #default="{ row }">
           <div style="display: flex; gap: 4px; white-space: nowrap; align-items: center">
             <template v-if="row.status === 1 && canAuditEnrollment">
-              <el-button size="small" type="success" @click="handleAudit(row, 2)" :loading="auditing">通过</el-button>
+              <el-button size="small" type="success" @click="quickApprove(row)" :loading="auditing">通过</el-button>
               <el-button size="small" type="danger" @click="showReject(row)">拒绝</el-button>
             </template>
             <span v-else style="color: #999">--</span>
@@ -68,7 +68,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { enrollmentApi } from '@/api/edu'
 import { showError } from '@/utils/error'
 import { useAuthStore } from '@/stores/auth'
@@ -104,10 +104,32 @@ function handleSortChange({ prop, order }: { prop: string; order: string | null 
 
 function showReject(row: Enrollment) { rejectRow.value = row; rejectRemark.value = ''; rejectVisible.value = true }
 
-async function handleAudit(row: Enrollment | null, status: number) {
+/** 通过：支持填写备注（选填，落库到审核备注列）。原先直接通过无输入入口 */
+async function quickApprove(row: Enrollment) {
+  let remark = ''
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `${row.studentName || ''}（${row.courseName || ''}）通过后进入待缴费并锁定 24 小时，确认通过？`,
+      '通过报名申请',
+      {
+        confirmButtonText: '确认通过',
+        cancelButtonText: '取消',
+        inputPlaceholder: '通过备注（选填，家长端可见）',
+        type: 'success',
+      }
+    )
+    remark = value || ''
+  } catch { return /* 用户取消 */ }
+  await handleAudit(row, 2, remark)
+}
+
+async function handleAudit(row: Enrollment | null, status: number, remark?: string) {
   auditing.value = true
   try {
-    await enrollmentApi.audit(row!.id!, { status, remark: status === 4 ? rejectRemark.value : '' })
+    // 拒绝取弹窗 rejectRemark，通过取 prompt 传入的备注。
+    // blank 时不传给后端：后端对 blank 不落库，避免覆写已有审核备注（原先硬传空串是覆写隐患）
+    const finalRemark = status === 4 ? rejectRemark.value : (remark || '')
+    await enrollmentApi.audit(row!.id!, { status, ...(finalRemark ? { remark: finalRemark } : {}) } as any)
     ElMessage.success(status === 2 ? '审核通过，进入待缴费' : '已拒绝')
     rejectVisible.value = false
     loadData()
