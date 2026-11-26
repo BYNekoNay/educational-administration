@@ -24,6 +24,11 @@ public interface FinanceService {
 
     RefundRecord auditRefund(Long id, Integer status, Long auditorId, BigDecimal refundAmount);
 
+    /**
+     * 带审核备注的重载（V14 新增）。旧签名保留给既有调用与测试，内部转调本方法。
+     */
+    RefundRecord auditRefund(Long id, Integer status, Long auditorId, BigDecimal refundAmount, String remark);
+
     // 课时账户
     Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder, String keyword);
 

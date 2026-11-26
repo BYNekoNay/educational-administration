@@ -103,8 +103,12 @@ public class FinanceController {
         if (status == 2 && refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(400, "审核通过时退费金额必须大于0");
         }
+        // 审核备注：驳回时前端强制填写，通过时选填；统一截断到列宽 255
+        String remark = body.get("remark") != null ? body.get("remark").toString().trim() : null;
+        if (remark != null && remark.isEmpty()) remark = null;
+        if (remark != null && remark.length() > 255) remark = remark.substring(0, 255);
         return Result.success(financeService.auditRefund(id, status,
-                CurrentUserHolder.get().getUserId(), refundAmount));
+                CurrentUserHolder.get().getUserId(), refundAmount, remark));
     }
 
     @GetMapping("/lesson-accounts")

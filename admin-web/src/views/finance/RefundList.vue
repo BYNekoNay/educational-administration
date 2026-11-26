@@ -24,6 +24,7 @@
         </template>
       </el-table-column>
       <el-table-column prop="applicantName" label="申请人" min-width="80" />
+      <el-table-column prop="auditRemark" label="审核备注" min-width="140" show-overflow-tooltip />
       <el-table-column prop="createTime" label="申请时间" width="170" sortable="custom" />
       <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
@@ -158,11 +159,22 @@ async function handleCreateRefund() {
   } catch (e) { showError(e, '提交失败') } finally { saving.value = false }
 }
 
-function handleAudit(row: RefundRecord, status: number) {
+async function handleAudit(row: RefundRecord, status: number) {
   if (status === 3) {
-    ElMessageBox.confirm('确认拒绝该申请？', '拒绝确认', { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' })
-      .then(() => doAudit(row.id!, 3, 0))
-      .catch((e) => { if (e !== 'cancel' && e !== 'close') showError(e, '操作失败') })
+    // 驳回必须填原因（与调课审核口径一致），落库到 refund_record.audit_remark
+    let remark: string
+    try {
+      const { value } = await ElMessageBox.prompt('请填写驳回原因（家长端可见）', '拒绝退费申请', {
+        confirmButtonText: '确认拒绝',
+        cancelButtonText: '取消',
+        inputPlaceholder: '如：已超出退费期限',
+        inputPattern: /\S+/,
+        inputErrorMessage: '驳回原因不能为空',
+        type: 'warning',
+      })
+      remark = value
+    } catch { return /* 用户取消 */ }
+    try { await doAudit(row.id!, 3, 0, remark) } catch (e) { showError(e, '操作失败') }
   } else {
     auditRow.value = row; auditAmount.value = row.amount || 0; auditVisible.value = true
   }
@@ -180,11 +192,11 @@ async function confirmAudit() {
   }
 }
 
-async function doAudit(id: number, status: number, refundAmount: number) {
-  await refundApi.audit(id, { status, refundAmount })
+async function doAudit(id: number, status: number, refundAmount: number, remark?: string) {
+  await refundApi.audit(id, { status, refundAmount, ...(remark ? { remark } : {}) } as any)
   ElMessage.success(status === 2 ? '审核通过：已回退课时、写入流水并退班' : '已拒绝')
   loadData()
 }
 
-onMounted(() => { loadOptions(); loadData() })
+onMounted(() => { loadData() })
 </script>

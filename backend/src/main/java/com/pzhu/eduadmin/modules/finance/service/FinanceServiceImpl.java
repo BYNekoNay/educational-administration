@@ -365,6 +365,15 @@ public class FinanceServiceImpl implements FinanceService {
     @Transactional(rollbackFor = Exception.class)
     @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
     public RefundRecord auditRefund(Long id, Integer status, Long auditorId, BigDecimal refundAmount) {
+        // 兼容旧调用（既有的 4 参测试与内部调用）：转调 5 参重载，备注留空。
+        // 注意这是同类调用，内层 @Transactional 不生效，但外层已开事务，语义不变
+        return auditRefund(id, status, auditorId, refundAmount, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {CacheNames.DASHBOARD, CacheNames.RISK_WARNINGS, CacheNames.RISK_SUMMARY}, allEntries = true)
+    public RefundRecord auditRefund(Long id, Integer status, Long auditorId, BigDecimal refundAmount, String remark) {
         RefundRecord record = refundRecordMapper.selectById(id);
         if (record == null) throw new BusinessException(404, "退费记录不存在");
 
@@ -387,13 +396,15 @@ public class FinanceServiceImpl implements FinanceService {
                         .eq(RefundRecord::getId, id)
                         .eq(RefundRecord::getStatus, 1)
                         .set(RefundRecord::getStatus, status)
-                        .set(RefundRecord::getAuditorId, auditorId));
+                        .set(RefundRecord::getAuditorId, auditorId)
+                        .set(RefundRecord::getAuditRemark, remark));
         if (updated == 0) {
             throw new BusinessException(409, "该退费申请已被处理，请刷新后重试");
         }
         // update(null,wrapper) 不突变内存对象，同步状态/审核人，避免返回陈旧的 status=1/auditorId=null
         record.setStatus(status);
         record.setAuditorId(auditorId);
+        record.setAuditRemark(remark);
 
         if (status == 2) {
             // 审核通过 — 执行退费操作（课时扣减、流水写入）

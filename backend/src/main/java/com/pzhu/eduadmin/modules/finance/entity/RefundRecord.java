@@ -32,6 +32,9 @@ public class RefundRecord {
 
     private Integer status;
 
+    /** 审核备注（驳回原因 / 通过附言），V14 新增 */
+    private String auditRemark;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
