@@ -10,7 +10,7 @@ import java.util.Map;
 
 public interface EnrollmentService {
 
-    Page<Enrollment> page(int pageNum, int pageSize, String sortField, String sortOrder);
+    Page<Enrollment> page(int pageNum, int pageSize, Integer status, String sortField, String sortOrder);
 
     Enrollment getById(Long id);
 

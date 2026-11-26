@@ -5,6 +5,14 @@
     </div>
     <div style="margin-bottom:12px;display:flex;gap:8px">
       <el-input v-model="keyword" placeholder="搜索学员/课程" clearable style="width:240px" @keyup.enter="handleSearch" />
+      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:140px" @change="handleSearch">
+        <el-option :value="1" label="待审核" />
+        <el-option :value="2" label="待缴费" />
+        <el-option :value="3" label="已完成" />
+        <el-option :value="4" label="已拒绝" />
+        <el-option :value="5" label="已失效" />
+        <el-option :value="6" label="已退费" />
+      </el-select>
       <el-button type="primary" @click="handleSearch">搜索</el-button>
       <el-button @click="resetSearch">重置</el-button>
     </div>
@@ -73,20 +81,21 @@ const loading = ref(false), auditing = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const tableData = ref<Enrollment[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
+// 状态筛选（后端 page() 已支持该参数；此前后端不接收，前端也没有控件）
+const statusFilter = ref<number | undefined>(undefined)
 const rejectVisible = ref(false), rejectRow = ref<Enrollment | null>(null), rejectRemark = ref('')
 
 async function loadData() {
   loading.value = true
   try {
-    // keyword 目前被后端报名分页接口丢弃（第八轮待办：后端补关键字过滤），保留传参以便后端支持后自动生效
-    const res = await enrollmentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined })
+    const res = await enrollmentApi.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: keyword.value || undefined, status: statusFilter.value, sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined } as any)
     tableData.value = res.data.records; total.value = res.data.total
   } catch (e) { showError(e, '加载报名列表失败') }
   finally { loading.value = false }
 }
 
 function handleSearch() { pageNum.value = 1; loadData() }
-function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; statusFilter.value = undefined; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
 function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
   sortField.value = order ? prop : ''
   sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''

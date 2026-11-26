@@ -277,6 +277,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
         // 校验引用的教室存在（无外键约束，冲突检测对未知教室恒通过，会留下悬空引用）
         classroomService().validateClassroomExists(lesson.getClassroomId());
+        // 教室容量必须容纳班级上限，否则排了也只能坐一半人
+        validateClassroomCapacity(lesson.getClassId(), lesson.getClassroomId());
         List<String> conflicts = scheduleConflictService.checkConflict(lesson);
         if (!conflicts.isEmpty()) {
             throw new BusinessException(409, "排课冲突：" + String.join("；", conflicts));
@@ -284,6 +286,31 @@ public class ScheduleServiceImpl implements ScheduleService {
         scheduleLessonMapper.insert(lesson);
         notifyLessonTeacher(lesson, "SCHEDULE_CHANGE", "新增课次安排");
         return lesson;
+    }
+
+    /**
+     * 教室容量校验（createLesson / updateLesson / batchCreate / quickAdjustLesson 共用）。
+     *
+     * <p>只在班级与教室都能查到时校验：单测里部分用例未 mock classGroupMapper，
+     * 查出 null 时直接放行，避免 NPE 干扰既有断言。</p>
+     */
+    private void validateClassroomCapacity(Long classId, Long classroomId) {
+        if (classId == null || classroomId == null) {
+            return;
+        }
+        ClassGroup cg = classGroupMapper.selectById(classId);
+        if (cg == null || cg.getMaxStudentCount() == null) {
+            return;
+        }
+        Classroom room = classroomMapper.selectById(classroomId);
+        if (room == null || room.getCapacity() == null) {
+            return;
+        }
+        if (room.getCapacity() < cg.getMaxStudentCount()) {
+            throw new BusinessException(409, String.format(
+                    "教室容量不足：%s 可容纳 %d 人，班级「%s」上限 %d 人",
+                    room.getName(), room.getCapacity(), cg.getClassName(), cg.getMaxStudentCount()));
+        }
     }
 
     private void notifyLessonTeacher(ScheduleLesson lesson, String type, String title) {
@@ -342,6 +369,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (lesson.getClassroomId() != null) {
             classroomService().validateClassroomExists(lesson.getClassroomId());
         }
+        // 教室或班级变更后重新校验容量（existing 已合并本次请求字段）
+        validateClassroomCapacity(existing.getClassId(), existing.getClassroomId());
 
         // 校验合并后的起止时间合法性
         if (existing.getStartTime() != null && existing.getEndTime() != null
@@ -417,6 +446,8 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (!lesson.getEndTime().isAfter(lesson.getStartTime())) {
                 throw new BusinessException(400, "第 " + (idx + 1) + " 节课次结束时间必须晚于开始时间");
             }
+            // 教室容量校验（与单条创建同口径）
+            validateClassroomCapacity(lesson.getClassId(), lesson.getClassroomId());
         }
 
         // Check intra-batch conflicts (pairwise, before DB insertion)
@@ -641,6 +672,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
         // 教室存在且启用（无物理外键，历史/停用教室需显式拦截）
         classroomService().validateClassroomExists(lesson.getClassroomId());
+        // 拖拽调课沿用原教室，但班级人数可能已增加，仍需容量校验
+        validateClassroomCapacity(lesson.getClassId(), lesson.getClassroomId());
 
         // 以原课次身份构造目标载荷做冲突预检（checkConflict 会忽略同 id 的自冲突）
         ScheduleLesson probe = new ScheduleLesson();

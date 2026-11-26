@@ -22,9 +22,10 @@ public class EnrollmentController {
 
     @GetMapping
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<PageResult<Enrollment>> list(PageQuery query) {
+    public Result<PageResult<Enrollment>> list(PageQuery query,
+                                               @RequestParam(required = false) Integer status) {
         return Result.success(PageResult.of(enrollmentService.page((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getSortField(), query.getSortOrder())));
+                status, query.getSortField(), query.getSortOrder())));
     }
 
     @GetMapping("/{id}")

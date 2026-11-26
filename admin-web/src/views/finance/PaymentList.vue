@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import { paymentApi } from '@/api/finance'
@@ -84,8 +84,36 @@ function onEnrollmentChange(id: number | null) {
   const e = enrollmentList.value.find((x: Enrollment) => x.id === id)
   form.studentId = e ? e.studentId : null
   form.courseId = e ? e.courseId : null
+  // 原实现把课时/金额写死 24 / 2400，与所选课程无关；改为按课程单价联动
+  applyCoursePricing(e?.courseId ?? null)
+}
+
+// 单价 = 课程总价 / 课程总课时；默认买 24 课时（不超过课程总课时）
+function applyCoursePricing(courseId: number | null | undefined) {
+  const c = courseList.value.find((x: Course) => x.id === courseId)
+  const total = Number(c?.totalLessons || 0)
+  const price = Number(c?.price || 0)
+  if (!total || !price) {
+    form.lessonCount = 24
+    form.amount = 2400
+    return
+  }
+  const count = Math.min(24, total)
+  form.lessonCount = count
+  form.amount = Math.round((price / total) * count * 100) / 100
 }
 const form = reactive<Partial<PaymentRecord>>({ enrollmentId: null, studentId: null, courseId: null, lessonCount: 24, amount: 2400, payType: 2, remark: '' })
+
+// 用户手工改课时数时，金额跟着重算（仍可再手工改金额）。
+// 必须放在 form 定义之后：watch 的 getter 在 setup 阶段会立即执行一次
+watch(() => form.lessonCount, (n) => {
+  const c = courseList.value.find((x: Course) => x.id === form.courseId)
+  const total = Number(c?.totalLessons || 0)
+  const price = Number(c?.price || 0)
+  if (total && price && n) {
+    form.amount = Math.round((price / total) * Number(n) * 100) / 100
+  }
+})
 
 async function loadOptions() {
   try {

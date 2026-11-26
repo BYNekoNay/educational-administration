@@ -81,8 +81,12 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private Clock parentSnapshotClock = Clock.systemDefaultZone();
 
     @Override
-    public Page<Enrollment> page(int pageNum, int pageSize, String sortField, String sortOrder) {
+    public Page<Enrollment> page(int pageNum, int pageSize, Integer status, String sortField, String sortOrder) {
         LambdaQueryWrapper<Enrollment> wrapper = new LambdaQueryWrapper<>();
+        // 状态筛选：原实现完全忽略该参数，导致「待审核 / 待缴费」筛选无效
+        if (status != null) {
+            wrapper.eq(Enrollment::getStatus, status);
+        }
         QueryHelper.applySort(wrapper, sortField, sortOrder, ENROLLMENT_SORT_MAP, () -> wrapper.orderByDesc(Enrollment::getCreateTime));
         Page<Enrollment> page = enrollmentMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateNames(page.getRecords());
