@@ -15,6 +15,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URLEncoder;
@@ -39,8 +40,9 @@ public class ExportService {
                         .lt(endDate != null, PaymentRecord::getPayTime, endDate != null ? java.time.LocalDate.parse(endDate).plusDays(1) + " 00:00:00" : null)
                         .orderByDesc(PaymentRecord::getPayTime));
 
-        setResponseHeader(response, "收费台账.xlsx");
-        try (SXSSFWorkbook wb = new SXSSFWorkbook(100); OutputStream os = response.getOutputStream()) {
+        SXSSFWorkbook wb = new SXSSFWorkbook(100);
+        ByteArrayOutputStream buf = new ByteArrayOutputStream(256 * 1024);
+        try {
             Sheet sheet = wb.createSheet("收费台账");
             String[] headers = {"ID", "报名ID", "学员ID", "课程ID", "课时数", "金额", "支付方式", "缴费时间", "备注"};
             Row headerRow = sheet.createRow(0);
@@ -65,9 +67,11 @@ public class ExportService {
                 row.createCell(7).setCellValue(r.getPayTime() != null ? r.getPayTime().toString() : "");
                 row.createCell(8).setCellValue(r.getRemark() != null ? r.getRemark() : "");
             }
-            wb.write(os);
+            wb.write(buf);
+        } finally {
             wb.dispose();
         }
+        flushWorkbook(response, buf.toByteArray(), "收费台账.xlsx");
     }
 
     public void exportLessonFlows(HttpServletResponse response, String startDate, String endDate) throws IOException {
@@ -79,8 +83,9 @@ public class ExportService {
                         .lt(endDate != null, LessonFlow::getCreateTime, endDate != null ? java.time.LocalDate.parse(endDate).plusDays(1) + " 00:00:00" : null)
                         .orderByDesc(LessonFlow::getCreateTime));
 
-        setResponseHeader(response, "课时消耗报表.xlsx");
-        try (SXSSFWorkbook wb = new SXSSFWorkbook(100); OutputStream os = response.getOutputStream()) {
+        SXSSFWorkbook wb = new SXSSFWorkbook(100);
+        ByteArrayOutputStream buf = new ByteArrayOutputStream(256 * 1024);
+        try {
             Sheet sheet = wb.createSheet("课时消耗");
             String[] headers = {"ID", "学员ID", "来源类型", "变动课时", "变动前", "变动后", "备注", "时间"};
             Row headerRow = sheet.createRow(0);
@@ -101,9 +106,11 @@ public class ExportService {
                 row.createCell(6).setCellValue(r.getRemark() != null ? r.getRemark() : "");
                 row.createCell(7).setCellValue(r.getCreateTime() != null ? r.getCreateTime().toString() : "");
             }
-            wb.write(os);
+            wb.write(buf);
+        } finally {
             wb.dispose();
         }
+        flushWorkbook(response, buf.toByteArray(), "课时消耗报表.xlsx");
     }
 
     public void exportSalaries(HttpServletResponse response, String month) throws IOException {
@@ -121,8 +128,9 @@ public class ExportService {
                         .eq(hasMonth, TeacherSalary::getSalaryMonth, month)
                         .orderByDesc(TeacherSalary::getSalaryMonth));
 
-        setResponseHeader(response, "薪资结算单.xlsx");
-        try (SXSSFWorkbook wb = new SXSSFWorkbook(100); OutputStream os = response.getOutputStream()) {
+        SXSSFWorkbook wb = new SXSSFWorkbook(100);
+        ByteArrayOutputStream buf = new ByteArrayOutputStream(256 * 1024);
+        try {
             Sheet sheet = wb.createSheet("薪资结算");
             // 补充"代课金额"列，否则 基础工资+奖金≠应发工资，薪资单无法对账
             String[] headers = {"ID", "教师ID", "月份", "主讲课时", "代课课时", "基础工资", "代课金额", "奖金", "应发工资", "状态", "核算时间"};
@@ -148,16 +156,19 @@ public class ExportService {
                 row.createCell(9).setCellValue(st >= 1 && st <= 4 ? statusLabels[st] : "");
                 row.createCell(10).setCellValue(r.getCalcSnapshotTime() != null ? r.getCalcSnapshotTime().toString() : "");
             }
-            wb.write(os);
+            wb.write(buf);
+        } finally {
             wb.dispose();
         }
+        flushWorkbook(response, buf.toByteArray(), "薪资结算单.xlsx");
     }
 
     public void exportRiskStudents(HttpServletResponse response, String level,
                                    Long classId, Long courseId) throws IOException {
         List<RiskStudentVO> records = riskWarningService.listRiskWarnings(level, classId, courseId, null, null);
-        setResponseHeader(response, "流失预警名单.xlsx");
-        try (SXSSFWorkbook wb = new SXSSFWorkbook(100); OutputStream os = response.getOutputStream()) {
+        SXSSFWorkbook wb = new SXSSFWorkbook(100);
+        ByteArrayOutputStream buf = new ByteArrayOutputStream(256 * 1024);
+        try {
             Sheet sheet = wb.createSheet("流失预警名单");
             String[] headers = {"学员ID", "学员姓名", "班级", "课程", "风险分", "风险档位",
                     "最近到课", "28天缺勤/考勤", "缺勤率", "剩余课时", "总课时", "到期日",
@@ -193,15 +204,37 @@ public class ExportService {
                 Integer fs = r.getFollowUpStatus();
                 row.createCell(13).setCellValue(fs != null && fs >= 1 && fs <= 2 ? followStates[fs] : followStates[0]);
             }
-            wb.write(os);
+            wb.write(buf);
+        } finally {
             wb.dispose();
+        }
+        flushWorkbook(response, buf.toByteArray(), "流失预警名单.xlsx");
+    }
+
+    /**
+     * 先缓冲再整体写出：必须显式声明 Content-Length。
+     *
+     * <p>原实现用 SXSSFWorkbook 直写 {@code response.getOutputStream()}，未设长度只能走
+     * chunked，浏览器无法校验完整性——实测表现为导出停在 {@code .crdownload} 不收尾
+     * （内容其实是完整的）。改后顺序固定为：设头 → 设长度 → 取流写出，
+     * 一旦开始写流响应即提交，之后设 header 全部被丢弃。</p>
+     */
+    private void flushWorkbook(HttpServletResponse response, byte[] bytes, String filename) throws IOException {
+        setResponseHeader(response, filename);
+        response.setContentLengthLong(bytes.length);
+        try (OutputStream os = response.getOutputStream()) {
+            os.write(bytes);
+            os.flush();
         }
     }
 
     private void setResponseHeader(HttpServletResponse response, String filename) {
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("UTF-8");
-        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + URLEncoder.encode(filename, StandardCharsets.UTF_8));
+        // 同时给 ASCII 与 RFC 5987 两种形式：不支持 filename* 的客户端会退化成占位名「未确认 N」
+        String ascii = "export.xlsx";
+        response.setHeader("Content-Disposition",
+                "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + URLEncoder.encode(filename, StandardCharsets.UTF_8));
     }
 
     private CellStyle headerStyle(SXSSFWorkbook wb) {

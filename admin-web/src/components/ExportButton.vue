@@ -14,7 +14,7 @@ import { getErrorMessage } from '@/utils/error'
 
 // 单独实例：仅注入鉴权头，不挂载响应拦截器，
 // 避免 blob 响应（无 code 字段）被统一拦截器误判为失败。
-const exportAxios = axios.create({ baseURL: '/api', timeout: 30000 })
+const exportAxios = axios.create({ baseURL: '/api', timeout: 120000 })
 exportAxios.interceptors.request.use((config) => {
   const token = localStorage.getItem('token') || ''
   if (token) config.headers.Authorization = `Bearer ${token}`
@@ -81,8 +81,8 @@ async function handleExport() {
     a.click()
     document.body.removeChild(a)
     // 必须延时释放：a.click() 之后同步 revokeObjectURL 会让 Chrome 在 blob 尚未落盘前
-    // 丢掉引用，表现为下载停在 .crdownload 且永不结束（2026-11-26 实测定位）
-    setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+    // 丢掉引用，表现为下载停在 .crdownload 且永不结束。对齐 utils/protectedFile.ts 的 60s 量级
+    setTimeout(() => window.URL.revokeObjectURL(url), 30000)
   } catch (e: any) {
     // HTTP 401：与主实例 request.ts 保持一致——清除登录态并跳登录页，
     // 而不是弹一句 "Request failed with status code 401" 后留着失效会话
