@@ -41,8 +41,7 @@ INSERT INTO `permission` (permission_code, path, type) VALUES
 ('menu:refund', '/finance/refunds', 1),
 ('menu:lesson-flow', '/finance/lesson-flows', 1),
 ('menu:salary', '/finance/salaries', 1),
-('menu:revenue', '/finance/revenue', 1),
-('menu:permission', '/admin/permissions', 1),
+-- V13：menu:revenue / menu:permission 对应页面已下线，权限码一并清除（勿再加回）
 ('menu:menu', '/admin/menus', 1),
 ('menu:teacher', '/edu/teachers', 1),
 -- V12 拆分出的独立权限码（原先复用 menu:user / menu:student / menu:lesson-flow）
@@ -74,8 +73,7 @@ INSERT INTO `role_permission` (role_code, permission_code) VALUES
 ('FINANCE', 'menu:refund'),
 ('FINANCE', 'menu:lesson-flow'),
 ('FINANCE', 'menu:lesson-account'),
-('FINANCE', 'menu:salary'),
-('FINANCE', 'menu:revenue');
+('FINANCE', 'menu:salary');
 
 -- ------------------------------------------------------------
 -- 2. 初始化账号（22人，密码统一 BCrypt($2b$10$ZWjPz0H2FscQDKbdG1CO0OtFX91epUXwabKSLffP3zUmnLhAPDJpu) = 123456）
