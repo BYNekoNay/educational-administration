@@ -36,9 +36,10 @@ instance.interceptors.response.use(
       return Promise.reject(new Error('请先修改密码'))
     }
     // 403 权限不足：提示后不跳转（用户可能在看板等公开页面）
+    // 打 handled 标记：页面侧 catch 里再调 showError 时不重复弹（原先一次 403 弹两条）
     if (data.code === 403) {
       ElMessage.error(data.message || '权限不足')
-      return Promise.reject(new Error(data.message))
+      return Promise.reject(Object.assign(new Error(data.message || '权限不足'), { handled: true }))
     }
     if (data.code !== 0) {
       return Promise.reject(new Error(data.message || '请求失败'))
@@ -56,6 +57,8 @@ instance.interceptors.response.use(
     const msg = getErrorMessage(error)
     if (msg) {
       ElMessage.error(msg)
+      // 标记已提示，避免页面 catch → showError 二次弹
+      error.handled = true
     }
     return Promise.reject(error)
   }

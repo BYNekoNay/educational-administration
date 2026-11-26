@@ -66,6 +66,9 @@ export function getErrorMessage(e: any, defaultMsg = '操作失败'): string {
  * 显示错误提示（自动提取可读消息）
  */
 export function showError(e: any, defaultMsg = '操作失败'): void {
+  // 拦截器（api/request.ts）已经弹过 toast 的，不再重复弹——
+  // 否则一次 403 会同时出现「无权访问该接口」两条
+  if (e?.handled) return
   const msg = getErrorMessage(e, defaultMsg)
   if (msg) {
     ElMessage.error(msg)

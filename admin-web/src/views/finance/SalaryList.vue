@@ -295,8 +295,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Coin, MagicStick } from '@element-plus/icons-vue'
 import ExportButton from '@/components/ExportButton.vue'
-import { salaryApi } from '@/api/finance'
-import { teacherApi, courseApi } from '@/api/edu'
+import { salaryApi, financeOptionApi } from '@/api/finance'
 import { showError } from '@/utils/error'
 import { useAuthStore } from '@/stores/auth'
 import { currentYearMonth } from '@/utils/date'
@@ -317,18 +316,15 @@ const courseList = ref<Course[]>([])
 const ruleForm = reactive<Partial<SalaryRule>>({ teacherId: null, courseId: null, lessonUnitPrice: 100, substituteRate: 1.0 })
 
 async function loadOptions() {
-  try {
-    const [tRes, cRes] = await Promise.all([
-      teacherApi.list(),
-      courseApi.list({ pageNum: 1, pageSize: 100 }),
-    ])
-    teacherList.value = tRes.data || []
-    courseList.value = cRes.data?.records || []
-  } catch (e) {
-    // 注意：/edu/teachers、/edu/courses 仅放行 SUPER_ADMIN/EDU_ADMIN，FINANCE 角色会 403
-    // （第八轮待办：后端为薪资页补充 FINANCE 可见的教师/课程下拉接口）
-    showError(e, '加载教师/课程下拉数据失败')
-  }
+  // 财务对 /edu/* 403，改调财务专用只读下拉；allSettled 避免课程失败连累教师
+  const [tRes, cRes] = await Promise.allSettled([
+    financeOptionApi.teachers(),
+    financeOptionApi.courses(),
+  ])
+  if (tRes.status === 'fulfilled') teacherList.value = (tRes.value.data || []) as any
+  if (cRes.status === 'fulfilled') courseList.value = (cRes.value.data || []) as any
+  const failed = [tRes, cRes].filter(r => r.status === 'rejected').length
+  if (failed) ElMessage.warning(`教师/课程下拉加载失败（${failed} 项）`)
 }
 
 async function loadRules() {
@@ -340,6 +336,9 @@ async function loadRules() {
       sortField: sortField.value || undefined, sortOrder: sortOrder.value || undefined,
     })
     rules.value = res.data.records; rulesTotal.value = res.data.total
+  } catch (e) {
+    // 原来没有 catch，403 会走全局 unhandledrejection 再弹一次 toast
+    showError(e, '加载薪资规则失败')
   } finally { rulesLoading.value = false }
 }
 

@@ -87,8 +87,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { refundApi, paymentApi } from '@/api/finance'
-import { studentApi, enrollmentApi } from '@/api/edu'
+import { refundApi, paymentApi, financeOptionApi } from '@/api/finance'
 import { showError } from '@/utils/error'
 import { useAuthStore } from '@/stores/auth'
 import type { Enrollment, PaymentRecord, RefundRecord, Student } from '@/types'
@@ -107,16 +106,17 @@ const paymentList = ref<PaymentRecord[]>([])
 const form = reactive<Partial<RefundRecord>>({ studentId: null, enrollmentId: null, paymentRecordId: null, lessonCount: 0, amount: 0 })
 
 async function loadOptions() {
-  try {
-    const [sRes, eRes, pRes] = await Promise.all([
-      studentApi.list({ pageNum: 1, pageSize: 100 }),
-      enrollmentApi.list({ pageNum: 1, pageSize: 200 }),
-      paymentApi.list({ pageNum: 1, pageSize: 200 }),
-    ])
-    studentList.value = sRes.data?.records || []
-    enrollmentList.value = eRes.data?.records || []
-    paymentList.value = pRes.data?.records || []
-  } catch (e) { showError(e, '加载选项数据失败') }
+  // 财务对 /api/edu/* 一律 403，改调财务专用只读下拉；allSettled 避免一拒全丢
+  const [sRes, eRes, pRes] = await Promise.allSettled([
+    financeOptionApi.students(),
+    financeOptionApi.enrollments(),
+    paymentApi.list({ pageNum: 1, pageSize: 200 }),
+  ])
+  if (sRes.status === 'fulfilled') studentList.value = (sRes.value.data || []) as any
+  if (eRes.status === 'fulfilled') enrollmentList.value = (eRes.value.data || []) as any
+  if (pRes.status === 'fulfilled') paymentList.value = (pRes.value.data?.records || []) as any
+  const failed = [sRes, eRes, pRes].filter(r => r.status === 'rejected').length
+  if (failed) ElMessage.warning(`部分选项数据加载失败（${failed} 项）`)
 }
 
 const auditVisible = ref(false), auditRow = ref<RefundRecord | null>(null), auditAmount = ref(0)

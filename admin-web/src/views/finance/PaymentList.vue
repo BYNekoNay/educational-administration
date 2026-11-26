@@ -21,7 +21,7 @@
       <el-table-column prop="payTime" label="缴费时间" width="170" sortable="custom" />
       <el-table-column prop="remark" label="备注" />
     </el-table>
-    <el-pagination
+    <el-pagination v-if="total > 0"
       style="margin-top: 16px; justify-content: flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
       :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"
@@ -65,8 +65,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
-import { paymentApi } from '@/api/finance'
-import { studentApi, courseApi, enrollmentApi } from '@/api/edu'
+import { paymentApi, financeOptionApi } from '@/api/finance'
 import type { Course, Enrollment, PaymentRecord, Student } from '@/types'
 
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
@@ -116,16 +115,19 @@ watch(() => form.lessonCount, (n) => {
 })
 
 async function loadOptions() {
-  try {
-    const [sRes, cRes, eRes] = await Promise.all([
-      studentApi.list({ pageNum: 1, pageSize: 100 }),
-      courseApi.list({ pageNum: 1, pageSize: 100 }),
-      enrollmentApi.list({ pageNum: 1, pageSize: 200 }),
-    ])
-    studentList.value = sRes.data?.records || []
-    courseList.value = cRes.data?.records || []
-    enrollmentList.value = eRes.data?.records || []
-  } catch (e) { showError(e, '加载学员和课程数据失败') }
+  // 财务对 /api/edu/* 一律 403（只能超管/教务），改调财务专用只读下拉。
+  // 用 allSettled：原 Promise.all 任一失败即整体 reject，连成功的响应也被丢弃，
+  // 导致弹窗里学员/课程/报名全空。
+  const [sRes, cRes, eRes] = await Promise.allSettled([
+    financeOptionApi.students(),
+    financeOptionApi.courses(),
+    financeOptionApi.enrollments(),
+  ])
+  if (sRes.status === 'fulfilled') studentList.value = (sRes.value.data || []) as any
+  if (cRes.status === 'fulfilled') courseList.value = (cRes.value.data || []) as any
+  if (eRes.status === 'fulfilled') enrollmentList.value = (eRes.value.data || []) as any
+  const failed = [sRes, cRes, eRes].filter(r => r.status === 'rejected').length
+  if (failed) ElMessage.warning(`部分下拉数据加载失败（${failed} 项）`)
 }
 
 async function loadData() {
@@ -187,5 +189,5 @@ async function handleCreatePayment() {
   } finally { saving.value = false }
 }
 
-onMounted(() => { loadOptions(); loadData() })
+onMounted(() => { loadData() })
 </script>

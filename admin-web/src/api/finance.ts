@@ -13,6 +13,22 @@ import type {
   TeacherSalary,
 } from '@/types'
 
+/**
+ * 财务域只读下拉（学员/课程/报名/教师）。
+ *
+ * 财务角色对 /api/edu/* 一律 403，原实现直接调教务接口导致每个财务页面首屏
+ * 弹 3~4 次「无权访问该接口」、且 Promise.all 一拒全丢使下拉全空。
+ * 这些接口只投影 id 与名称，不暴露手机号。
+ */
+export const financeOptionApi = {
+  teachers: () => request.get<Array<{ id: number; name: string }>>('/finance/options/teachers'),
+  courses: () => request.get<Array<{ id: number; name: string; price: number; totalLessons: number }>>('/finance/options/courses'),
+  students: () => request.get<Array<{ id: number; name: string }>>('/finance/options/students'),
+  enrollments: () => request.get<Array<{
+    id: number; studentId: number; courseId: number; status: number; studentName: string; courseName: string
+  }>>('/finance/options/enrollments'),
+}
+
 /** 收费管理 */
 export const paymentApi = {
   list: (params?: PageParams) => request.get<PageData<PaymentRecord>>('/finance/payments', { params }),
