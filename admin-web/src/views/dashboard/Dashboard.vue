@@ -126,7 +126,7 @@
             <el-table-column prop="lastLessonDate" label="最近上课" />
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="课程盈利" name="profit">
+        <el-tab-pane v-if="canSeeFinanceTabs" label="课程盈利" name="profit">
           <h4>课程盈利</h4>
           <el-table :data="courseProfit" border stripe>
             <el-table-column prop="courseName" label="课程" />
@@ -135,7 +135,7 @@
             <el-table-column prop="netProfit" label="净收入" />
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="收费率" name="payment">
+        <el-tab-pane v-if="canSeeFinanceTabs" label="收费率" name="payment">
           <h4>收费率</h4>
           <el-table :data="paymentRate" border stripe>
             <el-table-column prop="courseName" label="课程" />
@@ -164,6 +164,9 @@ import type { AttendanceTrendPoint, DashboardCards, LessonTrendPoint, RevenueTre
 const authStore = useAuthStore()
 // 与后端 ExportController 的 @RequireRole({"SUPER_ADMIN","FINANCE"}) 对齐
 const canExport = computed(() => ['SUPER_ADMIN', 'FINANCE'].includes(authStore.roleCode))
+// 经营数据域：只有明确的教务角色才隐藏（而不是「非超管财务就隐藏」），
+// 避免 roleCode 尚未解析时把整块内容误藏（与 loadAnalytics 的 isEduOnly 同口径）
+const canSeeFinanceTabs = computed(() => authStore.roleCode !== 'EDU_ADMIN')
 
 // 指标卡显示值：后端返回数值，初始占位为 '--'
 const cards = reactive<Record<keyof DashboardCards, number | string>>({ activeStudents: '--', monthlyLessons: '--', monthlyRevenue: '--', attendanceRate: '--' })

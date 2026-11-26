@@ -67,9 +67,10 @@ describe('RiskWarningPanel.vue', () => {
     expect(vi.mocked(courseApi.list)).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('全部班级')
     expect(wrapper.text()).not.toContain('全部课程')
-    // 风险数据本身仍正常加载
+    // 风险数据本身仍正常加载（汇总口径），但学员级名单不再请求——
+    // 后端 list 已收紧为仅超管/教务，财务调用必然 403
     expect(vi.mocked(statisticsApi.riskSummary)).toHaveBeenCalled()
-    expect(vi.mocked(statisticsApi.riskWarnings)).toHaveBeenCalled()
+    expect(vi.mocked(statisticsApi.riskWarnings)).not.toHaveBeenCalled()
   })
 
   it('loads class/course options for edu admin', () => {

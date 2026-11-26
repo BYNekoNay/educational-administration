@@ -31,6 +31,7 @@ public class RiskWarningController {
     private final RiskWarningService riskWarningService;
 
     @GetMapping
+    @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<PageResult<RiskStudentVO>> list(
             PageQuery query,
             @RequestParam(required = false) String level,

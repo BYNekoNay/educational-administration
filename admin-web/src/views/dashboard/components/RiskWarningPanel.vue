@@ -53,7 +53,7 @@
     </div>
 
     <!-- 名单表格 -->
-    <el-table v-loading="loading" :data="list" border stripe size="small"
+    <el-table v-if="canOperate" v-loading="loading" :data="list" border stripe size="small"
               @selection-change="onSelectionChange" style="width: 100%">
       <el-table-column v-if="canOperate" type="selection" width="45" />
       <el-table-column prop="studentName" label="学员" width="90" />
@@ -183,6 +183,9 @@ async function loadSummary() {
 }
 
 async function loadList() {
+  // 财务只能看汇总口径（summary）：后端 list 已只放行超管/教务，
+  // 不跳过会必然 403。跳过同时清空列表，避免残留上一次的数据
+  if (!canOperate.value) { list.value = []; total.value = 0; return }
   loading.value = true
   try {
     const params: PageParams = { pageNum: pageNum.value, pageSize: pageSize.value }

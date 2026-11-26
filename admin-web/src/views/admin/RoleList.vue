@@ -156,48 +156,46 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
 import { Check, Plus } from '@element-plus/icons-vue'
-import { roleApi, permissionApi } from '@/api/auth'
+import { roleApi, menuApi } from '@/api/auth'
 import type { PermissionItem } from '@/types'
 
-// === 权限码中文映射 ===
-const PERM_LABEL_MAP: Record<string, string> = {
-  'menu:dashboard': '运营看板',
-  'menu:user': '用户管理',
-  'menu:role': '角色管理',
-  'menu:menu': '菜单管理',
-  'menu:permission': '权限码管理',
-  'menu:organization': '机构配置',
-  'menu:notice': '公告管理',
-  'menu:log': '操作日志',
-  'menu:student': '学员管理',
-  'menu:course': '课程管理',
-  'menu:class': '班级管理',
-  'menu:enrollment': '报名管理',
-  'menu:schedule': '排课管理',
-  'menu:big-schedule': '大课表',
-  'menu:adjust': '调课管理',
-  'menu:classroom': '教室管理',
-  'menu:attendance': '考勤管理',
-  'menu:exam': '考级管理',
-  'menu:payment': '收费管理',
-  'menu:refund': '退费管理',
-  'menu:lesson-flow': '课时流水',
-  'menu:salary': '薪资管理',
-  'menu:revenue': '营收统计',
+// === 权限树数据源：sys_menu（唯一事实源）===
+// 原实现读 permission 表 + 前端硬编码 PERM_CATEGORIES，导致两个问题：
+//   ① permission 表有、sys_menu 已删的幽灵码（menu:permission / menu:revenue）仍显示
+//   ② V12 新增的 menu:lesson-account 不在硬编码数组里 → 永远勾不到，
+//      表现为「已选 7/27 但页面上只勾得出 6 个」
+// 改为从菜单树派生：顶级节点即分组，组内取该子树所有 permissionCode
+interface MenuNode {
+  id: number
+  parentId?: number | null
+  menuName: string
+  path?: string | null
+  permissionCode?: string | null
+  icon?: string | null
+  children?: MenuNode[]
 }
 
-// === 权限分组 ===
 interface PermItem { code: string; label: string }
 interface PermGroup { name: string; icon: string; perms: PermItem[] }
 
-// 注意：分组必须覆盖 permission 表中的全部权限码，漏列的码在弹窗中不可见，
-// "清空→保存"会随全量覆盖（后端先删后插）被静默移除。新增权限码时务必同步此表。
-const PERM_CATEGORIES: { name: string; icon: string; codes: string[] }[] = [
-  { name: '运营看板', icon: 'DataAnalysis', codes: ['menu:dashboard'] },
-  { name: '系统管理', icon: 'Setting', codes: ['menu:user', 'menu:role', 'menu:menu', 'menu:permission', 'menu:organization', 'menu:notice', 'menu:log'] },
-  { name: '教务管理', icon: 'Reading', codes: ['menu:student', 'menu:course', 'menu:class', 'menu:enrollment', 'menu:schedule', 'menu:big-schedule', 'menu:adjust', 'menu:classroom', 'menu:attendance', 'menu:exam'] },
-  { name: '财务管理', icon: 'Money', codes: ['menu:payment', 'menu:refund', 'menu:lesson-flow', 'menu:salary', 'menu:revenue'] },
-]
+/** 同码去重：目录与子菜单同码时（如 id=4 财务管理与 id=20 收费管理都是 menu:payment），优先取有 path 的那条 */
+function collectPerms(nodes: MenuNode[]): PermItem[] {
+  const byCode = new Map<string, MenuNode>()
+  const walk = (n: MenuNode) => {
+    const code = n.permissionCode
+    if (code) {
+      const prev = byCode.get(code)
+      if (!prev || (!prev.path && n.path)) byCode.set(code, n)
+    }
+    ;(n.children || []).forEach(walk)
+  }
+  nodes.forEach(walk)
+  return [...byCode.entries()].map(([code, n]) => ({
+    code,
+    // 纯目录节点（无 path）标注一下，避免与同名页面混淆
+    label: n.path ? n.menuName : `${n.menuName}（目录）`,
+  }))
+}
 
 // === 角色列表 ===
 interface RoleItem { id: number; roleCode: string; roleName: string }
@@ -223,6 +221,8 @@ const checkedPermissions = ref<string[]>([])
 const originalPermissions = ref<string[]>([])
 const saving = ref(false)
 const allPermissions = ref<PermItem[]>([])
+/** 菜单树原始数据（权限树的分组与标签都从这里派生，不再依赖 permission 表） */
+const menuTree = ref<MenuNode[]>([])
 
 /** 角色弹窗关闭后复位（避免在模板中对 const 绑定直接赋值） */
 function onRoleDialogClosed() {
@@ -239,10 +239,10 @@ function onPermDialogClosed() {
 }
 
 const permGroups = computed<PermGroup[]>(() => {
-  return PERM_CATEGORIES.map(cat => ({
-    name: cat.name,
-    icon: cat.icon,
-    perms: allPermissions.value.filter(p => cat.codes.includes(p.code)),
+  return menuTree.value.map(root => ({
+    name: root.menuName,
+    icon: root.icon || 'Menu',
+    perms: collectPerms([root]),
   })).filter(g => g.perms.length > 0)
 })
 
@@ -274,15 +274,16 @@ function resetSearch() { keyword.value = '' }
 // === 权限列表加载 ===
 async function loadAllPermissions(): Promise<PermItem[]> {
   try {
-    const res = await permissionApi.list()
-    const list: PermissionItem[] = res.data || []
-    return list.map((p: PermissionItem) => ({
-      code: p.permissionCode,
-      label: PERM_LABEL_MAP[p.permissionCode] || p.permissionCode.replace('menu:', ''),
-    }))
+    // 从菜单树派生权限码，与「菜单管理」同源，杜绝幽灵节点与漏项
+    const res = await menuApi.tree()
+    const tree: MenuNode[] = res.data || []
+    menuTree.value = tree
+    const list = collectPerms(tree)
+    allPermissions.value = list
+    return list
   } catch (e) {
     // 不能静默吞掉：allPermissions 为空时"全选→保存"会把角色权限清空（后端先删后插）
-    showError(e, '加载权限列表失败')
+    showError(e, '加载菜单权限失败')
     return []
   }
 }
