@@ -3,6 +3,7 @@ package com.pzhu.eduadmin.modules.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.PasswordPolicy;
 import com.pzhu.eduadmin.modules.auth.dto.ChangePasswordRequest;
 import com.pzhu.eduadmin.modules.user.dto.CreateUserRequest;
 import com.pzhu.eduadmin.modules.user.dto.CurrentUserResponse;
@@ -113,18 +114,9 @@ public class AuthService implements IAuthService {
     public LoginResponse changePassword(Long userId, ChangePasswordRequest request) {
         String newPassword = request.getNewPassword();
 
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new BusinessException(400, "新密码不能为空");
-        }
-        if (newPassword.length() < 6) {
-            throw new BusinessException(400, "新密码长度不能少于6位");
-        }
-        // BCrypt 对超过 72 字节的密码是【静默截断】，不是抛异常：
-        // 前 72 字节相同的两个不同密码会产生相同哈希、可互相登录。
-        // 必须在入口前置拒绝；把理由写成"防止底层报错"会导致后人误以为可以删。
-        if (newPassword.getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw new BusinessException(400, "新密码过长（超出72字节限制）");
-        }
+        // 统一强度策略：非空/≥6位/≤72字节/字母+数字组合（收敛自与 UserServiceImpl 的重复校验）。
+        // BCrypt 72 字节静默截断的背景注释见 PasswordPolicy 与原实现。
+        PasswordPolicy.validate(newPassword);
 
         User user = userMapper.selectById(userId);
         if (user == null) {

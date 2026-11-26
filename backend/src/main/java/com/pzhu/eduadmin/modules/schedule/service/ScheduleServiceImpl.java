@@ -187,7 +187,9 @@ public class ScheduleServiceImpl implements ScheduleService {
             });
         }
 
-        QueryHelper.applySort(wrapper, sortField, sortOrder, LESSON_SORT_MAP, () -> wrapper.orderByDesc(ScheduleLesson::getLessonDate));
+        // 默认日期升序（第六轮复测：DESC 下未来最远的课排最前、临近今天的课沉底，
+        // 被复测员报为错位）。显式 sortField 仍走 LESSON_SORT_MAP 不受影响。
+        QueryHelper.applySort(wrapper, sortField, sortOrder, LESSON_SORT_MAP, () -> wrapper.orderByAsc(ScheduleLesson::getLessonDate));
         Page<ScheduleLesson> page = scheduleLessonMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateScheduleNames(page.getRecords());
         return page;

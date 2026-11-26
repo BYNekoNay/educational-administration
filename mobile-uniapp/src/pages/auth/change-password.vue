@@ -10,7 +10,7 @@
       </view>
       <view class="cp-field">
         <text class="cp-label">新密码</text>
-        <input v-model="form.newPassword" password placeholder="至少 6 位" class="cp-input" />
+        <input v-model="form.newPassword" password placeholder="至少 6 位，需含字母和数字" class="cp-input" />
       </view>
       <view class="cp-field">
         <text class="cp-label">确认新密码</text>
@@ -38,8 +38,8 @@ async function submit() {
     uni.showToast({ title: '请输入原密码', icon: 'none' })
     return
   }
-  if (!form.newPassword || form.newPassword.length < 6) {
-    uni.showToast({ title: '新密码至少 6 位', icon: 'none' })
+  if (!form.newPassword || form.newPassword.length < 6 || !/[a-zA-Z]/.test(form.newPassword) || !/[0-9]/.test(form.newPassword)) {
+    uni.showToast({ title: '新密码需至少 6 位且同时包含字母和数字', icon: 'none' })
     return
   }
   if (form.newPassword !== form.confirm) {

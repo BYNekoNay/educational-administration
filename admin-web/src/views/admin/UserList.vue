@@ -111,7 +111,7 @@
       <el-form :model="passwordForm" label-width="100px">
         <el-form-item label="用户">{{ passwordTarget?.username }}（{{ passwordTarget?.realName }}）</el-form-item>
         <el-form-item label="新密码" required>
-          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="请输入新密码" />
+          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="至少 6 位，需含字母和数字" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -449,8 +449,10 @@ function openPasswordDialog(row: UserInfo) {
 }
 
 async function handleResetPassword() {
-  if (!passwordForm.newPassword || passwordForm.newPassword.length < 6) {
-    ElMessage.warning('新密码至少6位')
+  // 与后端 PasswordPolicy 同口径：≥6 位且同时含字母和数字
+  const pwd = passwordForm.newPassword
+  if (!pwd || pwd.length < 6 || !/[a-zA-Z]/.test(pwd) || !/[0-9]/.test(pwd)) {
+    ElMessage.warning('新密码需至少 6 位且同时包含字母和数字')
     return
   }
   passwordSaving.value = true

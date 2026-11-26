@@ -12,7 +12,7 @@
           <el-input v-model="form.oldPassword" type="password" show-password placeholder="请输入当前密码" />
         </el-form-item>
         <el-form-item label="新密码">
-          <el-input v-model="form.newPassword" type="password" show-password placeholder="至少 6 位" />
+          <el-input v-model="form.newPassword" type="password" show-password placeholder="至少 6 位，需含字母和数字" />
         </el-form-item>
         <el-form-item label="确认新密码">
           <el-input v-model="form.confirm" type="password" show-password placeholder="再次输入新密码" />
@@ -41,8 +41,8 @@ async function submit() {
     ElMessage.warning('请输入原密码')
     return
   }
-  if (!form.newPassword || form.newPassword.length < 6) {
-    ElMessage.warning('新密码至少 6 位')
+  if (!form.newPassword || form.newPassword.length < 6 || !/[a-zA-Z]/.test(form.newPassword) || !/[0-9]/.test(form.newPassword)) {
+    ElMessage.warning('新密码需至少 6 位且同时包含字母和数字')
     return
   }
   if (form.newPassword !== form.confirm) {

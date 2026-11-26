@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pzhu.eduadmin.common.BusinessException;
+import com.pzhu.eduadmin.common.PasswordPolicy;
 import com.pzhu.eduadmin.common.QueryHelper;
 import com.pzhu.eduadmin.modules.course.entity.Course;
 import com.pzhu.eduadmin.modules.course.mapper.CourseMapper;
@@ -234,19 +235,16 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void resetPassword(Long id, String newPassword) {
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new BusinessException(400, "新密码不能为空");
-        }
-        if (newPassword.length() < 6) {
-            throw new BusinessException(400, "新密码长度不能少于6位");
-        }
-        // BCrypt 有效上限 72 字节，超长密码会导致 CPU 密集型哈希（DoS 风险）
-        // 上限是 72「字节」而非 72 字符，多字节密码（如中文）按字符校验会超过 72 字节被 BCrypt
-        // 静默截断，导致前 72 字节相同的两个密码哈希一致。改用 UTF-8 字节长度校验。
-        if (newPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
-            throw new BusinessException(400, "新密码过长（超出72字节限制）");
-        }
+        // 统一强度策略：非空/≥6位/≤72字节/字母+数字组合（收敛自本方法与 AuthService 的重复校验）
+        PasswordPolicy.validate(newPassword);
         User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        // 管理端重置不允许设成与当前密码相同的值（第六轮决策①）
+        if (new BCryptPasswordEncoder().matches(newPassword, user.getPassword())) {
+            throw new BusinessException(400, "新密码不能与当前密码相同");
+        }
         if (user == null) {
             throw new BusinessException("用户不存在");
         }

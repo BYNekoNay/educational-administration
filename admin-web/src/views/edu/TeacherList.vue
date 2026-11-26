@@ -39,17 +39,17 @@
         <template #default="{ row }">{{ row.hireDate || '未录入' }}</template>
       </el-table-column>
       <el-table-column label="离职日" width="120">
-        <template #default="{ row }">{{ row.leaveDate || '在职' }}</template>
+        <template #default="{ row }">{{ row.leaveDate || '—' }}</template>
       </el-table-column>
       <el-table-column label="状态" width="180">
         <template #default="{ row }">
           <el-tag :type="row.statusType || 'info'" size="small">{{ row.statusLabel || '-' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="密码" width="92">
+      <el-table-column label="密码状态" width="92">
         <template #default="{ row }">
           <el-tag v-if="row.mustChangePassword === 1" type="warning" size="small">待改密</el-tag>
-          <span v-else class="muted">-</span>
+          <span v-else class="muted">正常</span>
         </template>
       </el-table-column>
       <el-table-column label="可授课程" min-width="180">
@@ -97,7 +97,7 @@
               <el-descriptions-item label="账号">{{ detail.username }}</el-descriptions-item>
               <el-descriptions-item label="手机">{{ detail.phone || '-' }}</el-descriptions-item>
               <el-descriptions-item label="入职日">{{ detail.hireDate || '未录入' }}</el-descriptions-item>
-              <el-descriptions-item label="离职日">{{ detail.leaveDate || '在职' }}</el-descriptions-item>
+              <el-descriptions-item label="离职日">{{ detail.leaveDate || '—' }}</el-descriptions-item>
               <el-descriptions-item label="状态">
                 <el-tag :type="detail.statusType || 'info'" size="small">{{ detail.statusLabel }}</el-tag>
               </el-descriptions-item>

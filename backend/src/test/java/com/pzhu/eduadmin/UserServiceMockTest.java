@@ -319,7 +319,8 @@ class UserServiceMockTest {
     void resetPassword_userNotFound_rejected() {
         when(userMapper.selectById(999L)).thenReturn(null);
 
-        assertThatThrownBy(() -> userService.resetPassword(999L, "123456"))
+        // 传含字母数字的密码：让强度策略通过，走到「用户不存在」分支（纯数字会先被组合校验拦住）
+        assertThatThrownBy(() -> userService.resetPassword(999L, "newpass123"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户不存在");
 

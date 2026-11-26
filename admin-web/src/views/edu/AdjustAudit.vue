@@ -48,8 +48,8 @@
           <div class="audit-side">
             <el-tag :type="statusTagType(item.status)" size="small">{{ statusLabel(item.status) }}</el-tag>
             <template v-if="item.status === 1">
-              <el-button size="small" type="success" :loading="auditingId === item.id" @click="quickApprove(item)">通过</el-button>
-              <el-button size="small" type="danger" plain @click="quickReject(item)">驳回</el-button>
+              <el-button size="small" type="success" :loading="auditingId === item.id" @click="openAuditDialog(item, 'approve')">通过</el-button>
+              <el-button size="small" type="danger" plain @click="openAuditDialog(item, 'reject')">驳回</el-button>
             </template>
           </div>
         </div>
@@ -68,12 +68,29 @@
                      @size-change="onSizeChange"
                      size="small" />
     </div>
+
+    <!-- 审核 dialog：通过（选填备注）与驳回（必填原因）共用，显式表单避免 MessageBox 输入框不显眼 -->
+    <el-dialog v-model="auditDialog.visible" :close-on-click-modal="false" width="460px"
+               :title="auditDialog.type === 'approve' ? '通过调课申请' : '驳回调课申请'">
+      <p style="margin:0 0 12px;line-height:1.6">
+        {{ dialogContext }}，{{ auditDialog.type === 'approve' ? '确认通过？' : '请填写驳回原因（教师端可见）' }}
+      </p>
+      <el-input v-model="auditDialog.remark" type="textarea" :rows="3" maxlength="200" show-word-limit
+                :placeholder="auditDialog.type === 'approve' ? '通过备注（选填，教师端可见）' : '如：该时段教室已被占用'" />
+      <template #footer>
+        <el-button @click="auditDialog.visible = false">取消</el-button>
+        <el-button :type="auditDialog.type === 'approve' ? 'success' : 'danger'"
+                   :loading="auditingId !== null"
+                   :disabled="auditDialog.type === 'reject' && !auditDialog.remark.trim()"
+                   @click="confirmAudit">{{ auditDialog.type === 'approve' ? '确认通过' : '确认驳回' }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Right } from '@element-plus/icons-vue'
 import { adjustApi } from '@/api/edu'
 import { showError } from '@/utils/error'
@@ -134,49 +151,35 @@ async function loadData() {
   finally { loading.value = false }
 }
 
-/** 通过：支持填写备注（选填，教师端可见）。原先硬传 remark=''，与驳回口径不对称 */
-async function quickApprove(item: AdjustRequestVO) {
-  let remark = ''
-  try {
-    const { value } = await ElMessageBox.prompt(
-      `${item.courseName || ''} ${item.className || ''} → ${fmtExpect(item.expectTime)}，确认通过？`,
-      '通过调课申请',
-      {
-        confirmButtonText: '确认通过',
-        cancelButtonText: '取消',
-        inputPlaceholder: '通过备注（选填，教师端可见）',
-        type: 'success',
-      }
-    )
-    remark = value || ''
-  } catch { return /* 用户取消 */ }
-  auditingId.value = item.id ?? null
-  try {
-    await adjustApi.audit(item.id!, { status: 2, remark })
-    ElMessage.success('已通过')
-    loadData()
-  } catch (e) { showError(e, '审核失败') }
-  finally { auditingId.value = null }
+// ---- 审核 dialog（第六轮：原双 ElMessageBox.prompt 的输入框视觉太弱被复测连续看漏，改显式表单）----
+const auditDialog = reactive({
+  visible: false,
+  type: 'approve' as 'approve' | 'reject',
+  item: null as AdjustRequestVO | null,
+  remark: '',
+})
+
+const dialogContext = computed(() => {
+  const it = auditDialog.item
+  return it ? `${it.courseName || ''} ${it.className || ''} → ${fmtExpect(it.expectTime)}` : ''
+})
+
+function openAuditDialog(item: AdjustRequestVO, type: 'approve' | 'reject') {
+  auditDialog.item = item
+  auditDialog.type = type
+  auditDialog.remark = ''
+  auditDialog.visible = true
 }
 
-/** 驳回必须填原因（prompt 一步完成） */
-async function quickReject(item: AdjustRequestVO) {
-  let reason: string
+/** 统一提交：通过（status=2，备注选填）/ 驳回（status=3，原因必填由按钮 disabled 兜底） */
+async function confirmAudit() {
+  if (!auditDialog.item || auditingId.value !== null) return
+  const status = auditDialog.type === 'approve' ? 2 : 3
+  auditingId.value = auditDialog.item.id ?? null
   try {
-    const { value } = await ElMessageBox.prompt('请填写驳回原因（教师端可见）', '驳回调课申请', {
-      confirmButtonText: '确认驳回',
-      cancelButtonText: '取消',
-      inputPlaceholder: '如：该时段教室已被占用',
-      inputPattern: /\S+/,
-      inputErrorMessage: '驳回原因不能为空',
-      type: 'warning',
-    })
-    reason = value
-  } catch { return /* 用户取消 */ }
-  auditingId.value = item.id ?? null
-  try {
-    await adjustApi.audit(item.id!, { status: 3, remark: reason })
-    ElMessage.success('已驳回')
+    await adjustApi.audit(auditDialog.item.id!, { status, remark: auditDialog.remark.trim() })
+    ElMessage.success(status === 2 ? '已通过' : '已驳回')
+    auditDialog.visible = false
     loadData()
   } catch (e) { showError(e, '审核失败') }
   finally { auditingId.value = null }
