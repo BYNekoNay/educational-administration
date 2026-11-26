@@ -29,8 +29,14 @@ public interface FinanceService {
      */
     RefundRecord auditRefund(Long id, Integer status, Long auditorId, BigDecimal refundAmount, String remark);
 
+    /** 退费状态分布：待审 / 通过 / 驳回 计数 + 通过金额合计 */
+    java.util.Map<String, Object> refundStats();
+
     // 课时账户
     Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder, String keyword);
+
+    /** 按 学员+课程 定位课时账户（收费页「调整课时」入口用），不存在返回 null */
+    LessonAccount getAccountByStudentAndCourse(Long studentId, Long courseId);
 
     LessonAccount getLessonAccountById(Long id);
 

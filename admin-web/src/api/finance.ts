@@ -41,6 +41,9 @@ export const refundApi = {
   create: (data: Partial<RefundRecord>) => request.post<RefundRecord>('/finance/refunds', data),
   audit: (id: number, data: { status: number; refundAmount?: number; remark?: string }) =>
     request.put<RefundRecord>(`/finance/refunds/${id}/audit`, data),
+  /** 退费状态分布（待审/通过/驳回 + 通过金额合计） */
+  stats: () => request.get<{ pending: number; approved: number; rejected: number; approvedAmount: number }>(
+    '/finance/refunds/stats'),
 }
 
 /** 课时账户 */
@@ -50,6 +53,9 @@ export const lessonAccountApi = {
   /** 人工调整课时（补课/扣课），返回新写入的课时流水 */
   adjust: (id: number, data: LessonAdjustPayload) =>
     request.post<LessonFlow>(`/finance/lesson-accounts/${id}/adjust`, data),
+  /** 按 学员+课程 定位课时账户（收费页「调整课时」入口用，列表里只有学员名没有 accountId） */
+  lookup: (studentId: number, courseId: number) =>
+    request.get<LessonAccount>('/finance/lesson-accounts/lookup', { params: { studentId, courseId } }),
 }
 
 /** 课时流水 */

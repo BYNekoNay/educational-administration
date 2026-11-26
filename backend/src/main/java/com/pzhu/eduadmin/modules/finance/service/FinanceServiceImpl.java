@@ -301,6 +301,44 @@ public class FinanceServiceImpl implements FinanceService {
         return page;
     }
 
+    @Override
+    public Map<String, Object> refundStats() {
+        // 退费单量级很小（当前 10 条），直接全量统计即可，不必写聚合 SQL
+        List<RefundRecord> all = refundRecordMapper.selectList(null);
+        long pending = all.stream().filter(r -> Integer.valueOf(1).equals(r.getStatus())).count();
+        long approved = all.stream().filter(r -> Integer.valueOf(2).equals(r.getStatus())).count();
+        long rejected = all.stream().filter(r -> Integer.valueOf(3).equals(r.getStatus())).count();
+        BigDecimal approvedAmount = all.stream()
+                .filter(r -> Integer.valueOf(2).equals(r.getStatus()))
+                .map(RefundRecord::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("pending", pending);
+        m.put("approved", approved);
+        m.put("rejected", rejected);
+        m.put("approvedAmount", approvedAmount);
+        return m;
+    }
+
+    @Override
+    public LessonAccount getAccountByStudentAndCourse(Long studentId, Long courseId) {
+        if (studentId == null || courseId == null) {
+            return null;
+        }
+        // 不用 selectOne：同一学员同一课程若历史上有重复账户会抛 TooManyResultsException
+        List<LessonAccount> list = lessonAccountMapper.selectList(new LambdaQueryWrapper<LessonAccount>()
+                .eq(LessonAccount::getStudentId, studentId)
+                .eq(LessonAccount::getCourseId, courseId)
+                .orderByDesc(LessonAccount::getId));
+        if (list.isEmpty()) {
+            return null;
+        }
+        // 收费页弹窗要显示「学员 / 课程」名称，必须补填关联名称
+        populateAccountNames(list);
+        return list.get(0);
+    }
+
     private void populateRefundNames(List<RefundRecord> list) {
         if (list.isEmpty()) return;
         Set<Long> studentIds = list.stream().map(RefundRecord::getStudentId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());

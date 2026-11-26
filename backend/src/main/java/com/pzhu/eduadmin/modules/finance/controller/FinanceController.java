@@ -111,6 +111,26 @@ public class FinanceController {
                 CurrentUserHolder.get().getUserId(), refundAmount, remark));
     }
 
+    @GetMapping("/refunds/stats")
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    public Result<Map<String, Object>> refundStats() {
+        // 退费页顶部状态分布卡：4 个计数 + 通过金额合计（机构量级，直接全量统计即可）
+        return Result.success(financeService.refundStats());
+    }
+
+    @GetMapping("/lesson-accounts/lookup")
+    @RequireRole({"SUPER_ADMIN", "FINANCE"})
+    public Result<LessonAccount> lookupLessonAccount(@RequestParam Long studentId,
+                                                     @RequestParam Long courseId) {
+        // 字面路径优先于 /lesson-accounts/{id}，不会被 Long 转换命中。
+        // 收费页「调整课时」入口需要按 学员+课程 定位账户（列表里只有学员名，没有 accountId）
+        LessonAccount account = financeService.getAccountByStudentAndCourse(studentId, courseId);
+        if (account == null) {
+            throw new BusinessException(404, "该学员在此课程下没有课时账户");
+        }
+        return Result.success(account);
+    }
+
     @GetMapping("/lesson-accounts")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
     public Result<PageResult<LessonAccount>> listLessonAccounts(PageQuery query) {

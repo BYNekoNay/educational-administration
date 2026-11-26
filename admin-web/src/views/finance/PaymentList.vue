@@ -20,6 +20,11 @@
       </el-table-column>
       <el-table-column prop="payTime" label="缴费时间" width="170" sortable="custom" />
       <el-table-column prop="remark" label="备注" />
+      <el-table-column label="操作" width="110" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" size="small" @click="openAdjust(row)">调整课时</el-button>
+        </template>
+      </el-table-column>
     </el-table>
     <el-pagination v-if="total > 0"
       style="margin-top: 16px; justify-content: flex-end"
@@ -58,6 +63,7 @@
         <el-button type="primary" @click="handleCreatePayment" :loading="saving">确认收费并开通课时</el-button>
       </template>
     </el-dialog>
+    <LessonAdjustDialog v-model="adjustVisible" :account="currentAccount" @adjusted="loadData" />
   </div>
 </template>
 
@@ -65,8 +71,9 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { showError } from '@/utils/error'
-import { paymentApi, financeOptionApi } from '@/api/finance'
-import type { Course, Enrollment, PaymentRecord, Student } from '@/types'
+import { paymentApi, financeOptionApi, lessonAccountApi } from '@/api/finance'
+import LessonAdjustDialog from './components/LessonAdjustDialog.vue'
+import type { Course, Enrollment, LessonAccount, PaymentRecord, Student } from '@/types'
 
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const loading = ref(false), saving = ref(false)
@@ -128,6 +135,24 @@ async function loadOptions() {
   if (eRes.status === 'fulfilled') enrollmentList.value = (eRes.value.data || []) as any
   const failed = [sRes, cRes, eRes].filter(r => r.status === 'rejected').length
   if (failed) ElMessage.warning(`部分下拉数据加载失败（${failed} 项）`)
+}
+
+// ---- 调整课时入口：列表里只有学员名/课程名，需按 studentId+courseId 回查账户 ----
+const adjustVisible = ref(false)
+const currentAccount = ref<LessonAccount | null>(null)
+
+async function openAdjust(row: PaymentRecord) {
+  if (!row.studentId || !row.courseId) {
+    ElMessage.warning('该缴费记录缺少学员或课程信息')
+    return
+  }
+  try {
+    const res = await lessonAccountApi.lookup(row.studentId, row.courseId)
+    currentAccount.value = res.data
+    adjustVisible.value = true
+  } catch (e) {
+    showError(e, '未找到该学员在此课程下的课时账户')
+  }
 }
 
 async function loadData() {

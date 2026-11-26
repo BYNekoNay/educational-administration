@@ -4,6 +4,24 @@
       <h3>退费管理</h3>
       <el-button type="primary" @click="showRefundDialog">新增退费申请</el-button>
     </div>
+    <div class="refund-stats" style="margin-bottom:12px;display:flex;gap:12px">
+      <el-card shadow="hover" style="flex:1">
+        <div class="stat-label">待审核</div>
+        <div class="stat-value" style="color:var(--el-color-warning)">{{ stats.pending }}</div>
+      </el-card>
+      <el-card shadow="hover" style="flex:1">
+        <div class="stat-label">已通过</div>
+        <div class="stat-value" style="color:var(--el-color-success)">{{ stats.approved }}</div>
+      </el-card>
+      <el-card shadow="hover" style="flex:1">
+        <div class="stat-label">已驳回</div>
+        <div class="stat-value" style="color:var(--el-color-danger)">{{ stats.rejected }}</div>
+      </el-card>
+      <el-card shadow="hover" style="flex:1">
+        <div class="stat-label">通过金额合计</div>
+        <div class="stat-value">¥{{ Number(stats.approvedAmount || 0).toFixed(2) }}</div>
+      </el-card>
+    </div>
     <div style="margin-bottom:12px;display:flex;gap:8px">
       <el-input v-model="keyword" placeholder="搜索学员/申请人" clearable style="width:240px" @keyup.enter="handleSearch" />
       <el-button type="primary" @click="handleSearch">搜索</el-button>
@@ -196,7 +214,34 @@ async function doAudit(id: number, status: number, refundAmount: number, remark?
   await refundApi.audit(id, { status, refundAmount, ...(remark ? { remark } : {}) } as any)
   ElMessage.success(status === 2 ? '审核通过：已回退课时、写入流水并退班' : '已拒绝')
   loadData()
+  loadStats()
 }
 
-onMounted(() => { loadData() })
+const stats = ref<{ pending: number; approved: number; rejected: number; approvedAmount: number }>(
+  { pending: 0, approved: 0, rejected: 0, approvedAmount: 0 },
+)
+
+async function loadStats() {
+  try {
+    const res = await refundApi.stats()
+    if (res.data) stats.value = res.data
+  } catch {
+    // 统计失败不阻塞列表：不弹 toast（列表本身已能反映数据）
+  }
+}
+
+onMounted(() => { loadData(); loadStats() })
 </script>
+
+<style scoped>
+.stat-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+.stat-value {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+</style>
