@@ -38,6 +38,9 @@
       <el-table-column label="入职日" width="120">
         <template #default="{ row }">{{ row.hireDate || '未录入' }}</template>
       </el-table-column>
+      <el-table-column label="离职日" width="120">
+        <template #default="{ row }">{{ row.leaveDate || '在职' }}</template>
+      </el-table-column>
       <el-table-column label="状态" width="180">
         <template #default="{ row }">
           <el-tag :type="row.statusType || 'info'" size="small">{{ row.statusLabel || '-' }}</el-tag>

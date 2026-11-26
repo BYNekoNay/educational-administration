@@ -2,9 +2,12 @@
   <div>
     <div class="page-header"><h3>课时流水</h3></div>
     <div style="margin-bottom:12px;display:flex;gap:8px">
-      <el-input v-model="keyword" placeholder="搜索学员" clearable style="width:260px" />
+      <el-input v-model="keyword" placeholder="搜索学员" clearable style="width:260px"
+        @keyup.enter="handleSearch" @clear="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
     </div>
-    <el-table :data="filteredData" v-loading="loading" border stripe @sort-change="handleSortChange">
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
       <el-table-column prop="studentName" label="学员" min-width="80" />
       <el-table-column label="来源类型" width="90">
@@ -24,7 +27,7 @@
       <el-table-column prop="remark" label="备注" min-width="120" />
       <el-table-column prop="createTime" label="时间" width="170" sortable="custom" />
     </el-table>
-    <el-pagination style="margin-top: 16px; justify-content: flex-end"
+    <el-pagination v-if="loaded && total > 0" style="margin-top: 16px; justify-content: flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
       :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]" @change="loadData" />
   </div>
@@ -37,16 +40,14 @@ import { showError } from '@/utils/error'
 import type { LessonFlow } from '@/types'
 
 const loading = ref(false)
+const loaded = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
-const filteredData = computed(() => {
-  if (!keyword.value) return tableData.value
-  const kw = keyword.value.toLowerCase()
-  return tableData.value.filter((r: LessonFlow) =>
-    (r.studentName && String(r.studentName).toLowerCase().includes(kw))
-  )
-})
 const tableData = ref<LessonFlow[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
+
+// 后端已支持 keyword（学员姓名/课程名），走服务端过滤；原先的 filteredData 只过滤当前页，跨页搜不到
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
 
 function sourceTypeLabel(v: number) {
   const map: Record<number, string> = { 1: '充值', 2: '消费', 3: '回冲', 4: '退费', 5: '人工调整' }
@@ -68,6 +69,7 @@ async function loadData() {
     showError(e, '加载课时流水失败')
   } finally {
     loading.value = false
+    loaded.value = true
   }
 }
 

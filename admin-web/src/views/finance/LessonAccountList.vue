@@ -2,9 +2,12 @@
   <div>
     <div class="page-header"><h3>课时账户</h3></div>
     <div style="margin-bottom:12px;display:flex;gap:8px">
-      <el-input v-model="keyword" placeholder="搜索学员或课程" clearable style="width:260px" />
+      <el-input v-model="keyword" placeholder="搜索学员或课程" clearable style="width:260px"
+        @keyup.enter="handleSearch" @clear="handleSearch" />
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button @click="resetSearch">重置</el-button>
     </div>
-    <el-table :data="filteredData" v-loading="loading" border stripe @sort-change="handleSortChange">
+    <el-table :data="tableData" v-loading="loading" border stripe @sort-change="handleSortChange">
       <el-table-column prop="id" label="ID" width="60" sortable="custom" />
       <el-table-column prop="studentName" label="学员" min-width="80" />
       <el-table-column prop="courseName" label="课程" min-width="100" />
@@ -23,7 +26,7 @@
         </template>
       </el-table-column>
     </el-table>
-    <el-pagination style="margin-top: 16px; justify-content: flex-end"
+    <el-pagination v-if="loaded && total > 0" style="margin-top: 16px; justify-content: flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
       :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]" @change="loadData" />
 
@@ -70,17 +73,14 @@ import { showError } from '@/utils/error'
 import type { LessonAccount, LessonAdjustPayload } from '@/types'
 
 const loading = ref(false)
+const loaded = ref(false)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
-const filteredData = computed(() => {
-  if (!keyword.value) return tableData.value
-  const kw = keyword.value.toLowerCase()
-  return tableData.value.filter((r: LessonAccount) =>
-    (r.studentName && String(r.studentName).toLowerCase().includes(kw)) ||
-    (r.courseName && String(r.courseName).toLowerCase().includes(kw))
-  )
-})
 const tableData = ref<LessonAccount[]>([])
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
+
+// 后端已支持 keyword（学员姓名/课程名），走服务端过滤；原先的 filteredData 只过滤当前页
+function handleSearch() { pageNum.value = 1; loadData() }
+function resetSearch() { keyword.value = ''; sortField.value = ''; sortOrder.value = ''; pageNum.value = 1; loadData() }
 
 // ---- 课时人工调整 ----
 const adjustVisible = ref(false), submitting = ref(false)
@@ -151,8 +151,8 @@ async function loadData() {
       keyword: keyword.value || '' })
     tableData.value = res.data?.records ?? []
     total.value = res.data?.total ?? 0
-  } catch (e) { showError(e, '加载课时账户失败') }
-  finally { loading.value = false }
+  }   catch (e) { showError(e, '加载课时账户失败') }
+  finally { loading.value = false; loaded.value = true }
 }
 
 function handleSortChange({ prop, order }: { prop: string; order: string | null }) {

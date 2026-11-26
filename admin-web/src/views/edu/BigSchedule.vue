@@ -65,7 +65,7 @@
         :can-edit="true"
         @schedule-move="onScheduleMove"
       />
-      <WeeklyCalendar v-else-if="viewMode === 'week'" :lessons="lessons" :weekDays="weekDayLabels" />
+      <WeeklyCalendar v-else-if="viewMode === 'week'" :lessons="lessons" :weekDays="weekDayLabels" :weekDates="weekDateStrs" />
     </div>
 
     <!-- 拖拽调课确认弹窗 -->

@@ -26,16 +26,20 @@
 import { computed } from 'vue'
 import type { ScheduleLesson } from '@/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   lessons: ScheduleLesson[]
+  /** 仅用于列标题，如 '11/23 周一' */
   weekDays: string[]
-}>()
+  /** 周一~周日 7 个 yyyy-MM-dd，仅用于把课次对位到列 */
+  weekDates: string[]
+}>(), { weekDates: () => [] })
 
 const lessonsByDay = computed(() => {
   const map: Record<number, ScheduleLesson[]> = {}
   for (const l of props.lessons) {
-    // 用父组件传入的周日期字符串直接定位列，避免 new Date 解析异常时课次落进 NaN 键导致整列空白
-    const dow = props.weekDays.indexOf(l.lessonDate)
+    // 必须用 weekDates（yyyy-MM-dd）对位，不能用 weekDays（'11/23 周一' 这类标签）——
+    // 曾经误用 weekDays 导致 indexOf 恒为 -1、七列全空（2026-11-26 回归修复）
+    const dow = props.weekDates.indexOf(l.lessonDate)
     if (dow < 0) continue
     if (!map[dow]) map[dow] = []
     map[dow].push(l)

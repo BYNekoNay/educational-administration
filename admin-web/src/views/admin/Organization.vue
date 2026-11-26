@@ -2,8 +2,8 @@
   <div>
     <div class="page-header"><h3>机构信息配置</h3></div>
     <el-card>
-      <el-form label-width="100px" v-loading="loading">
-        <el-form-item label="机构名称">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" v-loading="loading">
+        <el-form-item label="机构名称" prop="orgName">
           <el-input v-model="form.orgName" placeholder="请输入机构名称" :disabled="!canSave" />
         </el-form-item>
         <el-form-item label="校区">
@@ -55,6 +55,16 @@ const form = reactive({
   address: '',
 })
 
+const formRef = ref()
+const rules = {
+  orgName: [
+    { required: true, message: '请输入机构名称', trigger: 'blur' },
+    { max: 50, message: '机构名称不超过 50 个字符', trigger: 'blur' },
+  ],
+  // 空值放行，填了必须是合法电话格式
+  contactPhone: [{ pattern: /^$|^[\d\-+() ]{6,20}$/, message: '请输入正确的联系电话', trigger: 'blur' }],
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -75,6 +85,8 @@ async function loadData() {
 }
 
 async function handleSave() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) { ElMessage.warning('请检查机构名称与联系电话'); return }
   saving.value = true
   try {
     await organizationApi.update({

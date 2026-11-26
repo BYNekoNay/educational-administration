@@ -19,8 +19,12 @@
       <el-table-column prop="teacherName" label="教师" min-width="80" />
       <el-table-column prop="classroomName" label="教室" min-width="100" />
       <el-table-column prop="lessonDate" label="日期" width="110" sortable="custom" />
-      <el-table-column prop="startTime" label="开始" width="80" sortable="custom" />
-      <el-table-column prop="endTime" label="结束" width="80" />
+      <el-table-column prop="startTime" label="开始" width="100" sortable="custom">
+        <template #default="{ row }">{{ row.startTime?.slice(0, 5) || '-' }}</template>
+      </el-table-column>
+      <el-table-column prop="endTime" label="结束" width="100">
+        <template #default="{ row }">{{ row.endTime?.slice(0, 5) || '-' }}</template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="90" sortable="custom">
         <template #default="{ row }">
           <el-tag v-if="row.status===1" type="warning">待上课</el-tag>
@@ -42,7 +46,7 @@
         </template>
       </el-table-column>
     </el-table>
-    <el-pagination
+    <el-pagination v-if="total > 0"
       style="margin-top:16px;justify-content:flex-end"
       v-model:current-page="pageNum" v-model:page-size="pageSize"
       :total="total" layout="sizes, total, prev, pager, next" :page-sizes="[10, 20, 50, 100]"

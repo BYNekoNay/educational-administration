@@ -134,18 +134,25 @@ async function loadData() {
   finally { loading.value = false }
 }
 
-/** 一步式通过：确认框直接完成，备注留到需要时再补（减少一次弹窗表单） */
+/** 通过：支持填写备注（选填，教师端可见）。原先硬传 remark=''，与驳回口径不对称 */
 async function quickApprove(item: AdjustRequestVO) {
+  let remark = ''
   try {
-    await ElMessageBox.confirm(
+    const { value } = await ElMessageBox.prompt(
       `${item.courseName || ''} ${item.className || ''} → ${fmtExpect(item.expectTime)}，确认通过？`,
       '通过调课申请',
-      { confirmButtonText: '确认通过', cancelButtonText: '取消', type: 'success' }
+      {
+        confirmButtonText: '确认通过',
+        cancelButtonText: '取消',
+        inputPlaceholder: '通过备注（选填，教师端可见）',
+        type: 'success',
+      }
     )
+    remark = value || ''
   } catch { return /* 用户取消 */ }
   auditingId.value = item.id ?? null
   try {
-    await adjustApi.audit(item.id!, { status: 2, remark: '' })
+    await adjustApi.audit(item.id!, { status: 2, remark })
     ElMessage.success('已通过')
     loadData()
   } catch (e) { showError(e, '审核失败') }
