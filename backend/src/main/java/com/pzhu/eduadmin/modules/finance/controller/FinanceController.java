@@ -103,9 +103,12 @@ public class FinanceController {
         if (status == 2 && refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(400, "审核通过时退费金额必须大于0");
         }
-        // 审核备注：驳回时前端强制填写，通过时选填；统一截断到列宽 255
+        // 审核备注：驳回时必填（审计事件，接口层强制，不再依赖前端），通过时选填；统一截断到列宽 255
         String remark = body.get("remark") != null ? body.get("remark").toString().trim() : null;
         if (remark != null && remark.isEmpty()) remark = null;
+        if (status == 3 && remark == null) {
+            throw new BusinessException(400, "驳回时必须填写原因");
+        }
         if (remark != null && remark.length() > 255) remark = remark.substring(0, 255);
         return Result.success(financeService.auditRefund(id, status,
                 CurrentUserHolder.get().getUserId(), refundAmount, remark));
@@ -133,9 +136,10 @@ public class FinanceController {
 
     @GetMapping("/lesson-accounts")
     @RequireRole({"SUPER_ADMIN", "FINANCE"})
-    public Result<PageResult<LessonAccount>> listLessonAccounts(PageQuery query) {
+    public Result<PageResult<LessonAccount>> listLessonAccounts(PageQuery query,
+            @RequestParam(required = false) Long studentId) {
         return Result.success(PageResult.of(financeService.pageLessonAccounts((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getSortField(), query.getSortOrder(), query.getKeyword())));
+                query.getSortField(), query.getSortOrder(), query.getKeyword(), studentId)));
     }
 
     @GetMapping("/lesson-accounts/{id}")

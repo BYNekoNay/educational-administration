@@ -99,6 +99,10 @@ public class EnrollmentController {
     @PutMapping("/{id}/audit")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
     public Result<Enrollment> audit(@PathVariable Long id, @RequestParam Integer status, @RequestParam(required = false) String remark) {
+        // 驳回（status=4）必须填写备注：与退费审核口径对齐，接口层强制（审计留痕）
+        if (status != null && status == 4 && (remark == null || remark.trim().isEmpty())) {
+            throw new BusinessException(400, "驳回时必须填写备注");
+        }
         LoginUser loginUser = CurrentUserHolder.get();
         return Result.success(enrollmentService.audit(id, status, loginUser.getUserId(), remark));
     }
