@@ -10,7 +10,8 @@
 
 约束（来自方案 docs/plans/radiant-aurora-darwin-7qGo_QhC.md）：
 - 目标人数取 min(8, class_group.max_student_count)，班 6 容量 6 → 只补到 6
-- 课时 48（保证 (48-最多消耗20)/48 > 50%，F3=0；否则 91 人全进风险）
+- 课时按课程实际总课时发放（旧版固定 48 曾造成 remaining>total 存量脏数据，V15 已订正）
+  保证 (总课时-最多消耗20)/总课时 > 50%，F3=0；否则 91 人全进风险
 - 缴费分 7/8/9 月三批（40/20/19），避免单月营收畸高
 - 考勤 80/5/10/5，扣减前做余额控制，杜绝负余额
 - 流水按代码口径：source_type=2 考勤消费 / 1 充值 / 4 退费 / 5 人工调整
@@ -450,6 +451,7 @@ def do_verify():
         ("班级人次", "SELECT COUNT(*) FROM class_student WHERE status=1 AND is_deleted=0"),
         ("PARENT 账号", "SELECT COUNT(*) FROM user WHERE role_code='PARENT' AND is_deleted=0"),
         ("余额为负", "SELECT COUNT(*) FROM lesson_account WHERE remaining_lessons<0 AND is_deleted=0"),
+        ("剩余>总课时", "SELECT COUNT(*) FROM lesson_account WHERE remaining_lessons>total_lessons AND is_deleted=0"),
         ("余额≠流水汇总", "SELECT COUNT(*) FROM lesson_account a LEFT JOIN (SELECT account_id,SUM(change_amount) s "
                     "FROM lesson_flow WHERE is_deleted=0 GROUP BY account_id) f ON f.account_id=a.id "
                     "WHERE a.is_deleted=0 AND a.remaining_lessons<>COALESCE(f.s,0)"),
