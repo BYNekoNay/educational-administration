@@ -6,8 +6,9 @@
   "versionCode": "130",
   "transformPx": false,
   "h5": {
-    "routerMode": "hash",
-    "publicPath": "./",
+    "router": {
+      "mode": "hash"
+    },
     "devServer": {
       "proxy": {
         "/api": {
