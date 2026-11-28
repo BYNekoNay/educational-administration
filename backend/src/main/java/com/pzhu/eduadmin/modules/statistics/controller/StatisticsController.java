@@ -49,15 +49,16 @@ public class StatisticsController {
     @RequireRole({"SUPER_ADMIN"})
     @Deprecated
     public Result<PageResult<OperationLog>> listLogs(PageQuery query) {
-        return listOperationLogs(query, null);
+        return listOperationLogs(query, null, null);
     }
 
     @GetMapping("/operation-logs")
     @RequireRole({"SUPER_ADMIN"})
     public Result<PageResult<OperationLog>> listOperationLogs(PageQuery query,
-            @RequestParam(required = false) Long operatorId) {
+            @RequestParam(required = false) Long operatorId,
+            @RequestParam(required = false) String module) {
         return Result.success(PageResult.of(statisticsService.pageOperationLogs((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getKeyword(), query.getSortField(), query.getSortOrder(), operatorId)));
+                query.getKeyword(), query.getSortField(), query.getSortOrder(), operatorId, module)));
     }
 
     @GetMapping("/dashboard")

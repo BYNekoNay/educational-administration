@@ -341,7 +341,8 @@ public class RiskWarningServiceImpl implements RiskWarningService {
         int total = all.size();
         int from = Math.min((pageNum - 1) * pageSize, total);
         int to = Math.min(from + pageSize, total);
-        return PageResult.of(total, new ArrayList<>(all.subList(from, to)));
+        // 回显真实分页参数（此前 pageNum/pageSize 恒为 0，前端分页元信息错乱）
+        return PageResult.of(pageNum, pageSize, total, new ArrayList<>(all.subList(from, to)));
     }
 
     @Override

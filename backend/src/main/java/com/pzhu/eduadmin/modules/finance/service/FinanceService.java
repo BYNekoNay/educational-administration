@@ -35,6 +35,9 @@ public interface FinanceService {
     // 课时账户
     Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder, String keyword);
 
+    /** 按 studentId 过滤的分页查询（studentId 为 null 时不过滤） */
+    Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder, String keyword, Long studentId);
+
     /** 按 学员+课程 定位课时账户（收费页「调整课时」入口用），不存在返回 null */
     LessonAccount getAccountByStudentAndCourse(Long studentId, Long courseId);
 

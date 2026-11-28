@@ -33,10 +33,12 @@ public class AuthController {
     private final com.pzhu.eduadmin.security.StreamTicketService streamTicketService;
     private final com.pzhu.eduadmin.security.DownloadTicketService downloadTicketService;
 
-    /** 导出直链可用端点白名单：票据不可签发到鉴权路径之外 */
-    private static final java.util.Set<String> DOWNLOAD_ENDPOINTS = java.util.Set.of(
-            "/api/export/payments", "/api/export/lesson-flows",
-            "/api/export/salaries", "/api/export/risk-students");
+    /** 导出直链可用端点白名单 → 该端点下载时 @RequireRole 允许的角色（签发前先行校验，签发即鉴权） */
+    private static final java.util.Map<String, java.util.Set<String>> DOWNLOAD_ENDPOINTS = java.util.Map.of(
+            "/api/export/payments", java.util.Set.of("SUPER_ADMIN", "FINANCE"),
+            "/api/export/lesson-flows", java.util.Set.of("SUPER_ADMIN", "FINANCE"),
+            "/api/export/salaries", java.util.Set.of("SUPER_ADMIN", "FINANCE"),
+            "/api/export/risk-students", java.util.Set.of("SUPER_ADMIN", "EDU_ADMIN", "FINANCE"));
 
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -67,10 +69,14 @@ public class AuthController {
     @PostMapping("/download-ticket")
     public Result<java.util.Map<String, Object>> downloadTicket(@RequestBody java.util.Map<String, String> body) {
         String endpoint = body.get("endpoint");
-        if (endpoint == null || !DOWNLOAD_ENDPOINTS.contains(endpoint)) {
+        if (endpoint == null || !DOWNLOAD_ENDPOINTS.containsKey(endpoint)) {
             throw new com.pzhu.eduadmin.common.BusinessException(400, "不支持的导出端点");
         }
         LoginUser user = CurrentUserHolder.get();
+        // 签发即鉴权：与下载端 @RequireRole 同源校验，无权角色不给签发（避免"能签却下载 403"的误导）
+        if (!DOWNLOAD_ENDPOINTS.get(endpoint).contains(user.getRoleCode())) {
+            throw new com.pzhu.eduadmin.common.BusinessException(403, "无权导出该数据");
+        }
         String ticket = downloadTicketService.issue(user.getUserId(), endpoint);
         return Result.success(java.util.Map.of("ticket", ticket, "expiresIn", 60));
     }

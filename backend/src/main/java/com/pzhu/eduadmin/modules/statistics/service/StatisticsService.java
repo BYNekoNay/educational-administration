@@ -18,6 +18,9 @@ public interface StatisticsService {
 
     Page<OperationLog> pageOperationLogs(int pageNum, int pageSize, String keyword, String sortField, String sortOrder, Long operatorId);
 
+    /** 带 module 精确筛选的重载（module 为 null/blank 时不过滤） */
+    Page<OperationLog> pageOperationLogs(int pageNum, int pageSize, String keyword, String sortField, String sortOrder, Long operatorId, String module);
+
     Map<String, Object> getDashboard();
 
     /** 教师工作量统计（按月份），返回每位教师的完成课次数 */

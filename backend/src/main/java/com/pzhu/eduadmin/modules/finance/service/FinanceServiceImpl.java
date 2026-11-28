@@ -654,7 +654,15 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     public Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder, String keyword) {
+        return pageLessonAccounts(pageNum, pageSize, sortField, sortOrder, keyword, null);
+    }
+
+    @Override
+    public Page<LessonAccount> pageLessonAccounts(int pageNum, int pageSize, String sortField, String sortOrder, String keyword, Long studentId) {
         LambdaQueryWrapper<LessonAccount> wrapper = new LambdaQueryWrapper<>();
+        if (studentId != null) {
+            wrapper.eq(LessonAccount::getStudentId, studentId);
+        }
         applyNameKeyword(wrapper, keyword, LessonAccount::getStudentId, LessonAccount::getCourseId);
         QueryHelper.applySort(wrapper, sortField, sortOrder, ACCOUNT_SORT_MAP, () -> wrapper.orderByDesc(LessonAccount::getId));
         Page<LessonAccount> page = lessonAccountMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);

@@ -100,10 +100,19 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public Page<OperationLog> pageOperationLogs(int pageNum, int pageSize, String keyword, String sortField, String sortOrder, Long operatorId) {
+        return pageOperationLogs(pageNum, pageSize, keyword, sortField, sortOrder, operatorId, null);
+    }
+
+    @Override
+    public Page<OperationLog> pageOperationLogs(int pageNum, int pageSize, String keyword, String sortField, String sortOrder, Long operatorId, String module) {
         LambdaQueryWrapper<OperationLog> wrapper = new LambdaQueryWrapper<>();
         QueryHelper.applyKeyword(wrapper, keyword, OperationLog::getModule, OperationLog::getOperation);
         // 操作人精确筛选（operatorId 存库，前端下拉传 id）
         wrapper.eq(operatorId != null, OperationLog::getOperatorId, operatorId);
+        // 模块精确筛选（前端下拉传完整模块名，与 keyword 模糊搜索互补）
+        if (module != null && !module.isBlank()) {
+            wrapper.eq(OperationLog::getModule, module);
+        }
         QueryHelper.applySort(wrapper, sortField, sortOrder, OP_LOG_SORT_MAP, () -> wrapper.orderByDesc(OperationLog::getCreateTime));
         Page<OperationLog> page = operationLogMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         if (!page.getRecords().isEmpty()) {

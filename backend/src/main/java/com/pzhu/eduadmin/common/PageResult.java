@@ -27,10 +27,20 @@ public class PageResult<T> implements Serializable {
         return result;
     }
 
-    /** 手动分页场景：total + records */
+    /** 手动分页场景：total + records（不回显分页参数，仅兼容既有调用） */
     public static <T> PageResult<T> of(long total, List<T> records) {
         PageResult<T> result = new PageResult<>();
         result.setTotal(total);
+        result.setRecords(records);
+        return result;
+    }
+
+    /** 手动分页场景：完整回显 pageNum/pageSize/total/records */
+    public static <T> PageResult<T> of(long pageNum, long pageSize, long total, List<T> records) {
+        PageResult<T> result = new PageResult<>();
+        result.setTotal(total);
+        result.setPageNum(pageNum);
+        result.setPageSize(pageSize);
         result.setRecords(records);
         return result;
     }
