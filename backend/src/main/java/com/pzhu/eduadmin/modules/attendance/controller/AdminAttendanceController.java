@@ -20,9 +20,10 @@ public class AdminAttendanceController {
 
     @GetMapping("/attendances")
     @RequireRole({"SUPER_ADMIN", "EDU_ADMIN"})
-    public Result<PageResult<Attendance>> list(PageQuery query) {
+    public Result<PageResult<Attendance>> list(PageQuery query,
+            @RequestParam(required = false) Long lessonId) {
         return Result.success(PageResult.of(attendanceService.page((int) query.getPageNum(), (int) query.getPageSize(),
-                query.getSortField(), query.getSortOrder())));
+                query.getSortField(), query.getSortOrder(), lessonId)));
     }
 
     @GetMapping("/attendances/{id}")

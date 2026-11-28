@@ -77,7 +77,15 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     public Page<Attendance> page(int pageNum, int pageSize, String sortField, String sortOrder) {
+        return page(pageNum, pageSize, sortField, sortOrder, null);
+    }
+
+    @Override
+    public Page<Attendance> page(int pageNum, int pageSize, String sortField, String sortOrder, Long lessonId) {
         LambdaQueryWrapper<Attendance> wrapper = new LambdaQueryWrapper<>();
+        if (lessonId != null) {
+            wrapper.eq(Attendance::getLessonId, lessonId);
+        }
         QueryHelper.applySort(wrapper, sortField, sortOrder, ATTENDANCE_SORT_MAP, () -> wrapper.orderByDesc(Attendance::getCheckTime));
         Page<Attendance> page = attendanceMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         populateAttendanceNames(page.getRecords());
@@ -220,10 +228,19 @@ public class AttendanceServiceImpl implements AttendanceService {
         if (!Integer.valueOf(1).equals(lesson.getStatus()) && !Integer.valueOf(2).equals(lesson.getStatus())) {
             throw new BusinessException(409, "该课次状态不允许考勤（非待上课/已完成）");
         }
-        // 禁止对未来课次提交考勤。lessonDate 可能为 null（部分历史课次/测试构造），
-        // 必须判空——否则 isAfter 直接 NPE，AttendanceServiceTest 有 10+ 例未设日期
-        if (lesson.getLessonDate() != null && lesson.getLessonDate().isAfter(java.time.LocalDate.now())) {
-            throw new BusinessException(409, "不能对未来课次提交考勤");
+        // 禁止对尚未开始的课次提交考勤：按课次开始时刻（lessonDate + startTime）判断，
+        // 而非仅按日期——否则当天凌晨即可对当晚课次点名"已完成"。
+        // lessonDate/startTime 可能为 null（部分历史课次/测试构造），必须判空，否则 NPE
+        if (lesson.getLessonDate() != null) {
+            if (lesson.getStartTime() != null) {
+                if (java.time.LocalDateTime.of(lesson.getLessonDate(), lesson.getStartTime())
+                        .isAfter(java.time.LocalDateTime.now())) {
+                    throw new BusinessException(409, "课次尚未开始，不能提前考勤");
+                }
+            } else if (lesson.getLessonDate().isAfter(java.time.LocalDate.now())) {
+                // 历史课次无开始时刻，退回按日期校验
+                throw new BusinessException(409, "不能对未来课次提交考勤");
+            }
         }
 
         // 1.1 教师角色校验课次归属（行级数据隔离）
@@ -244,15 +261,12 @@ public class AttendanceServiceImpl implements AttendanceService {
                 new LambdaQueryWrapper<Attendance>()
                         .eq(Attendance::getLessonId, attendance.getLessonId())
                         .eq(Attendance::getStudentId, attendance.getStudentId()));
-        // Default deductLessons before branching so both update and insert paths have it
-        if (attendance.getDeductLessons() == null) {
-            attendance.setDeductLessons(BigDecimal.ONE); // 默认扣1课时
-        }
-        // 请假(3)/缺勤(4)实际不扣课时（扣减仅对 status 1/2 执行），
-        // 持久化值必须为 0，否则报表/审计显示"请假却扣了1课时"，且未来冲销若漏判状态会多退课时
-        if (Integer.valueOf(3).equals(attendance.getStatus()) || Integer.valueOf(4).equals(attendance.getStatus())) {
-            attendance.setDeductLessons(BigDecimal.ZERO);
-        }
+        // 服务端强制扣减口径：到课(1)/迟到(2)均扣 1 课时，请假(3)/缺勤(4)不扣。
+        // 不采信客户端提交的 deductLessons——两端历史提交值不一致（管理端 1 / 教师端 0.5），
+        // 且客户端可任意指定扣减值属审计风险；口径以服务端为准
+        attendance.setDeductLessons(
+                (attendance.getStatus() == 1 || attendance.getStatus() == 2)
+                        ? BigDecimal.ONE : BigDecimal.ZERO);
 
         if (existing != null) {
             // 保护请假记录：已有请假审批（status=3, deductLessons=0），不允许覆盖为到课/迟到

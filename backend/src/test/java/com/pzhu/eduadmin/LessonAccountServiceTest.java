@@ -168,14 +168,70 @@ class LessonAccountServiceTest {
 
         Attendance attendance = new Attendance();
         attendance.setLessonId(4L); attendance.setStudentId(4L);
-        attendance.setStatus(2); // 请假
+        attendance.setStatus(3); // 请假（原误写为 2=迟到，依赖客户端传 0 逃避扣款的旧漏洞）
         attendance.setDeductLessons(BigDecimal.ZERO);
 
         when(scheduleLessonMapper.selectById(4L)).thenReturn(lesson);
         when(attendanceMapper.selectOne(any())).thenReturn(null);
 
         Attendance result = attendanceService.submit(attendance);
-        assertThat(result.getStatus()).isEqualTo(2);
+        assertThat(result.getStatus()).isEqualTo(3);
+        // 服务端强制口径：请假扣减为 0，且完全不走扣减分支
+        assertThat(result.getDeductLessons()).isEqualByComparingTo(BigDecimal.ZERO);
         verify(lessonAccountMapper, never()).selectOne(any());
+    }
+
+    @Test
+    @DisplayName("迟到扣课时由服务端强制为 1 — 忽略客户端提交值")
+    void shouldForceDeductOneForLate() {
+        ScheduleLesson lesson = new ScheduleLesson();
+        lesson.setId(5L); lesson.setTeacherId(2L); lesson.setClassId(5L);
+        lesson.setClassroomId(1L); lesson.setStatus(1);
+
+        Attendance attendance = new Attendance();
+        attendance.setLessonId(5L); attendance.setStudentId(5L);
+        attendance.setStatus(2); // 迟到
+        attendance.setDeductLessons(BigDecimal.ZERO); // 客户端试图传 0 逃避扣款
+
+        when(scheduleLessonMapper.selectById(5L)).thenReturn(lesson);
+        when(attendanceMapper.selectOne(any())).thenReturn(null);
+        when(classGroupMapper.selectById(5L)).thenReturn(new ClassGroup());
+
+        LessonAccount account = new LessonAccount();
+        account.setId(50L); account.setTotalLessons(new BigDecimal("10"));
+        account.setRemainingLessons(new BigDecimal("8"));
+        account.setVersion(0);
+        when(lessonAccountMapper.selectOne(any())).thenReturn(account);
+        // 扣减走 CAS：lessonAccountMapper.update(null, LambdaUpdateWrapper)
+        when(lessonAccountMapper.update(any(), any())).thenReturn(1);
+        when(lessonFlowMapper.insert(any(LessonFlow.class))).thenReturn(1);
+        when(nameResolver.getStudentName(5L)).thenReturn("测试学员");
+
+        Attendance result = attendanceService.submit(attendance);
+        // 服务端硬口径：迟到扣 1，客户端传的 0 被忽略
+        assertThat(result.getDeductLessons()).isEqualByComparingTo(BigDecimal.ONE);
+        verify(lessonAccountMapper).update(any(), any());
+        verify(lessonFlowMapper).insert(any(LessonFlow.class));
+    }
+
+    @Test
+    @DisplayName("课次尚未开始 — 不能提前考勤（时刻粒度校验）")
+    void shouldRejectBeforeLessonStart() {
+        ScheduleLesson lesson = new ScheduleLesson();
+        lesson.setId(6L); lesson.setTeacherId(2L); lesson.setClassId(6L);
+        lesson.setClassroomId(1L); lesson.setStatus(1);
+        // 明天的课（无论当前几点，明天 10:00 恒在未来），既有日期又有时刻 → 走时刻粒度分支
+        lesson.setLessonDate(java.time.LocalDate.now().plusDays(1));
+        lesson.setStartTime(java.time.LocalTime.of(10, 0));
+
+        Attendance attendance = new Attendance();
+        attendance.setLessonId(6L); attendance.setStudentId(6L);
+        attendance.setStatus(1);
+
+        when(scheduleLessonMapper.selectById(6L)).thenReturn(lesson);
+
+        assertThatThrownBy(() -> attendanceService.submit(attendance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("课次尚未开始");
     }
 }

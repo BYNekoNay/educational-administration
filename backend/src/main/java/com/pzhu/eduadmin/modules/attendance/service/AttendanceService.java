@@ -11,6 +11,9 @@ public interface AttendanceService {
 
     Page<Attendance> page(int pageNum, int pageSize, String sortField, String sortOrder);
 
+    /** 按课次过滤的分页查询（lessonId 为 null 时不过滤） */
+    Page<Attendance> page(int pageNum, int pageSize, String sortField, String sortOrder, Long lessonId);
+
     Attendance getById(Long id);
 
     /** 提交考勤（含课时扣减事务） */

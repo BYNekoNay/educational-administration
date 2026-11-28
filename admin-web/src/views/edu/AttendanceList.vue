@@ -94,8 +94,8 @@
           </el-select>
         </el-form-item>
         <el-form-item label="扣课时">
-          <!-- 请假/缺勤后端强制 deductLessons=0，编辑无意义，禁用 -->
-          <el-input-number v-model="form.deductLessons" :min="0" :precision="1" :disabled="form.status === 3 || form.status === 4" />
+          <!-- 扣减口径由服务端强制（到课/迟到扣 1，请假/缺勤不扣），前端仅展示规则，不再提供编辑 -->
+          <span class="deduct-rule">到课/迟到扣 1 课时；请假/缺勤不扣</span>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" />
@@ -156,7 +156,7 @@ const submitting = ref(false)
 const scheduleList = ref<ScheduleLesson[]>([])
 const studentList = ref<Student[]>([])
 const allStudents = ref<Student[]>([])
-const form = ref({ lessonId: null as number | null, studentId: null as number | null, status: 1, deductLessons: 1, remark: '' })
+const form = ref({ lessonId: null as number | null, studentId: null as number | null, status: 1, remark: '' })
 
 function statusType(s: number) { return s === 1 ? 'success' : s === 2 ? 'warning' : s === 3 ? 'info' : 'danger' }
 function statusText(s: number) { return { 1: '到课', 2: '迟到', 3: '请假', 4: '缺勤' }[s] || s }
@@ -171,11 +171,6 @@ function scheduleOptionLabel(s: ScheduleLesson): string {
 
 // 仅待上课(1)/已完成(2)课次可考勤（其余状态后端 409 拒绝），下拉只列可选课次
 const lessonOptions = computed(() => (scheduleList.value || []).filter((s: ScheduleLesson) => Number(s.status) === 1 || Number(s.status) === 2))
-
-// 请假(3)/缺勤(4)后端强制 deductLessons=0，切换状态时同步默认值，避免提交被后端静默改写
-watch(() => form.value.status, (st) => {
-  form.value.deductLessons = (st === 3 || st === 4) ? 0 : 1
-})
 
 // 选定课次后将学员下拉收窄为该班级在读学员（后端校验学员班级归属，跨班学员会 409）；加载失败保留全量兜底
 watch(() => form.value.lessonId, async (lid) => {
@@ -225,7 +220,7 @@ function handleSortChange({ prop, order }: { prop: string; order: string | null 
 }
 
 function showAddDialog() {
-  form.value = { lessonId: null, studentId: null, status: 1, deductLessons: 1, remark: '' }
+  form.value = { lessonId: null, studentId: null, status: 1, remark: '' }
   studentList.value = allStudents.value
   dialogVisible.value = true
   // 确保下拉数据已加载
@@ -326,4 +321,5 @@ onMounted(() => { loadOptions(); loadData() })
 <style scoped>
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px }
 .page-header h3 { margin: 0 }
+.deduct-rule { color: var(--el-text-color-secondary); font-size: 13px }
 </style>

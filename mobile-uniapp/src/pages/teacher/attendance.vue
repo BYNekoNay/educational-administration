@@ -112,8 +112,8 @@ async function submitAttendance() {
   const list = (students.value || []).map(s => ({
     studentId: s.studentId,
     status: statusMap.value[s.studentId],
-    lessonId: lid,
-    deductLessons: statusMap.value[s.studentId] === 1 ? 1 : (statusMap.value[s.studentId] === 2 ? 0.5 : 0)
+    lessonId: lid
+    // 扣减课时不再由客户端指定：服务端按状态硬口径（到课/迟到扣 1，请假/缺勤不扣）
   }))
   submitting.value = true
   try {
