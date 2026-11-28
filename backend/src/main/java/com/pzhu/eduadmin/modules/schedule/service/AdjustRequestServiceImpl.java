@@ -186,6 +186,11 @@ public class AdjustRequestServiceImpl implements AdjustRequestService {
         if (pendingAdjustCount > 0) {
             throw new BusinessException(409, "该课次已有待审批的调课申请，请勿重复提交");
         }
+        // 期望上课时间必填：审核通过时要用它生成新课次（原校验在审核通过分支，
+        // 但缺 expectTime 的申请只能驳回不能通过，等于创建时就注定失败，必须在入口拦截）
+        if (request.getExpectTime() == null) {
+            throw new BusinessException(400, "请选择期望上课时间");
+        }
         scheduleAdjustRequestMapper.insert(request);
         return request;
     }

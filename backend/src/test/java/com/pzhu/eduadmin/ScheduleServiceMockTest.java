@@ -495,6 +495,7 @@ class ScheduleServiceMockTest {
     void createAdjustRequest_Success() {
         ScheduleAdjustRequest req = new ScheduleAdjustRequest();
         req.setLessonId(10L);
+        req.setExpectTime(java.time.LocalDateTime.of(2026, 12, 1, 10, 0));
         // 需要校验课次存在；仅待上课(status=1)课次可发起调课
         ScheduleLesson adjustLesson = new ScheduleLesson();
         adjustLesson.setStatus(1);
@@ -505,6 +506,21 @@ class ScheduleServiceMockTest {
         ScheduleAdjustRequest result = scheduleService.createAdjustRequest(req);
 
         assertThat(result.getId()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("创建调课申请缺少期望时间 — 抛出 400")
+    void createAdjustRequest_MissingExpectTime() {
+        ScheduleAdjustRequest req = new ScheduleAdjustRequest();
+        req.setLessonId(10L); // 不设 expectTime
+        ScheduleLesson adjustLesson = new ScheduleLesson();
+        adjustLesson.setStatus(1);
+        when(scheduleLessonMapper.selectById(10L)).thenReturn(adjustLesson);
+
+        assertThatThrownBy(() -> scheduleService.createAdjustRequest(req))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请选择期望上课时间");
+        verify(scheduleAdjustRequestMapper, never()).insert(any(ScheduleAdjustRequest.class));
     }
 
     @Test
