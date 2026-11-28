@@ -59,6 +59,11 @@
             <el-option value="PARENT" label="家长" />
           </el-select>
         </el-form-item>
+        <el-form-item label="发布时间">
+          <!-- 选未来时间 = 定时发布（家长端 publishTime 晚于当前时不可见）；清空 = 立即发布 -->
+          <el-date-picker v-model="form.publishTime" type="datetime" placeholder="默认立即发布"
+            value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" clearable />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -81,7 +86,7 @@ const pageNum = ref(1), pageSize = ref(10), total = ref(0)
 const keyword = ref(''), sortField = ref(''), sortOrder = ref('')
 const dialogVisible = ref(false)
 const editing = ref<Notice | null>(null)
-const form = reactive<Partial<Notice>>({ title: '', content: '', noticeType: 1, receiverType: 'ALL' })
+const form = reactive<Partial<Notice>>({ title: '', content: '', noticeType: 1, receiverType: 'ALL', publishTime: undefined })
 
 // ---- 枚举映射 ----
 
@@ -128,11 +133,13 @@ function showDialog(row: Notice | null) {
     form.content = row.content
     form.noticeType = Number(row.noticeType) || 1
     form.receiverType = row.receiverType || 'ALL'
+    form.publishTime = row.publishTime || undefined
   } else {
     form.title = ''
     form.content = ''
     form.noticeType = 1
     form.receiverType = 'ALL'
+    form.publishTime = formatLocalTime(new Date()) // 默认立即发布，可选未来时间实现定时发布
   }
   dialogVisible.value = true
 }
@@ -152,7 +159,6 @@ async function handleSave() {
     if (editing.value?.id) {
       await noticeApi.update(editing.value.id, payload)
     } else {
-      payload.publishTime = formatLocalTime(new Date())
       await noticeApi.create(payload)
     }
     ElMessage.success(editing.value?.id ? '已更新' : '已发布')
