@@ -164,7 +164,8 @@ CREATE TABLE lesson_account (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
-  CONSTRAINT uk_lesson_account_student_course UNIQUE (student_id, course_id)
+  CONSTRAINT uk_lesson_account_student_course UNIQUE (student_id, course_id),
+  CONSTRAINT chk_lesson_remaining_le_total CHECK (remaining_lessons <= total_lessons)
 );
 
 DROP TABLE IF EXISTS lesson_flow;

@@ -344,7 +344,8 @@ CREATE TABLE `lesson_account` (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted TINYINT NOT NULL DEFAULT 0,
-  UNIQUE KEY uk_student_course (student_id, course_id)
+  UNIQUE KEY uk_student_course (student_id, course_id),
+  CONSTRAINT chk_lesson_remaining_le_total CHECK (remaining_lessons <= total_lessons)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课时账户';
 
 DROP TABLE IF EXISTS `lesson_flow`;
